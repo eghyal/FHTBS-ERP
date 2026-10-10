@@ -1,0 +1,8 @@
+{
+  "name": "Paving Joss",
+  "description": "Comprehensive Operational ERP & HRIS system for Paving Joss.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

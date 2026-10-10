@@ -1,0 +1,170 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account and role-based permissions in the ERP system",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["FC", "ENGINEERING", "PURCHASING", "WAREHOUSE", "PRODUCTION", "SALES", "HR"] },
+        "level": { "type": "string", "enum": ["STAFF", "MANAGER"] },
+        "status": { "type": "string", "enum": ["ONLINE", "OFFLINE"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "username", "role", "level", "name"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Manufacturing and Commercial Projects with SPK and routing overview",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "customer": { "type": "string" },
+        "status": { "type": "string" },
+        "due_date": { "type": "string" },
+        "qty": { "type": "number" },
+        "uom": { "type": "string" },
+        "factory_factor": { "type": "number" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "name", "status"]
+    },
+    "BillOfProcess": {
+      "title": "BillOfProcess",
+      "description": "Sequential process routing and station binding per project",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "project_id": { "type": "string" },
+        "step_sequence": { "type": "number" },
+        "process_name": { "type": "string" },
+        "station_id": { "type": "string" },
+        "status": { "type": "string" },
+        "cycle_time_minutes": { "type": "number" }
+      },
+      "required": ["id", "project_id", "process_name", "status"]
+    },
+    "ProductionLot": {
+      "title": "ProductionLot",
+      "description": "Production Lot tickets for shop floor tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "lot_number": { "type": "string" },
+        "project_id": { "type": "string" },
+        "batch_qty": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "lot_number", "project_id"]
+    },
+    "ProductionManpower": {
+      "title": "ProductionManpower",
+      "description": "Operator and technician profiles for shop floor workstations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nik": { "type": "string" },
+        "name": { "type": "string" },
+        "role_title": { "type": "string" },
+        "skill_level": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name", "status"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Catalog item and SKU master record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "unit": { "type": "string" },
+        "standard_cost": { "type": "number" }
+      },
+      "required": ["id", "code", "name"]
+    },
+    "StockMovement": {
+      "title": "StockMovement",
+      "description": "Time-series ledger of material and inventory movements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "item_id": { "type": "string" },
+        "project_id": { "type": "string" },
+        "type": { "type": "string" },
+        "qty": { "type": "number" },
+        "reference_id": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "item_id", "type", "qty"]
+    },
+    "Quotation": {
+      "title": "Quotation",
+      "description": "Commercial sales quotations issued to clients",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "customer_id": { "type": "string" },
+        "customer_name": { "type": "string" },
+        "project_title": { "type": "string" },
+        "status": { "type": "string" },
+        "total_amount": { "type": "number" },
+        "created_by": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "code", "customer_name", "status", "total_amount"]
+    },
+    "PurchaseOrder": {
+      "title": "PurchaseOrder",
+      "description": "Procurement purchase orders to suppliers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "po_number": { "type": "string" },
+        "supplier_id": { "type": "string" },
+        "supplier_name": { "type": "string" },
+        "status": { "type": "string" },
+        "total_amount": { "type": "number" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "po_number", "supplier_name", "status", "total_amount"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System activity logs across ERP transactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "action", "timestamp"]
+    },
+    "MigrationLog": {
+      "title": "MigrationLog",
+      "description": "Immutable ledger tracking SQLite to Firestore data migration batches",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "batch_id": { "type": "string" },
+        "table_name": { "type": "string" },
+        "started_at": { "type": "string" },
+        "completed_at": { "type": "string" },
+        "row_count": { "type": "number" },
+        "checksum": { "type": "string" },
+        "status": { "type": "string" },
+        "error_log": { "type": "string" }
+      },
+      "required": ["id", "table_name", "status"]
+    }
+  }
+}
