@@ -156,12 +156,13 @@ export function executeTransactionalSalesOrder(dto: CreateOrderDTO): Transaction
     for (const item of dto.items) {
       const lineSubtotal = calculateLineTotal(item.unitPrice, item.quantity, item.discountPercent || 0);
       db.prepare(`
-        INSERT INTO sales_order_items (id, order_id, item_id, quantity, unit_price, subtotal)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO sales_order_items (id, order_id, item_id, quantity, qty, unit_price, subtotal)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
         "SOI-" + crypto.randomUUID().substring(0, 8),
         orderId,
         item.itemId,
+        item.quantity,
         item.quantity,
         toRupiahInt(item.unitPrice),
         lineSubtotal

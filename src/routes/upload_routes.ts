@@ -13,6 +13,11 @@ const uploadRateLimiter = rateLimit({
   message: { success: false, error: "Too many upload requests. Please wait a minute before retrying." },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: false,
+    forwardedHeader: false,
+    default: true,
+  },
 });
 
 // Ensure uploads folder exists

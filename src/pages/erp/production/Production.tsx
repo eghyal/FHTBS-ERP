@@ -805,7 +805,7 @@ export function Production() {
                   setSelectedTagForDetail(null);
                   if (pId) navigate(`/production/project/${pId}`);
                 }}
-                className="bg-stone-900 hover:bg-black text-white rounded-xl text-xs font-bold"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs"
               >
                 Buka Hub Produksi Proyek
               </Button>

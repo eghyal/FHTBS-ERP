@@ -1258,7 +1258,7 @@ Hormat kami,`;
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleApproveWorkspaceDoc(doc.id)}
-                    className="px-3.5 py-1.5 bg-stone-900 hover:bg-black text-white rounded-xl text-xs font-bold shadow-3xs cursor-pointer"
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-3xs cursor-pointer"
                   >
                     Approve
                   </button>

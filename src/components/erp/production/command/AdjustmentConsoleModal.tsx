@@ -185,7 +185,7 @@ export function AdjustmentConsoleModal({ isOpen, onClose, onSuccess, projects = 
               disabled={isSubmitting}
               onClick={() => handleSubmitAdjustment(true)}
               variant="primary"
-              className="bg-stone-900 hover:bg-black text-white rounded-xl text-xs font-black px-5 py-2"
+              className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black px-5 py-2 shadow-xs transition-colors"
             >
               {isSubmitting ? (isId ? "Memproses..." : "Processing...") : (isId ? "Approve & Re-Baseline" : "Approve & Re-Baseline")}
             </Button>

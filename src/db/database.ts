@@ -328,6 +328,10 @@ export function initDb() {
     safeExec(db, "ALTER TABLE purchase_orders ADD COLUMN rounding_factor REAL DEFAULT 0;");
     safeExec(db, "UPDATE users SET is_approved = 1 WHERE status = 'APPROVED';");
 
+    // Sales Order Items - add quantity / qty aliases
+    safeExec(db, "ALTER TABLE sales_order_items ADD COLUMN quantity REAL DEFAULT 1;");
+    safeExec(db, "ALTER TABLE sales_order_items ADD COLUMN qty REAL DEFAULT 1;");
+
     // NEW: Machine-Centric & QR-Driven Migrations
     safeExec(db, "ALTER TABLE items ADD COLUMN item_type TEXT DEFAULT 'MATERIAL' CHECK (item_type IN ('MATERIAL', 'TOOL', 'MACHINE', 'CONSUMABLE', 'OTHER'));");
     safeExec(db, "ALTER TABLE items ADD COLUMN machine_category TEXT;");
@@ -629,6 +633,7 @@ CREATE TABLE IF NOT EXISTS items (
         dimension TEXT,
         spec TEXT,
         type TEXT CHECK (type IN ('RAW', 'WIP', 'FINISHED', 'TOOL', 'MACHINE')),
+        item_type TEXT DEFAULT 'MATERIAL',
         uom TEXT NOT NULL,
         unit_price REAL DEFAULT 0,
         lead_time_days INTEGER DEFAULT 0,
@@ -672,6 +677,15 @@ CREATE TABLE IF NOT EXISTS items (
         FOREIGN KEY (item_id) REFERENCES items(id)
       );
 
+      CREATE TABLE IF NOT EXISTS warehouse_stock (
+        warehouse_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        quantity REAL DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (warehouse_id, item_id),
+        FOREIGN KEY (item_id) REFERENCES items(id)
+      );
+
       CREATE TABLE IF NOT EXISTS sales_orders (
         id TEXT PRIMARY KEY,
         order_number TEXT UNIQUE NOT NULL,
@@ -687,7 +701,8 @@ CREATE TABLE IF NOT EXISTS items (
         id TEXT PRIMARY KEY,
         order_id TEXT NOT NULL,
         item_id TEXT NOT NULL,
-        qty REAL NOT NULL,
+        quantity REAL NOT NULL DEFAULT 1,
+        qty REAL DEFAULT 1,
         unit_price REAL NOT NULL,
         subtotal REAL NOT NULL,
         FOREIGN KEY (order_id) REFERENCES sales_orders(id),

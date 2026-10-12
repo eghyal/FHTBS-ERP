@@ -176,8 +176,8 @@ export function WipMovementTable({ onViewTag, className }: WipMovementTableProps
         {/* Top Row: Title, Badges & Quick Summary Stats */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-4 border-b border-stone-200/80">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 bg-stone-900 text-amber-400 rounded-2xl shadow-xs shrink-0 mt-0.5">
-              <Activity className="w-5 h-5" />
+            <div className="p-2.5 bg-amber-50 border border-amber-200/80 text-amber-700 rounded-2xl shadow-xs shrink-0 mt-0.5">
+              <Activity className="w-5 h-5 text-amber-700" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -391,11 +391,11 @@ export function WipMovementTable({ onViewTag, className }: WipMovementTableProps
             {isManagerOrAbove && (
               <Button
                 onClick={handleExportCsv}
-                variant="secondary"
+                variant="primary"
                 size="xs"
-                className="rounded-xl text-xs font-bold border-stone-300/80 bg-stone-900 hover:bg-black text-white shadow-2xs px-3.5 py-1.5 flex items-center gap-1.5 cursor-pointer"
+                className="rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-2xs px-3.5 py-1.5 flex items-center gap-1.5 cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5 text-amber-400" />
+                <Download className="w-3.5 h-3.5 text-white" />
                 <span>Export CSV</span>
               </Button>
             )}

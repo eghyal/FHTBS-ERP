@@ -149,7 +149,8 @@ export function WhatIfSimulatorModal({ isOpen, onClose, onSuccess }: WhatIfSimul
           <Button
             onClick={handleRunSimulation}
             disabled={isSimulating}
-            className="bg-stone-900 hover:bg-black text-white rounded-xl text-xs font-bold px-4 py-2"
+            variant="primary"
+            className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold px-4 py-2 shadow-xs transition-colors"
           >
             {isSimulating ? (isId ? "Menghitung Skenario..." : "Simulating...") : (isId ? "Hitung Ulang Skenario" : "Run What-If Simulation")}
           </Button>

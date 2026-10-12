@@ -684,7 +684,7 @@ planningRouter.post("/api/setup-master/processes/:processId/assign-machine", (re
           return res.json({ ok: true, message: "Machine unassigned from process" });
         }
 
-        const machine = db.prepare("SELECT * FROM items WHERE id = ? AND type = 'MACHINE'").get(machine_id) as any;
+        const machine = db.prepare("SELECT * FROM items WHERE id = ? AND (type = 'MACHINE' OR item_type = 'MACHINE' OR category LIKE '%Machine%' OR category LIKE '%Machinery%')").get(machine_id) as any;
         if (!machine) {
           return res.status(404).json({ error: "Machine asset not found" });
         }
@@ -698,15 +698,15 @@ planningRouter.post("/api/setup-master/processes/:processId/assign-machine", (re
 
         // Check active assignment conflict (Section 2.1 Rule 1)
         const existingAssignment = db.prepare(`
-          SELECT b.*, p.name as project_name, s.name as station_name 
+          SELECT b.*, p.name as project_name, s.station_name 
           FROM bill_of_processes b
           JOIN projects p ON b.project_id = p.id
           LEFT JOIN stations s ON b.station_id = s.id
-          WHERE b.assigned_machine_id = ? 
+          WHERE (b.assigned_machine_id = ? OR b.machine_id = ?) 
             AND b.id != ? 
             AND p.status IN ('IN_PROGRESS', 'PLANNING')
           LIMIT 1
-        `).get(machine_id, processId) as any;
+        `).get(machine_id, machine_id, processId) as any;
 
         const allowsMultiStation = Boolean(machine.bypass_multi_station);
         if (existingAssignment && !allowsMultiStation && !force_bypass) {
@@ -734,17 +734,20 @@ planningRouter.post("/api/setup-master/processes/:processId/assign-machine", (re
         }
 
         // Retain provided cycle time or existing process standard
-        let effectiveCt = cycle_time_minutes !== undefined ? cycle_time_minutes : null;
+        const effectiveCt = (cycle_time_minutes !== undefined && cycle_time_minutes !== null) ? Number(cycle_time_minutes) : null;
+        const effectiveSetup = (setup_time_minutes !== undefined && setup_time_minutes !== null) ? Number(setup_time_minutes) : null;
+        const effectiveTeardown = (teardown_time_minutes !== undefined && teardown_time_minutes !== null) ? Number(teardown_time_minutes) : null;
 
-        // Perform assignment
+        // Perform assignment - preserve existing cycle_time_minutes when effectiveCt is null
         db.prepare(`
           UPDATE bill_of_processes 
           SET assigned_machine_id = ?,
+              machine_id = ?,
               cycle_time_minutes = COALESCE(?, cycle_time_minutes),
               setup_time_minutes = COALESCE(?, setup_time_minutes, 0),
               teardown_time_minutes = COALESCE(?, teardown_time_minutes, 0)
           WHERE id = ?
-        `).run(machine_id, effectiveCt || 10, setup_time_minutes || 0, teardown_time_minutes || 0, processId);
+        `).run(machine_id, machine_id, effectiveCt, effectiveSetup, effectiveTeardown, processId);
 
         // Update machine status to IN_USE if not already maintenance
         if (machine.operational_status === "AVAILABLE") {

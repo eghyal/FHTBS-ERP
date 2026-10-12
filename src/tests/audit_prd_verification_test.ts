@@ -6,6 +6,7 @@ import { requireAuth, requireRole, populateUserSession, AuthenticatedRequest, JW
 import { IdempotencyGuard } from "../lib/idempotency.ts";
 import { inventoryRepository } from "../repositories/inventoryRepository.ts";
 import { executeTransactionalSalesOrder } from "../services/transactionalSalesService.ts";
+import { outboxService } from "../services/outboxService.ts";
 
 console.log("\n=======================================================");
 console.log("    PRD AUDIT FINDINGS VERIFICATION TEST SUITE (K1-K5)  ");
@@ -126,7 +127,7 @@ console.log("[TEST K1] Verifying atomic stock sync (items.stock_quantity vs inve
 
   // Verify BOTH tables were atomically deducted to 85
   const itemAfter = db.prepare("SELECT stock_quantity FROM items WHERE id = ?").get(testItemId) as any;
-  const invAfter = db.prepare("SELECT free_stock, physical_qty, available_qty FROM inventory WHERE id = ?").get(testItemId) as any;
+  const invAfter = db.prepare("SELECT free_stock, physical_qty, available_qty FROM inventory WHERE item_id = ?").get(testItemId) as any;
 
   assert.equal(Number(itemAfter.stock_quantity), 85, "items.stock_quantity must be 85");
   assert.equal(Number(invAfter.free_stock), 85, "inventory.free_stock must be 85");
@@ -144,7 +145,7 @@ console.log("[TEST K1] Verifying atomic stock sync (items.stock_quantity vs inve
   );
 
   const itemAfterAdj = db.prepare("SELECT stock_quantity FROM items WHERE id = ?").get(testItemId) as any;
-  const invAfterAdj = db.prepare("SELECT free_stock FROM inventory WHERE id = ?").get(testItemId) as any;
+  const invAfterAdj = db.prepare("SELECT free_stock FROM inventory WHERE item_id = ?").get(testItemId) as any;
 
   assert.equal(Number(itemAfterAdj.stock_quantity), 120, "items.stock_quantity must update to 120 on adjustStock");
   assert.equal(Number(invAfterAdj.free_stock), 120, "inventory.free_stock must update to 120 on adjustStock");
@@ -200,3 +201,6 @@ console.log("[TEST K2] Verifying real warehouse stock transfer mutations...");
 console.log("\n=======================================================");
 console.log("   ALL PRD AUDIT VERIFICATION TESTS PASSED 100%!       ");
 console.log("=======================================================\n");
+
+outboxService.stopWorker();
+process.exit(0);

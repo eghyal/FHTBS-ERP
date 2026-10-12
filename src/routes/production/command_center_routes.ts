@@ -1,7 +1,7 @@
 import { Router } from "express";
 import db from "../../db/database.ts";
 import { logAudit } from "../../utils/audit.ts";
-import { requireRole } from "../../middleware/auth.ts";
+import { requireRole, getActor } from "../../middleware/auth.ts";
 import { simulateMultiProjectSchedule } from "../../utils/scheduleEngineV2.ts";
 import type { CapacityProfile, ProcessNodeV2, MaterialGate } from "../../utils/scheduleEngineV2.ts";
 
@@ -127,6 +127,7 @@ commandCenterRouter.get("/api/production/command-center", (req, res) => {
         tt.bop_id,
         bop.process_name,
         bop.step_sequence,
+        COALESCE(bop.station_id, s.id, 'ST-01') as station_id,
         COALESCE(s.station_name, 'Station ' || bop.step_sequence) as station_name,
         tt.operator_name,
         tt.qc_inspector,
@@ -137,7 +138,7 @@ commandCenterRouter.get("/api/production/command-center", (req, res) => {
         tt.completed_at,
         tt.created_at,
         ndp.id as active_ndp_id,
-        ndp.title as ndp_title
+        COALESCE(ndp.reason_category, ndp.ndp_number, 'NDP Issue') as ndp_title
       FROM task_travel_tags tt
       JOIN projects p ON tt.project_id = p.id
       LEFT JOIN bill_of_processes bop ON tt.bop_id = bop.id
@@ -179,36 +180,9 @@ commandCenterRouter.get("/api/production/command-center", (req, res) => {
     });
 
     // G. Fetch Recent Event Feed (Zona D)
-    let eventFeed = db.prepare(`
+    const eventFeed = db.prepare(`
       SELECT * FROM wip_travel_events ORDER BY timestamp DESC LIMIT 40
     `).all() as any[];
-
-    // If event feed is empty, seed initial events from travel tags
-    if (eventFeed.length === 0 && enrichedWots.length > 0) {
-      for (const w of enrichedWots.slice(0, 10)) {
-        try {
-          db.prepare(`
-            INSERT OR IGNORE INTO wip_travel_events (
-              id, wot_id, tag_number, project_id, event_type,
-              user_name, qty, good_units, reject_units, timestamp, idempotency_key
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            "EVT-" + Math.random().toString(36).substring(2, 9),
-            w.tag_id,
-            w.tag_number,
-            w.project_id,
-            w.status === "COMPLETED" ? "WOT_COMPLETE" : w.status === "HOLD_NDP" ? "NDP_BLOCK" : "QR_SCAN",
-            w.operator_name || "Operator",
-            w.good_qty + w.scrap_qty,
-            w.good_qty,
-            w.scrap_qty,
-            w.started_at || w.created_at || new Date().toISOString(),
-            "INIT-" + w.tag_number
-          );
-        } catch (_) {}
-      }
-      eventFeed = db.prepare(`SELECT * FROM wip_travel_events ORDER BY timestamp DESC LIMIT 40`).all() as any[];
-    }
 
     // H. Health Bar Statistics (Zona A)
     const totalActiveWipUnits = enrichedWots
@@ -340,7 +314,7 @@ commandCenterRouter.post("/api/wip/events", (req, res) => {
 
     const eventId = "WEVT-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
     const nowIso = new Date().toISOString();
-    const actor = (req.headers["x-user-name"] as string) || operator_name || "Floor Operator";
+    const actor = getActor(req) || operator_name || "Floor Operator";
 
     db.prepare(`
       INSERT INTO wip_travel_events (

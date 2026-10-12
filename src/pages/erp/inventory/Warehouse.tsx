@@ -88,6 +88,7 @@ interface InventoryItem {
   max_stock?: number;
   location?: string;
   item_type?: string;
+  category?: string;
   machine_category?: string;
   capacity_per_hour?: number;
   machine_status?: string;
@@ -790,7 +791,10 @@ export default function Warehouse() {
             item.machine_category.toLowerCase().includes(query));
 
         const isMachine =
-          item.type === "MACHINE" || item.item_type === "MACHINE";
+          item.type === "MACHINE" ||
+          item.item_type === "MACHINE" ||
+          Boolean(item.machine_category) ||
+          Boolean(item.category && item.category.toLowerCase().includes("machin"));
         const matchesType =
           selectedTypeFilter === "ALL"
             ? true
@@ -1096,7 +1100,10 @@ export default function Warehouse() {
                     ) : (
                       filteredInventory.map((item) => {
                         const isMachine =
-                          item.type === "MACHINE" || item.item_type === "MACHINE";
+                          item.type === "MACHINE" ||
+                          item.item_type === "MACHINE" ||
+                          Boolean(item.machine_category) ||
+                          Boolean(item.category && item.category.toLowerCase().includes("machin"));
                         const freeStock = item.free_stock ?? 0;
                         const allocatedStock = item.allocated_stock ?? item.reserved_qty ?? 0;
                         const physicalStock = item.physical_qty ?? (freeStock + allocatedStock);

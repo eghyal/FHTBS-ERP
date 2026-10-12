@@ -175,7 +175,7 @@ bopRouter.get("/api/production/bop/:id/wip-status", (req, res) => {
       }
     });
 
-bopRouter.post("/api/production/bop/:id/status", (req, res) => {
+bopRouter.post("/api/production/bop/:id/status", requireRole(["SUPERVISOR", "FC", "MANAGER", "ADMIN", "ENGINEERING"]), (req, res) => {
       try {
         const { id } = req.params;
         const { status, progress, actual_start_date, actual_end_date } = req.body;
@@ -386,7 +386,7 @@ bopRouter.post("/api/production/bop/:id/status", (req, res) => {
       }
     });
 
-bopRouter.post("/api/production/bop/:id/increment", (req, res) => {
+bopRouter.post("/api/production/bop/:id/increment", requireRole(["SUPERVISOR", "FC", "MANAGER", "ADMIN", "ENGINEERING"]), (req, res) => {
       try {
         const { id } = req.params;
         const { increment = 1, set_completed_qty } = req.body || {};
@@ -562,7 +562,7 @@ bopRouter.post("/api/production/bop/:id/schedule", (req, res) => {
       }
     });
 
-bopRouter.patch("/api/production/bop/:id", (req, res) => {
+bopRouter.patch("/api/production/bop/:id", requireRole(["SUPERVISOR", "FC", "MANAGER", "ADMIN", "ENGINEERING"]), (req, res) => {
       try {
         const { id } = req.params;
         const { cycle_time_minutes, station_id, process_name, standard_hours } = req.body;
@@ -597,7 +597,7 @@ bopRouter.patch("/api/production/bop/:id", (req, res) => {
       }
     });
 
-bopRouter.put("/api/production/bop/:id/machine", (req, res) => {
+bopRouter.put("/api/production/bop/:id/machine", requireRole(["SUPERVISOR", "FC", "MANAGER", "ADMIN", "ENGINEERING"]), (req, res) => {
       try {
         const { id } = req.params;
         const { 
@@ -775,7 +775,7 @@ bopRouter.get("/api/production/machines/:machineId/bop-assignments", (req, res) 
   }
 });
 
-bopRouter.post("/api/production/machines/:machineId/link-bop", (req, res) => {
+bopRouter.post("/api/production/machines/:machineId/link-bop", requireRole(["SUPERVISOR", "FC", "MANAGER", "ADMIN", "ENGINEERING"]), (req, res) => {
   try {
     const { machineId } = req.params;
     const { bop_id, cycle_time_minutes, setup_time_minutes, teardown_time_minutes, force_bypass } = req.body;
@@ -862,7 +862,7 @@ bopRouter.post("/api/production/machines/:machineId/link-bop", (req, res) => {
   }
 });
 
-bopRouter.post("/api/production/machines/:machineId/unlink-bop", (req, res) => {
+bopRouter.post("/api/production/machines/:machineId/unlink-bop", requireRole(["SUPERVISOR", "FC", "MANAGER", "ADMIN", "ENGINEERING"]), (req, res) => {
   try {
     const { machineId } = req.params;
     const { bop_id } = req.body;
@@ -908,7 +908,7 @@ bopRouter.post("/api/production/machines/:machineId/unlink-bop", (req, res) => {
   }
 });
 
-bopRouter.put("/api/production/bop/:id/station", (req, res) => {
+bopRouter.put("/api/production/bop/:id/station", requireRole(["SUPERVISOR", "FC", "MANAGER", "ADMIN", "ENGINEERING"]), (req, res) => {
       try {
         const { id } = req.params;
         const { station_id } = req.body;
@@ -947,7 +947,7 @@ bopRouter.put("/api/production/bop/:id/station", (req, res) => {
       }
     });
 
-bopRouter.post("/api/production/bop/:id/increment-lot", (req, res) => {
+bopRouter.post("/api/production/bop/:id/increment-lot", requireRole(["SUPERVISOR", "FC", "MANAGER", "ADMIN", "ENGINEERING"]), (req, res) => {
       try {
         const { id } = req.params;
         const current = db.prepare("SELECT * FROM bill_of_processes WHERE id = ?").get(id) as any;

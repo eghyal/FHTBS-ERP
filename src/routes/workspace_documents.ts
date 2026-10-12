@@ -19,6 +19,7 @@ function initWorkspaceTable() {
         content_json TEXT NOT NULL,
         layout_preset TEXT DEFAULT 'A4_PORTRAIT',
         authorization_role TEXT DEFAULT 'PURCHASING_MANAGER',
+        authorization_department TEXT DEFAULT 'PURCHASING',
         authorization_user_name TEXT,
         status TEXT NOT NULL DEFAULT 'DRAFT',
         revision_note TEXT,
@@ -31,12 +32,49 @@ function initWorkspaceTable() {
       CREATE INDEX IF NOT EXISTS idx_ws_docs_auth ON workspace_documents(authorization_role, status);
       CREATE INDEX IF NOT EXISTS idx_ws_docs_creator ON workspace_documents(created_by_username);
     `);
+
+    try {
+      db.exec("ALTER TABLE workspace_documents ADD COLUMN authorization_department TEXT DEFAULT 'PURCHASING';");
+    } catch (_) {}
   } catch (err) {
     console.error("[WorkspaceDocuments] Error initializing schema:", err);
   }
 }
 
 initWorkspaceTable();
+
+// Helper to auto-extract authorization department and role from signature column blocks
+export function extractRoutingFromContent(content: any[]): { role: string; department: string } | null {
+  if (!Array.isArray(content)) return null;
+  for (const block of content) {
+    if (block?.type === "SIGNATURE_COLUMN" || block?.type === "SIGNATURE_STAMP") {
+      const dept = (block.targetDepartment || block.department || "").toUpperCase();
+      const role = (block.targetRole || block.authorization_role || "").toUpperCase();
+      if (dept.includes("PURCHAS") || role.includes("PURCHAS")) {
+        return { role: "PURCHASING_MANAGER", department: "PURCHASING" };
+      }
+      if (dept.includes("FINANCE") || dept.includes("KEUANGAN") || role.includes("FINANCE")) {
+        return { role: "FINANCE_HEAD", department: "FINANCE" };
+      }
+      if (dept.includes("PROD") || role.includes("PROD")) {
+        return { role: "PRODUCTION_MANAGER", department: "PRODUCTION" };
+      }
+      if (dept.includes("FC") || dept.includes("CONTROLLER") || role.includes("CONTROLLER")) {
+        return { role: "FACTORY_CONTROLLER", department: "FACTORY_CONTROLLER" };
+      }
+      if (dept.includes("PLANT") || dept.includes("DIREKSI") || role.includes("PLANT")) {
+        return { role: "PLANT_HEAD", department: "MANAGEMENT" };
+      }
+      if (dept.includes("WAREHOUSE") || dept.includes("GUDANG") || role.includes("WAREHOUSE")) {
+        return { role: "WAREHOUSE_SUPERVISOR", department: "WAREHOUSE" };
+      }
+      if (block.targetRole) {
+        return { role: block.targetRole, department: dept || "GENERAL" };
+      }
+    }
+  }
+  return null;
+}
 
 // 1. Get List of Workspace Documents
 workspaceDocumentsRouter.get("/api/workspace-documents", (req, res) => {
@@ -89,14 +127,26 @@ workspaceDocumentsRouter.get("/api/workspace-documents", (req, res) => {
 // 2. Get Pending Approvals (e.g. for Purchasing Manager Dashboard or General Action Required)
 workspaceDocumentsRouter.get("/api/workspace-documents/pending-approvals", (req, res) => {
   try {
-    const { role } = req.query;
+    const { role, department } = req.query;
 
     let sql = "SELECT * FROM workspace_documents WHERE status = 'PENDING_APPROVAL'";
     const params: any[] = [];
 
     if (role && typeof role === "string" && role.trim()) {
-      sql += " AND (authorization_role = ? OR authorization_role = 'ALL' OR authorization_role = '')";
-      params.push(role.trim());
+      const r = role.trim();
+      if (r === "PURCHASING" || r === "PURCHASING_MANAGER") {
+        sql += " AND (authorization_role IN ('PURCHASING', 'PURCHASING_MANAGER') OR authorization_department = 'PURCHASING' OR authorization_role = 'ALL' OR authorization_role = '')";
+      } else if (r === "FINANCE" || r === "FINANCE_HEAD") {
+        sql += " AND (authorization_role IN ('FINANCE', 'FINANCE_HEAD') OR authorization_department = 'FINANCE' OR authorization_role = 'ALL' OR authorization_role = '')";
+      } else if (r === "PRODUCTION" || r === "PRODUCTION_MANAGER") {
+        sql += " AND (authorization_role IN ('PRODUCTION', 'PRODUCTION_MANAGER') OR authorization_department = 'PRODUCTION' OR authorization_role = 'ALL' OR authorization_role = '')";
+      } else {
+        sql += " AND (authorization_role = ? OR authorization_department = ? OR authorization_role = 'ALL' OR authorization_role = '')";
+        params.push(r, r);
+      }
+    } else if (department && typeof department === "string" && department.trim()) {
+      sql += " AND (authorization_department = ? OR authorization_role LIKE ?)";
+      params.push(department.trim(), `%${department.trim()}%`);
     }
 
     sql += " ORDER BY created_at DESC";
@@ -163,6 +213,7 @@ workspaceDocumentsRouter.post("/api/workspace-documents", (req, res) => {
       content = [],
       layout_preset = "A4_PORTRAIT",
       authorization_role = "PURCHASING_MANAGER",
+      authorization_department,
       authorization_user_name = "",
       status = "DRAFT",
     } = req.body;
@@ -170,6 +221,16 @@ workspaceDocumentsRouter.post("/api/workspace-documents", (req, res) => {
     if (!title || !title.trim()) {
       return res.status(400).json({ error: "Document title is required" });
     }
+
+    // Auto-detect routing from signature column container if present
+    const parsedContent = Array.isArray(content)
+      ? content
+      : typeof content === "string"
+      ? JSON.parse(content || "[]")
+      : [];
+    const autoRoute = extractRoutingFromContent(parsedContent);
+    const finalAuthRole = autoRoute?.role || authorization_role || "PURCHASING_MANAGER";
+    const finalAuthDept = autoRoute?.department || authorization_department || department || "PURCHASING";
 
     const docId = "WSD-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
     const dateStr = new Date().toISOString().slice(0, 7).replace("-", "");
@@ -186,9 +247,9 @@ workspaceDocumentsRouter.post("/api/workspace-documents", (req, res) => {
     db.prepare(`
       INSERT INTO workspace_documents (
         id, document_code, title, document_type, created_by_username, created_by_name,
-        department, content_json, layout_preset, authorization_role, authorization_user_name,
-        status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        department, content_json, layout_preset, authorization_role, authorization_department,
+        authorization_user_name, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       docId,
       docCode,
@@ -199,7 +260,8 @@ workspaceDocumentsRouter.post("/api/workspace-documents", (req, res) => {
       department,
       contentJson,
       layout_preset,
-      authorization_role,
+      finalAuthRole,
+      finalAuthDept,
       authorization_user_name,
       status,
       nowIso,
@@ -212,7 +274,7 @@ workspaceDocumentsRouter.post("/api/workspace-documents", (req, res) => {
         "WORKSPACE_DOCUMENTS",
         docId,
         "CREATE",
-        { id: docId, document_code: docCode, title, authorization_role, status }
+        { id: docId, document_code: docCode, title, authorization_role: finalAuthRole, authorization_department: finalAuthDept, status }
       );
     } catch (_) {}
 
@@ -223,6 +285,8 @@ workspaceDocumentsRouter.post("/api/workspace-documents", (req, res) => {
         id: docId,
         document_code: docCode,
         title,
+        authorization_role: finalAuthRole,
+        authorization_department: finalAuthDept,
         status,
       },
     });
@@ -243,6 +307,7 @@ workspaceDocumentsRouter.put("/api/workspace-documents/:id", (req, res) => {
       content,
       layout_preset,
       authorization_role,
+      authorization_department,
       authorization_user_name,
       status,
     } = req.body;
@@ -255,6 +320,24 @@ workspaceDocumentsRouter.put("/api/workspace-documents/:id", (req, res) => {
     const nowIso = new Date().toISOString();
     const contentJson = content !== undefined ? (typeof content === "string" ? content : JSON.stringify(content)) : existing.content_json;
 
+    // Auto-detect routing from signature column container if present
+    let finalAuthRole = authorization_role;
+    let finalAuthDept = authorization_department;
+    if (content !== undefined) {
+      try {
+        const parsedContent = Array.isArray(content)
+          ? content
+          : typeof content === "string"
+          ? JSON.parse(content || "[]")
+          : [];
+        const autoRoute = extractRoutingFromContent(parsedContent);
+        if (autoRoute) {
+          finalAuthRole = autoRoute.role;
+          finalAuthDept = autoRoute.department;
+        }
+      } catch (_) {}
+    }
+
     db.prepare(`
       UPDATE workspace_documents SET
         title = COALESCE(?, title),
@@ -263,6 +346,7 @@ workspaceDocumentsRouter.put("/api/workspace-documents/:id", (req, res) => {
         content_json = ?,
         layout_preset = COALESCE(?, layout_preset),
         authorization_role = COALESCE(?, authorization_role),
+        authorization_department = COALESCE(?, authorization_department),
         authorization_user_name = COALESCE(?, authorization_user_name),
         status = COALESCE(?, status),
         updated_at = ?
@@ -273,7 +357,8 @@ workspaceDocumentsRouter.put("/api/workspace-documents/:id", (req, res) => {
       department || null,
       contentJson,
       layout_preset || null,
-      authorization_role || null,
+      finalAuthRole || null,
+      finalAuthDept || null,
       authorization_user_name || null,
       status || null,
       nowIso,
@@ -286,11 +371,19 @@ workspaceDocumentsRouter.put("/api/workspace-documents/:id", (req, res) => {
         "WORKSPACE_DOCUMENTS",
         id,
         "UPDATE",
-        { id, title, authorization_role, status }
+        { id, title, authorization_role: finalAuthRole || existing.authorization_role, status }
       );
     } catch (_) {}
 
-    res.json({ success: true, message: `Document ${existing.document_code} updated.` });
+    res.json({
+      success: true,
+      message: `Document ${existing.document_code} updated.`,
+      data: {
+        id,
+        authorization_role: finalAuthRole || existing.authorization_role,
+        authorization_department: finalAuthDept || existing.authorization_department,
+      }
+    });
   } catch (err: any) {
     console.error("Error updating workspace document:", err);
     res.status(500).json({ error: "Failed to update document: " + err.message });
