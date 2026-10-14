@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  onlyoffice-documentserver:
+    image: onlyoffice/documentserver:latest
+    container_name: fhtbs-onlyoffice-ds
+    ports:
+      - "8080:80"
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=${ONLYOFFICE_JWT_SECRET:-fhtbs-erp-onlyoffice-secret-key-2026}
+      - JWT_HEADER=Authorization
+    volumes:
+      - ./storage/onlyoffice_logs:/var/log/onlyoffice
+      - ./storage/onlyoffice_data:/var/www/onlyoffice/Data
+    restart: unless-stopped

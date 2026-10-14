@@ -37,6 +37,8 @@ import {
   DEPARTMENT_ROUTING_CONFIG,
   OFFICIAL_KOP_SURAT_BLOCK,
 } from "@/components/erp/workspace/CanvaStudioEditor";
+import { SharedBlockRenderer } from "@/components/erp/workspace/SharedBlockRenderer";
+import { OnlyOfficeEmbeddedEditor } from "@/components/erp/workspace/OnlyOfficeEmbeddedEditor";
 import {
   DocBlock,
   LayoutPreset,
@@ -342,6 +344,7 @@ export function DocumentWorkspace() {
   const [studioInitialLayoutPreset, setStudioInitialLayoutPreset] = useState<LayoutPreset>("A4_PORTRAIT");
   const [studioInitialStatus, setStudioInitialStatus] = useState<string>("DRAFT");
   const [isSaving, setIsSaving] = useState(false);
+  const [editorEngineMode, setEditorEngineMode] = useState<"canva" | "onlyoffice">("canva");
 
   // Preview & Authorization Action Modal States
   const [previewDoc, setPreviewDoc] = useState<WorkspaceDocument | null>(null);
@@ -470,7 +473,7 @@ export function DocumentWorkspace() {
           category: "BODY_TEXT",
           title: "MEMORANDUM RESMI INTERNAL",
           content: `NO: MEMO/PJ/${new Date().getFullYear()}/001`,
-          alignment: "CENTER",
+          alignment: "center",
         },
         {
           id: "blk-3",
@@ -478,7 +481,7 @@ export function DocumentWorkspace() {
           category: "BODY_TEXT",
           content:
             "Ketikkan teks isi atau instruksi kerja Anda di sini. Anda dapat memasang blok alamat atau kolom tanda tangan departemen lain dari panel kiri.",
-          alignment: "LEFT",
+          alignment: "left",
         },
         {
           id: "blk-4",
@@ -1222,9 +1225,47 @@ export function DocumentWorkspace() {
       </div>
 
       {/* ======================================================== */}
-      {/* 5. CANVA STUDIO FULLSCREEN WORKSPACE EDITOR              */}
+      {/* 5. DUAL-MODE STUDIO WORKSPACE EDITOR (CANVA / ONLYOFFICE) */}
       {/* ======================================================== */}
-      {isStudioOpen && (
+      {isStudioOpen && editorEngineMode === "onlyoffice" && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex flex-col p-4 backdrop-blur-sm">
+          <OnlyOfficeEmbeddedEditor
+            document={
+              docs.find((d) => d.id === editingDocId) || {
+                id: editingDocId || "temp-doc",
+                document_code: "DOC-DRAFT",
+                title: studioInitialTitle || "Document",
+                document_type: studioInitialDocType,
+                department: studioInitialDepartment as any,
+                status: studioInitialStatus as any,
+                layout_preset: studioInitialLayoutPreset,
+                content_format: "DOCX",
+                current_version: 1,
+                created_by_user_id: user?.id || "1",
+                created_by_username: user?.username || "user",
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }
+            }
+            onFallbackToNative={() => setEditorEngineMode("canva")}
+            onSave={() => {
+              handleSaveFromStudio({
+                title: studioInitialTitle,
+                document_type: studioInitialDocType,
+                department: studioInitialDepartment,
+                authorization_role: studioInitialAuthRole,
+                authorization_department: studioInitialAuthDept,
+                authorization_user_name: studioInitialAuthName,
+                content: studioInitialBlocks,
+                layout_preset: studioInitialLayoutPreset,
+                status: studioInitialStatus,
+              });
+            }}
+          />
+        </div>
+      )}
+
+      {isStudioOpen && editorEngineMode === "canva" && (
         <CanvaStudioEditor
           documentId={editingDocId}
           initialTitle={studioInitialTitle}
@@ -1314,179 +1355,50 @@ export function DocumentWorkspace() {
             <div className="bg-white border border-stone-300 rounded-2xl p-10 space-y-6 shadow-sm font-sans max-h-[550px] overflow-y-auto custom-scrollbar">
               {previewDoc.content?.map((b, bIdx) => (
                 <div key={bIdx} className="space-y-2">
-                  {b.type === "OFFICIAL_LETTERHEAD" && (
-                    <div className="text-center space-y-1.5 pb-4 border-b-2 border-stone-900 relative">
-                      <div className="flex items-center justify-between pb-1">
-                        <div className="w-12 h-12 shrink-0 flex items-center justify-center">
-                          <img
-                            src="/logo.png"
-                            alt="Logo"
-                            className="w-full h-full object-contain"
-                            onError={(e) => {
-                              (e.target as HTMLElement).style.display = "none";
-                            }}
-                          />
-                        </div>
-                        <div className="text-center flex-1 px-4">
-                          <h2 className="text-base font-black tracking-tight text-stone-950 uppercase font-sans">
-                            {b.title || "CV. BATU EMAS GROUP"}
-                          </h2>
-                          <p className="text-[10px] font-black text-amber-700 uppercase tracking-wider">
-                            {b.subtitle || "PRODUSEN & SUPPLIER UTAMA PAVING BLOCK, BATAKO & BETON PRACETAK"}
-                          </p>
-                          <p className="text-[9px] text-stone-600 mt-0.5 font-medium">
-                            {b.addressData?.streetAddress} · {b.addressData?.cityStateZip || "Banyuwangi 68486, Indonesia"}
-                          </p>
-                          <p className="text-[9px] text-stone-500 font-mono">
-                            Telp: {b.addressData?.phone} · Email: {b.addressData?.email}
-                          </p>
-                        </div>
-                        <div className="w-12 h-12 flex flex-col items-center justify-center text-center font-mono text-[8px] text-stone-400 font-bold uppercase shrink-0 border border-stone-200 rounded-lg bg-stone-50/50">
-                          <span>ISO 9001</span>
-                          <span className="text-[6px] text-stone-400">REGISTERED</span>
-                        </div>
-                      </div>
-                      <div className="h-0.75 bg-stone-950 w-full" />
-                      <div className="h-px bg-stone-950 w-full -mt-1" />
-                    </div>
-                  )}
-
-                  {b.type === "HEADER" && (
-                    <div className="text-center space-y-1 border-b border-stone-100 pb-3">
-                      <h3 className="text-base font-black tracking-tight text-stone-900 uppercase">{b.title}</h3>
-                      <div className="text-xs font-bold text-stone-500 font-mono">{b.content}</div>
-                    </div>
-                  )}
-
-                  {(b.type === "SENDER_ADDRESS" ||
-                    b.type === "RECIPIENT_ADDRESS" ||
-                    b.type === "PROJECT_SITE_ADDRESS") && (
-                    <div className="p-3.5 bg-stone-50/80 border border-stone-200 rounded-xl space-y-1 text-xs">
-                      <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{b.title}</div>
-                      <div className="font-bold text-stone-900">{b.addressData?.companyName}</div>
-                      <div className="text-stone-700">{b.addressData?.division || b.addressData?.siteLocation}</div>
-                      <div className="text-stone-600 text-[11px]">{b.addressData?.streetAddress}</div>
-                      {b.addressData?.phone && (
-                        <div className="text-stone-500 text-[10px] font-mono">Kontak: {b.addressData?.phone}</div>
-                      )}
-                    </div>
-                  )}
-
-                  {b.type === "TEXT" && (
-                    <p className="text-xs text-stone-800 leading-relaxed font-normal whitespace-pre-line">{b.content}</p>
-                  )}
-
-                  {b.type === "CALLOUT" && (
-                    <div
-                      className={cn(
-                        "p-3.5 rounded-xl border text-xs space-y-1",
-                        b.style === "WARNING"
-                          ? "bg-amber-50 border-amber-300 text-amber-950"
-                          : b.style === "SUCCESS"
-                          ? "bg-emerald-50 border-emerald-300 text-emerald-950"
-                          : "bg-blue-50 border-blue-300 text-blue-950"
-                      )}
-                    >
-                      <div className="font-bold uppercase text-[10px] tracking-wide">{b.title}</div>
-                      <div className="text-stone-800 leading-relaxed">{b.content}</div>
-                    </div>
-                  )}
-
-                  {b.type === "LIST_POINTS" && (
-                    <div className="space-y-1 text-xs text-stone-800">
-                      {b.title && <div className="font-bold text-stone-900">{b.title}</div>}
-                      <ul className="space-y-1 pl-1">
-                        {b.listItems?.map((li, liIdx) => (
-                          <li key={liIdx} className="leading-relaxed">{li}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {b.type === "TABLE" && (
-                    <div className="space-y-1.5">
-                      {b.title && <div className="font-bold text-stone-900 text-xs">{b.title}</div>}
-                      <div className="overflow-x-auto border border-stone-200 rounded-xl text-xs">
-                        <table className="w-full text-left">
-                          <thead>
-                            <tr className="bg-stone-100 border-b border-stone-200 font-bold text-stone-700">
-                              {b.tableData?.headers.map((h, idx) => (
-                                <th key={idx} className="p-2.5">{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {b.tableData?.rows.map((r, rIdx) => (
-                              <tr key={rIdx} className="border-b border-stone-100 hover:bg-stone-50/50">
-                                {r.map((c, cIdx) => (
-                                  <td key={cIdx} className="p-2.5 text-stone-800">{c}</td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {b.type === "METADATA_GRID" && (
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {b.metaData?.map((m, mIdx) => (
-                        <div
-                          key={mIdx}
-                          className="p-2.5 bg-stone-50 border border-stone-200 rounded-xl flex items-center justify-between"
-                        >
-                          <span className="font-bold text-stone-600">{m.key}:</span>
-                          <span className="font-mono font-bold text-stone-900">{m.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {(b.type === "SIGNATURE_COLUMN" ||
-                    b.type === "SIGNATURE_STAMP" ||
-                    b.type === "DUAL_SIGNATURE") && (
-                    <div className="pt-6 mt-6 border-t border-stone-200 flex items-center justify-between text-center text-xs">
-                      <div className="w-48 text-center space-y-1">
-                        <div className="text-[10px] text-stone-400 font-bold uppercase">
-                          {isId ? "Dibuat Oleh" : "Created By"}
-                        </div>
-                        <div className="h-14 flex items-center justify-center text-stone-400 italic text-[11px]">
-                          [ Signed ]
-                        </div>
-                        <div className="font-bold text-stone-900">{previewDoc.created_by_name}</div>
-                        <div className="text-[10px] text-stone-500">{previewDoc.department}</div>
-                      </div>
-
-                      <div className="w-56 text-center space-y-1 border border-stone-200 rounded-2xl p-3 bg-stone-50/70">
-                        <div className="text-[10px] text-blue-800 font-bold uppercase">
-                          {isId ? "Otorisasi" : "Authorization"}{" "}
-                          {b.targetDepartment || previewDoc.authorization_department}
-                        </div>
-                        <div className="h-12 flex items-center justify-center">
-                          {previewDoc.status === "APPROVED" ? (
-                            <span className="px-3 py-1 bg-emerald-600 text-white rounded-md text-[10px] font-black uppercase tracking-widest shadow-2xs">
-                              ✓ APPROVED
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold">
-                              {isId ? "MENUNGGU OTORISASI" : "AWAITING AUTHORIZATION"}
-                            </span>
-                          )}
-                        </div>
-                        <div className="font-bold text-stone-900">{b.signatoryTitle}</div>
-                        <div className="text-[9px] text-stone-400 font-mono">
-                          {previewDoc.approved_at
-                            ? `${isId ? "Disetujui" : "Approved"}: ${new Date(previewDoc.approved_at).toLocaleDateString("id-ID")}`
-                            : isId
-                            ? "Menunggu Tindakan Otorisator"
-                            : "Awaiting Authorizer Action"}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  <SharedBlockRenderer block={b} isApprovalPreview={true} />
                 </div>
               ))}
+
+              <div className="pt-6 mt-6 border-t border-stone-200 flex items-center justify-between text-center text-xs">
+                <div className="w-48 text-center space-y-1">
+                  <div className="text-[10px] text-stone-400 font-bold uppercase">
+                    {isId ? "Dibuat Oleh" : "Created By"}
+                  </div>
+                  <div className="h-14 flex items-center justify-center text-stone-400 italic text-[11px]">
+                    [ Signed ]
+                  </div>
+                  <div className="font-bold text-stone-900">
+                    {previewDoc.created_by_name || previewDoc.created_by_username}
+                  </div>
+                  <div className="text-[10px] text-stone-500">{previewDoc.department}</div>
+                </div>
+
+                <div className="w-56 text-center space-y-1 border border-stone-200 rounded-2xl p-3 bg-stone-50/70">
+                  <div className="text-[10px] text-blue-800 font-bold uppercase">
+                    {isId ? "Otorisasi" : "Authorization"}{" "}
+                    {previewDoc.authorization_department}
+                  </div>
+                  <div className="h-12 flex items-center justify-center">
+                    {previewDoc.status === "APPROVED" ? (
+                      <span className="px-3 py-1 bg-emerald-600 text-white rounded-md text-[10px] font-black uppercase tracking-widest shadow-2xs">
+                        ✓ APPROVED
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold">
+                        {isId ? "MENUNGGU OTORISASI" : "AWAITING AUTHORIZATION"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-bold text-stone-900">{previewDoc.authorization_role}</div>
+                  <div className="text-[9px] text-stone-400 font-mono">
+                    {previewDoc.approved_at
+                      ? `${isId ? "Disetujui" : "Approved"}: ${new Date(previewDoc.approved_at).toLocaleDateString("id-ID")}`
+                      : isId
+                      ? "Menunggu Tindakan Otorisator"
+                      : "Awaiting Authorizer Action"}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Approval Action Controls */}

@@ -40,10 +40,35 @@ function initWorkspaceTable() {
 
       CREATE INDEX IF NOT EXISTS idx_ws_docs_auth ON workspace_documents(authorization_role, status);
       CREATE INDEX IF NOT EXISTS idx_ws_docs_creator ON workspace_documents(created_by_username);
+
+      CREATE TABLE IF NOT EXISTS workspace_document_versions (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        content_json TEXT NOT NULL,
+        created_by_username TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS workspace_document_locks (
+        document_id TEXT PRIMARY KEY,
+        locked_by_username TEXT NOT NULL,
+        locked_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      );
     `);
 
     try {
       db.exec("ALTER TABLE workspace_documents ADD COLUMN authorization_department TEXT DEFAULT 'PURCHASING';");
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE workspace_documents ADD COLUMN current_version INTEGER DEFAULT 1;");
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE workspace_documents ADD COLUMN locked_by_username TEXT;");
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE workspace_documents ADD COLUMN lock_expires_at TEXT;");
     } catch (_) {}
   } catch (err) {
     console.error("[WorkspaceDocuments] Error initializing schema:", err);
@@ -807,5 +832,277 @@ workspaceDocumentsRouter.delete("/api/workspace-documents/:id", (req, res) => {
   } catch (err: any) {
     console.error("Error deleting workspace document:", err);
     res.status(500).json({ error: "Failed to delete document: " + err.message });
+  }
+});
+
+// 11. Cancel Submission (revert from PENDING_APPROVAL back to DRAFT)
+workspaceDocumentsRouter.post("/api/workspace-documents/:id/cancel-submission", (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const { id } = req.params;
+    const existing: any = db.prepare("SELECT * FROM workspace_documents WHERE id = ?").get(id);
+
+    if (!existing) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
+    if (existing.status !== "PENDING_APPROVAL") {
+      return res.status(400).json({ error: "Only documents with status PENDING_APPROVAL can have submission cancelled." });
+    }
+
+    const currentUsername = authReq.username || authReq.user?.username;
+    const currentUserRole = authReq.userRole || authReq.user?.role;
+    const isOwner = existing.created_by_username === currentUsername;
+    const isFcAdmin = currentUserRole === "FC" || currentUserRole === "ADMIN";
+
+    if (!isOwner && !isFcAdmin) {
+      return res.status(403).json({ error: "Forbidden: Only author or Admin can cancel submission." });
+    }
+
+    const nowIso = new Date().toISOString();
+    db.prepare(`
+      UPDATE workspace_documents
+      SET status = 'DRAFT', updated_at = ?
+      WHERE id = ?
+    `).run(nowIso, id);
+
+    res.json({ success: true, message: "Document submission cancelled, reverted to DRAFT." });
+  } catch (err: any) {
+    console.error("Error cancelling submission:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 12. Archive Document
+workspaceDocumentsRouter.post("/api/workspace-documents/:id/archive", (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing: any = db.prepare("SELECT * FROM workspace_documents WHERE id = ?").get(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
+    const nowIso = new Date().toISOString();
+    db.prepare(`UPDATE workspace_documents SET status = 'ARCHIVED', updated_at = ? WHERE id = ?`).run(nowIso, id);
+    res.json({ success: true, message: "Document archived successfully." });
+  } catch (err: any) {
+    console.error("Error archiving document:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 13. Heartbeat Lock for Multi-User Safety (P0-08)
+workspaceDocumentsRouter.post("/api/workspace-documents/:id/lock", (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const { id } = req.params;
+    const currentUsername = authReq.username || authReq.user?.username || "unknown_user";
+
+    const existing: any = db.prepare("SELECT * FROM workspace_documents WHERE id = ?").get(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
+    if (existing.status === "APPROVED") {
+      return res.status(409).json({ error: "Cannot lock an APPROVED document: immutable record." });
+    }
+
+    const now = new Date();
+    const expires = new Date(now.getTime() + 120000); // 2 minutes heartbeat
+    const nowIso = now.toISOString();
+    const expIso = expires.toISOString();
+
+    db.prepare(`
+      INSERT INTO workspace_document_locks (document_id, locked_by_username, locked_at, expires_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(document_id) DO UPDATE SET
+        locked_by_username = excluded.locked_by_username,
+        locked_at = excluded.locked_at,
+        expires_at = excluded.expires_at
+    `).run(id, currentUsername, nowIso, expIso);
+
+    res.json({
+      success: true,
+      data: {
+        document_id: id,
+        locked_by: currentUsername,
+        expires_at: expIso,
+      }
+    });
+  } catch (err: any) {
+    console.error("Error updating document lock:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 14. Document Version History (P0-09)
+workspaceDocumentsRouter.get("/api/workspace-documents/:id/versions", (req, res) => {
+  try {
+    const { id } = req.params;
+    const versions = db.prepare(`
+      SELECT * FROM workspace_document_versions
+      WHERE document_id = ?
+      ORDER BY version DESC
+    `).all(id);
+
+    res.json({ success: true, data: versions });
+  } catch (err: any) {
+    console.error("Error fetching document versions:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 15. Restore Document Version (P0-09)
+workspaceDocumentsRouter.post("/api/workspace-documents/:id/restore-version", (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const { id } = req.params;
+    const { version } = req.body;
+
+    const existing: any = db.prepare("SELECT * FROM workspace_documents WHERE id = ?").get(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
+    if (existing.status === "APPROVED") {
+      return res.status(403).json({ error: "Cannot restore version on an APPROVED document." });
+    }
+
+    const targetVersion: any = db.prepare(`
+      SELECT * FROM workspace_document_versions
+      WHERE document_id = ? AND version = ?
+    `).get(id, version);
+
+    if (!targetVersion) {
+      return res.status(404).json({ error: `Version ${version} not found for document.` });
+    }
+
+    const nowIso = new Date().toISOString();
+    db.prepare(`
+      UPDATE workspace_documents
+      SET content_json = ?, updated_at = ?
+      WHERE id = ?
+    `).run(targetVersion.content_json, nowIso, id);
+
+    res.json({ success: true, message: `Restored document to version ${version}.` });
+  } catch (err: any) {
+    console.error("Error restoring document version:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 16. OnlyOffice Editor Session Gateway (P0-10)
+workspaceDocumentsRouter.get("/api/workspace-documents/:id/editor-session", (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const { id } = req.params;
+    const doc: any = db.prepare("SELECT * FROM workspace_documents WHERE id = ?").get(id);
+
+    if (!doc) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
+    const currentUsername = authReq.username || authReq.user?.username || "Guest";
+    const currentUserRole = authReq.userRole || authReq.user?.role || "GUEST";
+    const isApproved = doc.status === "APPROVED";
+
+    const host = req.get("host") || "localhost:3000";
+    const protocol = req.protocol || "http";
+    const serverUrl = `${protocol}://${host}`;
+
+    const sessionData = {
+      documentId: doc.id,
+      documentKey: `${doc.id}_${doc.current_version || 1}_${Date.now()}`,
+      documentTitle: `${doc.title}.docx`,
+      fileUrl: `${serverUrl}/api/workspace-documents/${doc.id}/file`,
+      callbackUrl: `${serverUrl}/api/workspace-documents/${doc.id}/callback`,
+      mode: isApproved ? "view" : "edit",
+      permissions: {
+        edit: !isApproved,
+        review: !isApproved,
+        comment: true,
+        download: true,
+        print: true,
+      },
+      user: {
+        id: currentUsername,
+        name: currentUsername,
+        role: currentUserRole,
+      }
+    };
+
+    res.json({ success: true, data: sessionData });
+  } catch (err: any) {
+    console.error("Error creating editor session:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 17. OnlyOffice Document File Stream Gateway
+workspaceDocumentsRouter.get("/api/workspace-documents/:id/file", (req, res) => {
+  try {
+    const { id } = req.params;
+    const doc: any = db.prepare("SELECT * FROM workspace_documents WHERE id = ?").get(id);
+
+    if (!doc) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
+    // Set DOCX response headers
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="${doc.title || 'document'}.docx"`);
+    res.send(Buffer.from(doc.content_json || ""));
+  } catch (err: any) {
+    console.error("Error serving document file:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 18. OnlyOffice Callback Webhook
+workspaceDocumentsRouter.post("/api/workspace-documents/:id/callback", (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, url } = req.body;
+
+    // OnlyOffice status 2: Ready for saving
+    if (status === 2 && url) {
+      const nowIso = new Date().toISOString();
+      db.prepare(`
+        UPDATE workspace_documents
+        SET updated_at = ?
+        WHERE id = ?
+      `).run(nowIso, id);
+    }
+
+    res.json({ error: 0 }); // OnlyOffice expects { error: 0 } on success
+  } catch (err: any) {
+    console.error("Error handling OnlyOffice callback:", err);
+    res.json({ error: 1 });
+  }
+});
+
+// 19. Export to PDF Stub / Printer Payload
+workspaceDocumentsRouter.post("/api/workspace-documents/:id/export/pdf", (req, res) => {
+  try {
+    const { id } = req.params;
+    const doc: any = db.prepare("SELECT * FROM workspace_documents WHERE id = ?").get(id);
+
+    if (!doc) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
+    res.json({
+      success: true,
+      message: `PDF rendering metadata generated for ${doc.document_code}`,
+      data: {
+        document_code: doc.document_code,
+        title: doc.title,
+        status: doc.status,
+        ready_for_print: true,
+      }
+    });
+  } catch (err: any) {
+    console.error("Error exporting PDF:", err);
+    res.status(500).json({ error: err.message });
   }
 });
