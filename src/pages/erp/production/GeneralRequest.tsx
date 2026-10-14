@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { cn } from "@/lib/utils";
-import { ClipboardList, Plus, History } from "lucide-react";
+import { ClipboardList, Plus, History, Trash2, Info, Boxes, Send } from "lucide-react";
 
 interface BomItemRow {
   id: string;
@@ -59,14 +59,12 @@ const CATEGORY_MAP: Record<string, { labelId: string; labelEn: string }> = {
   SPECIAL_DESIGN: { labelId: "Desain Khusus / Prototipe", labelEn: "Custom Design / Prototype" },
 };
 
-const DEPARTMENT_LIST = [
-  "Production",
-  "Maintenance & Workshop",
-  "R&D & Quality Control",
-  "Warehouse & Logistics",
-  "Engineering & Design",
-  "General Affairs & Plant",
-];
+import {
+  ERP_DEPARTMENT_OPTIONS,
+  getDepartmentLabel,
+  canUserApproveDepartment,
+  normalizeDepartmentToRole,
+} from "@/constants/rbac";
 
 export default function GeneralRequest() {
   const { user } = useAuth();
@@ -75,8 +73,7 @@ export default function GeneralRequest() {
 
   const isId = language === "id";
 
-  // Section / Tab State
-  const [activeTab, setActiveTab] = useState<"BOM" | "HEADER_AUTH">("BOM");
+  // Unified single-page view - no tab switching
 
   // Data States
   const [requests, setRequests] = useState<GeneralRequestData[]>([]);
@@ -95,7 +92,7 @@ export default function GeneralRequest() {
   // Form State
   const [formTitle, setFormTitle] = useState("");
   const [formCategory, setFormCategory] = useState<string>("MAINTENANCE");
-  const [formDepartment, setFormDepartment] = useState("Maintenance & Workshop");
+  const [formDepartment, setFormDepartment] = useState("PRODUCTION");
   const [formPriority, setFormPriority] = useState<"NORMAL" | "URGENT" | "CRITICAL">("NORMAL");
   const [formTargetDate, setFormTargetDate] = useState("");
   const [formDrawingRef, setFormDrawingRef] = useState("");
@@ -290,12 +287,10 @@ export default function GeneralRequest() {
   const handleSubmitAndIssuePr = async () => {
     if (!formTitle.trim()) {
       showToast(isId ? "Judul permintaan wajib diisi." : "Requisition title is required.", "info");
-      setActiveTab("HEADER_AUTH");
       return;
     }
     if (formBomItems.some((b) => !b.item_name.trim())) {
       showToast(isId ? "Setiap item BOM wajib memiliki nama barang." : "All BOM table items must have an item name.", "info");
-      setActiveTab("BOM");
       return;
     }
 
@@ -425,28 +420,6 @@ export default function GeneralRequest() {
         }
         icon={<ClipboardList className="w-5 h-5 text-amber-700" />}
         iconBgClassName="bg-amber-50 border border-amber-200/80 text-amber-700"
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => setActiveTab("BOM")}
-              className="bg-stone-900 hover:bg-black text-white text-xs font-bold rounded-xl px-3.5 py-2 shadow-xs flex items-center gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{isId ? "Buat Permintaan Baru" : "New Requisition"}</span>
-            </Button>
-            <Button
-              onClick={() => {
-                const el = document.getElementById("history-section");
-                if (el) el.scrollIntoView({ behavior: "smooth" });
-              }}
-              variant="outline"
-              className="text-xs font-bold rounded-xl border-stone-300 bg-white hover:bg-stone-100 text-stone-800 flex items-center gap-1.5"
-            >
-              <History className="w-3.5 h-3.5 text-stone-500" />
-              <span>{isId ? "Riwayat Permintaan" : "Requisition History"}</span>
-            </Button>
-          </div>
-        }
       />
 
       {/* 2. Top Summary KPI Cards (Stone Palette) */}
@@ -492,39 +465,211 @@ export default function GeneralRequest() {
         </div>
       </div>
 
-      {/* 3. Section Switcher Tabs */}
-      <div className="bg-stone-200/80 p-1 rounded-xl flex items-center gap-1 max-w-md border border-stone-300/80">
-        <button
-          onClick={() => setActiveTab("BOM")}
-          className={cn(
-            "flex-1 py-2 px-4 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2",
-            activeTab === "BOM"
-              ? "bg-white text-stone-900 shadow-xs border border-stone-200"
-              : "text-stone-600 hover:text-stone-900"
-          )}
-        >
-          <span>{isId ? "1. Bill of Materials (BOM)" : "1. Bill of Materials (BOM)"}</span>
-          <span className="text-[10px] bg-stone-100 text-stone-700 px-2 py-0.5 rounded font-mono">
-            {formBomItems.length}
-          </span>
-        </button>
+      {/* 3. Single Unified View: Form Header & Routing (Left 35%) & BOM Components Table (Right 65%) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column (35%): Header Card Utama */}
+        <div className="lg:col-span-4 bg-white border border-stone-200 rounded-2xl p-5 shadow-xs space-y-4">
+          <div className="pb-3 border-b border-stone-100 flex items-center gap-2">
+            <h3 className="text-xs font-black text-stone-900 uppercase tracking-wider">
+              {isId ? "Header & Otorisasi" : "Header & Authorization"}
+            </h3>
+            <div className="relative group">
+              <Info className="w-3.5 h-3.5 text-stone-400 hover:text-stone-600 cursor-pointer" />
+              <div className="absolute left-0 top-full mt-1.5 hidden group-hover:block z-30 w-64 p-2.5 bg-stone-900 text-stone-100 text-[10px] font-normal rounded-xl shadow-xl leading-relaxed">
+                {isId
+                  ? "Otorisasi akan diteruskan langsung ke Penanggung Jawab Departemen terkait. Setelah disetujui, siap dikonversi ke Purchase Order (PO)."
+                  : "Approvals will be routed directly to selected Department Head. Upon approval, ready for PO execution."}
+              </div>
+            </div>
+          </div>
 
-        <button
-          onClick={() => setActiveTab("HEADER_AUTH")}
-          className={cn(
-            "flex-1 py-2 px-4 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2",
-            activeTab === "HEADER_AUTH"
-              ? "bg-white text-stone-900 shadow-xs border border-stone-200"
-              : "text-stone-600 hover:text-stone-900"
+          {/* Inline Stock Validation Feedback Badge */}
+          {hasValidatedStock && (
+            <div
+              className={cn(
+                "p-2.5 rounded-xl border text-[11px] font-semibold flex items-center justify-between",
+                stockValidationSummary.shortageItems === 0
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  : "bg-amber-50 border-amber-200 text-amber-800"
+              )}
+            >
+              <span>
+                {stockValidationSummary.shortageItems === 0
+                  ? isId
+                    ? "✓ Stok 100% Tersedia di Gudang"
+                    : "✓ 100% Stock Available in Warehouse"
+                  : isId
+                  ? `⚠️ ${stockValidationSummary.shortageItems} Item Perlu Pengadaan PO`
+                  : `⚠️ ${stockValidationSummary.shortageItems} Item Shortage`}
+              </span>
+              <button
+                type="button"
+                onClick={handleValidateStock}
+                className="text-[10px] underline font-mono cursor-pointer hover:opacity-80"
+              >
+                {isId ? "Cek Ulang" : "Re-check"}
+              </button>
+            </div>
           )}
-        >
-          <span>{isId ? "2. Detail & Otorisasi PR" : "2. Header & Authorization"}</span>
-        </button>
-      </div>
 
-      {/* SECTION VIEW 1: BILL OF MATERIALS (BOM) PLATFORM TABLE (100% Identical to Engineering Material Component) */}
-      {activeTab === "BOM" && (
-        <div className="space-y-6">
+          {/* Form Header Fields */}
+          <div className="space-y-3.5 text-xs">
+            <div>
+              <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                {isId ? "Judul Permintaan Pengadaan *" : "Requisition Title *"}
+              </label>
+              <input
+                type="text"
+                required
+                placeholder={
+                  isId ? "Contoh: Penggantian Seal Hidrolik Mesin Unit 2" : "e.g. Hydraulic Cylinder Seal Replacement"
+                }
+                value={formTitle}
+                onChange={(e) => setFormTitle(e.target.value)}
+                className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                {isId ? "Kategori *" : "Category *"}
+              </label>
+              <select
+                value={formCategory}
+                onChange={(e) => setFormCategory(e.target.value)}
+                className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
+              >
+                {Object.entries(CATEGORY_MAP).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {isId ? v.labelId : v.labelEn}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                {isId ? "Departemen Pemohon / Tujuan Otorisasi *" : "Department & Approval Routing *"}
+              </label>
+              <select
+                value={formDepartment}
+                onChange={(e) => setFormDepartment(e.target.value)}
+                className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
+              >
+                {ERP_DEPARTMENT_OPTIONS.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-amber-800 bg-amber-50/80 border border-amber-200/60 rounded-lg p-2 mt-1.5 font-medium leading-normal">
+                {isId
+                  ? `Otorisasi akan diteruskan langsung ke Penanggung Jawab Departemen ${getDepartmentLabel(formDepartment)}. Setelah disetujui, siap dikonversi ke Purchase Order (PO).`
+                  : `Approvals will be routed directly to ${getDepartmentLabel(formDepartment)} Head. Upon approval, ready for PO execution.`}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                  {isId ? "Prioritas" : "Urgency"}
+                </label>
+                <select
+                  value={formPriority}
+                  onChange={(e) => setFormPriority(e.target.value as any)}
+                  className="w-full text-xs p-2 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
+                >
+                  <option value="NORMAL">{isId ? "Normal" : "Normal"}</option>
+                  <option value="URGENT">{isId ? "Mendesak" : "Urgent"}</option>
+                  <option value="CRITICAL">{isId ? "Kritis" : "Critical"}</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                  {isId ? "Target Tanggal" : "Target Date"}
+                </label>
+                <input
+                  type="date"
+                  value={formTargetDate}
+                  onChange={(e) => setFormTargetDate(e.target.value)}
+                  className="w-full text-xs p-2 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                {isId ? "Ref. Gambar CAD / Manual Spesifikasi" : "CAD / Drawing Reference"}
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. DWG-MTC-2026-08"
+                value={formDrawingRef}
+                onChange={(e) => setFormDrawingRef(e.target.value)}
+                className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                {isId ? "Catatan Justifikasi Teknis" : "Technical Justification"}
+              </label>
+              <textarea
+                rows={2}
+                placeholder={isId ? "Alasan kebutuhan operasional..." : "Technical justification for requisition..."}
+                value={formJustification}
+                onChange={(e) => setFormJustification(e.target.value)}
+                className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Bottom Action Buttons (1 Line): Stock Validity (Text Only) & Submit Request (Icon Only) */}
+          <div className="pt-3 border-t border-stone-100 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleValidateStock}
+              className={cn(
+                "flex-1 py-2.5 px-3 rounded-xl border font-bold text-xs transition-all text-center cursor-pointer shadow-2xs hover:scale-[1.01] active:scale-[0.99] truncate",
+                hasValidatedStock
+                  ? stockValidationSummary.shortageItems === 0
+                    ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200"
+                    : "bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200"
+                  : "bg-stone-50 hover:bg-stone-100 text-stone-800 border-stone-200"
+              )}
+            >
+              {hasValidatedStock
+                ? stockValidationSummary.shortageItems === 0
+                  ? isId
+                    ? "Stok Gudang 100% Tersedia"
+                    : "100% Warehouse Stock Available"
+                  : isId
+                  ? `${stockValidationSummary.shortageItems} Item Memerlukan PO`
+                  : `${stockValidationSummary.shortageItems} Items Shortage`
+                : isId
+                ? "Validasi Stok Gudang"
+                : "Validate Warehouse Stock"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSubmitAndIssuePr}
+              disabled={isSubmitting}
+              className="p-2.5 rounded-xl bg-stone-900 hover:bg-black text-white border border-stone-900 transition-all flex items-center justify-center cursor-pointer shadow-2xs hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 shrink-0"
+              title={isId ? "Terbitkan Purchase Request (PR)" : "Submit & Issue Purchase Request (PR)"}
+            >
+              {isSubmitting ? (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
+              ) : (
+                <Send className="w-4 h-4 shrink-0" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column (65%): Tabel BOM */}
+        <div className="lg:col-span-8 space-y-4">
           <datalist id="warehouse-item-codes-datalist">
             {inventoryList.map((item) => (
               <option key={item.id} value={item.item_code}>
@@ -553,19 +698,19 @@ export default function GeneralRequest() {
               </div>
             </div>
 
-            {/* List of Component Rows (100% Identical structure & dimensions to BomItemRowEditor.tsx) */}
+            {/* List of Component Rows */}
             <div className="divide-y divide-stone-100">
               {formBomItems.map((item, index) => (
-                <div key={item.id} className="px-8 py-6 hover:bg-stone-50 transition-colors group relative flex gap-6 items-start">
+                <div key={item.id} className="px-6 py-5 hover:bg-stone-50 transition-colors group relative flex gap-4 items-start">
                   {/* Index */}
-                  <div className="text-[10px] font-bold text-stone-400 w-10 pt-4 text-center shrink-0 font-mono">
+                  <div className="text-[10px] font-bold text-stone-400 w-8 pt-3 text-center shrink-0 font-mono">
                     {String(index + 1).padStart(2, "0")}
                   </div>
 
-                  <div className="flex-1 space-y-5">
+                  <div className="flex-1 space-y-4">
                     {/* Row 1: Primary Identification */}
-                    <div className="grid grid-cols-12 gap-5">
-                      <div className="col-span-4 space-y-1.5">
+                    <div className="grid grid-cols-12 gap-4">
+                      <div className="col-span-4 space-y-1">
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1">
                           Item Code
                         </label>
@@ -574,12 +719,12 @@ export default function GeneralRequest() {
                           list="warehouse-item-codes-datalist"
                           value={item.item_code || ""}
                           onChange={(e) => handleUpdateBomItem(item.id, "item_code", e.target.value)}
-                          className="w-full bg-white border border-stone-200 rounded-xl px-4 py-3 text-sm uppercase outline-none focus:border-stone-900 focus:ring-4 focus:ring-stone-900/5 transition-all font-bold tracking-tight text-stone-950"
+                          className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs uppercase outline-none focus:border-stone-900 focus:ring-2 focus:ring-stone-900/5 transition-all font-bold tracking-tight text-stone-950"
                           placeholder="SKU-XXXXX"
                         />
                       </div>
 
-                      <div className="col-span-8 space-y-1.5">
+                      <div className="col-span-8 space-y-1">
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1">
                           Component Name & Description
                         </label>
@@ -587,15 +732,15 @@ export default function GeneralRequest() {
                           type="text"
                           value={item.item_name}
                           onChange={(e) => handleUpdateBomItem(item.id, "item_name", e.target.value)}
-                          className="w-full bg-white border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-stone-900 focus:ring-4 focus:ring-stone-900/5 font-bold text-stone-900"
+                          className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-stone-900 focus:ring-2 focus:ring-stone-900/5 font-bold text-stone-900"
                           placeholder="Internal System Component Name"
                         />
                       </div>
                     </div>
 
                     {/* Row 2: Specifications & Logistics */}
-                    <div className="grid grid-cols-12 gap-5 py-3 px-4 bg-stone-50/50 rounded-2xl border border-stone-100/50">
-                      <div className="col-span-3 space-y-1.5">
+                    <div className="grid grid-cols-12 gap-3 py-2.5 px-3 bg-stone-50/50 rounded-xl border border-stone-100/50">
+                      <div className="col-span-3 space-y-1">
                         <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
                           Dimensions
                         </label>
@@ -603,12 +748,12 @@ export default function GeneralRequest() {
                           type="text"
                           value={item.specification || ""}
                           onChange={(e) => handleUpdateBomItem(item.id, "specification", e.target.value)}
-                          className="w-full bg-white border border-stone-100 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-stone-400 font-medium text-stone-900"
+                          className="w-full bg-white border border-stone-100 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-stone-400 font-medium text-stone-900"
                           placeholder="L x W x H"
                         />
                       </div>
 
-                      <div className="col-span-3 space-y-1.5">
+                      <div className="col-span-3 space-y-1">
                         <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
                           Technical Spec
                         </label>
@@ -616,12 +761,12 @@ export default function GeneralRequest() {
                           type="text"
                           value={item.part_number || ""}
                           onChange={(e) => handleUpdateBomItem(item.id, "part_number", e.target.value)}
-                          className="w-full bg-white border border-stone-100 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-stone-400 font-medium text-stone-900"
-                          placeholder="Standard Configuration"
+                          className="w-full bg-white border border-stone-100 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-stone-400 font-medium text-stone-900"
+                          placeholder="Standard Config"
                         />
                       </div>
 
-                      <div className="col-span-2 space-y-1.5">
+                      <div className="col-span-2 space-y-1">
                         <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
                           Quantity
                         </label>
@@ -630,11 +775,11 @@ export default function GeneralRequest() {
                           value={item.qty}
                           min="1"
                           onChange={(e) => handleUpdateBomItem(item.id, "qty", parseFloat(e.target.value) || 0)}
-                          className="w-full bg-white border border-stone-100 rounded-lg px-3 py-2 text-sm text-stone-950 outline-none focus:border-stone-900 font-bold text-center"
+                          className="w-full bg-white border border-stone-100 rounded-lg px-2 py-1.5 text-xs text-stone-950 outline-none focus:border-stone-900 font-bold text-center"
                         />
                       </div>
 
-                      <div className="col-span-2 space-y-1.5">
+                      <div className="col-span-2 space-y-1">
                         <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
                           Uom
                         </label>
@@ -642,24 +787,24 @@ export default function GeneralRequest() {
                           type="text"
                           value={item.uom}
                           onChange={(e) => handleUpdateBomItem(item.id, "uom", e.target.value.toUpperCase())}
-                          className="w-full bg-white border border-stone-100 rounded-lg px-3 py-2 text-[13px] text-stone-900 outline-none focus:border-stone-400 font-bold text-center uppercase"
+                          className="w-full bg-white border border-stone-100 rounded-lg px-2 py-1.5 text-xs text-stone-900 outline-none focus:border-stone-400 font-bold text-center uppercase"
                           placeholder="PCS"
                         />
                       </div>
 
-                      <div className="col-span-2 space-y-1.5">
+                      <div className="col-span-2 space-y-1">
                         <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1 text-center block">
                           Stock
                         </label>
-                        <div className="w-full border rounded-lg px-3 py-2 text-center text-xs font-bold font-mono bg-stone-100 border-stone-200 text-stone-700">
+                        <div className="w-full border rounded-lg px-2 py-1.5 text-center text-xs font-bold font-mono bg-stone-100 border-stone-200 text-stone-700">
                           {item.current_free_stock || 0}
                         </div>
                       </div>
                     </div>
 
                     {/* Row 3: Financials & Reference */}
-                    <div className="grid grid-cols-12 gap-5 px-1">
-                      <div className="col-span-4 space-y-1.5 opacity-80">
+                    <div className="grid grid-cols-12 gap-4 px-1">
+                      <div className="col-span-4 space-y-1 opacity-80">
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1">
                           Matrix Unit Price (IDR)
                         </label>
@@ -669,11 +814,11 @@ export default function GeneralRequest() {
                           onChange={(e) =>
                             handleUpdateBomItem(item.id, "estimated_unit_price", parseFloat(e.target.value) || 0)
                           }
-                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm font-bold text-stone-900 outline-none focus:border-stone-900"
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs font-bold text-stone-900 outline-none focus:border-stone-900"
                         />
                       </div>
 
-                      <div className="col-span-8 space-y-1.5">
+                      <div className="col-span-8 space-y-1">
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1">
                           Reference / Remarks
                         </label>
@@ -681,7 +826,7 @@ export default function GeneralRequest() {
                           type="text"
                           value={item.remarks || ""}
                           onChange={(e) => handleUpdateBomItem(item.id, "remarks", e.target.value)}
-                          className="w-full bg-white border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-stone-900 focus:ring-4 focus:ring-stone-900/5 font-bold text-stone-900 placeholder:text-stone-400"
+                          className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-stone-900 focus:ring-2 focus:ring-stone-900/5 font-bold text-stone-900 placeholder:text-stone-400"
                           placeholder="Drawing Ref, Revision, or Note"
                         />
                       </div>
@@ -689,14 +834,15 @@ export default function GeneralRequest() {
                   </div>
 
                   {/* Delete Action Button */}
-                  <div className="w-10 shrink-0 pt-10 flex justify-end">
+                  <div className="w-9 shrink-0 pt-8 flex justify-end">
                     <button
                       type="button"
                       onClick={() => handleRemoveBomRow(item.id)}
-                      className="w-10 h-10 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-600 transition-all flex items-center justify-center font-bold text-xs cursor-pointer"
-                      title="Delete Item"
+                      disabled={formBomItems.length <= 1}
+                      className="w-9 h-9 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/80 transition-all flex items-center justify-center cursor-pointer shadow-2xs hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:bg-rose-50 disabled:cursor-not-allowed"
+                      title={isId ? "Hapus Item Baris Ini" : "Delete Item Row"}
                     >
-                      Delete
+                      <Trash2 className="w-4 h-4 text-rose-600" />
                     </button>
                   </div>
                 </div>
@@ -704,11 +850,11 @@ export default function GeneralRequest() {
             </div>
 
             {/* Bottom Row Button */}
-            <div className="px-6 py-4 bg-stone-50 border-t border-stone-200">
+            <div className="px-5 py-3 bg-stone-50 border-t border-stone-200">
               <button
                 type="button"
                 onClick={handleAddBomRow}
-                className="w-full flex items-center justify-center gap-2 py-3 text-xs uppercase bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold rounded-xl"
+                className="w-full flex items-center justify-center gap-2 py-2.5 text-xs uppercase bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold rounded-xl"
               >
                 Add Component
               </button>
@@ -716,232 +862,23 @@ export default function GeneralRequest() {
           </div>
 
           {/* Footer Summary Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-5 bg-white rounded-2xl border border-stone-200 shadow-xs">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-stone-200 shadow-xs">
             <div className="text-xs text-stone-500 font-medium">
               {isId ? "Jumlah Item BOM:" : "BOM Items Listed:"}{" "}
               <span className="font-bold text-stone-900">{formBomItems.length} items</span>
             </div>
 
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-stone-500 uppercase tracking-wider text-[10px]">
-                  {isId ? "Total Estimasi Anggaran:" : "Total Estimated Cost:"}
-                </span>
-                <span className="text-xl font-black text-stone-900 font-mono">
-                  Rp {totalEstimatedCost.toLocaleString("id-ID")}
-                </span>
-              </div>
-
-              <Button
-                onClick={() => setActiveTab("HEADER_AUTH")}
-                variant="primary"
-                className="bg-stone-900 hover:bg-black text-white rounded-xl font-bold text-xs px-5 py-2.5 shadow-xs"
-              >
-                <span>{isId ? "Lanjut ke Otorisasi PR" : "Proceed to Authorization"}</span>
-              </Button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-stone-500 uppercase tracking-wider text-[10px]">
+                {isId ? "Total Estimasi Anggaran:" : "Total Estimated Cost:"}
+              </span>
+              <span className="text-lg font-black text-stone-900 font-mono">
+                Rp {totalEstimatedCost.toLocaleString("id-ID")}
+              </span>
             </div>
           </div>
         </div>
-      )}
-
-      {/* SECTION VIEW 2: REQUEST HEADER, STOCK VALIDITY & AUTHORIZATION */}
-      {activeTab === "HEADER_AUTH" && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Card A: Request Header Details */}
-            <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-xs space-y-4">
-              <h3 className="text-xs font-black text-stone-900 uppercase tracking-wider pb-3 border-b border-stone-100">
-                <span>{isId ? "1. Informasi Header Permintaan" : "1. Requisition Header Details"}</span>
-              </h3>
-
-              <div className="space-y-3.5">
-                <div>
-                  <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                    {isId ? "Judul Permintaan Pengadaan *" : "Requisition Title *"}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder={isId ? "Contoh: Penggantian Seal Hidrolik Mesin Paving Unit 2" : "e.g. Hydraulic Cylinder Seal Replacement"}
-                    value={formTitle}
-                    onChange={(e) => setFormTitle(e.target.value)}
-                    className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                      {isId ? "Kategori *" : "Category *"}
-                    </label>
-                    <select
-                      value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value)}
-                      className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-                    >
-                      {Object.entries(CATEGORY_MAP).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {isId ? v.labelId : v.labelEn}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                      {isId ? "Departemen Pemohon *" : "Department *"}
-                    </label>
-                    <select
-                      value={formDepartment}
-                      onChange={(e) => setFormDepartment(e.target.value)}
-                      className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-                    >
-                      {DEPARTMENT_LIST.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                      {isId ? "Tingkat Prioritas" : "Urgency Level"}
-                    </label>
-                    <select
-                      value={formPriority}
-                      onChange={(e) => setFormPriority(e.target.value as any)}
-                      className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-                    >
-                      <option value="NORMAL">{isId ? "Normal (Rutin)" : "Normal (Routine)"}</option>
-                      <option value="URGENT">{isId ? "Mendesak (Stok Kritis)" : "Urgent (Stock Critical)"}</option>
-                      <option value="CRITICAL">{isId ? "Kritis (Breakdown Mesin)" : "Critical (Machine Breakdown)"}</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                      {isId ? "Target Tanggal Dibutuhkan" : "Target Delivery Date"}
-                    </label>
-                    <input
-                      type="date"
-                      value={formTargetDate}
-                      onChange={(e) => setFormTargetDate(e.target.value)}
-                      className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                    {isId ? "Ref. Gambar CAD / Manual Spesifikasi" : "CAD / Drawing Reference"}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. DWG-MTC-2026-08"
-                    value={formDrawingRef}
-                    onChange={(e) => setFormDrawingRef(e.target.value)}
-                    className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                    {isId ? "Catatan Justifikasi Teknis" : "Technical Justification"}
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder={isId ? "Alasan kebutuhan operasional..." : "Technical justification for requisition..."}
-                    value={formJustification}
-                    onChange={(e) => setFormJustification(e.target.value)}
-                    className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Card B: Warehouse Stock Validity & Otorisasi PR */}
-            <div className="space-y-6">
-              {/* Warehouse Stock Validity Panel */}
-              <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-xs space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-                  <h3 className="text-xs font-black text-stone-900 uppercase tracking-wider">
-                    <span>{isId ? "2. Validasi Stok Gudang" : "2. Warehouse Stock Validity"}</span>
-                  </h3>
-
-                  <Button
-                    type="button"
-                    onClick={handleValidateStock}
-                    variant="outline"
-                    size="sm"
-                    className="rounded-xl font-bold border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-800 text-xs"
-                  >
-                    {isId ? "Cek Stok Gudang" : "Validate Stock"}
-                  </Button>
-                </div>
-
-                {hasValidatedStock ? (
-                  <div className="p-4 rounded-xl border border-stone-200 bg-stone-50 text-xs space-y-2">
-                    <div className="font-black text-sm text-stone-900">
-                      <span>
-                        {stockValidationSummary.shortageItems === 0
-                          ? isId
-                            ? "100% Stok Tersedia di Gudang"
-                            : "100% Stock Available in Warehouse"
-                          : isId
-                          ? `${stockValidationSummary.shortageItems} Item Memerlukan Pengadaan PO`
-                          : `${stockValidationSummary.shortageItems} Item Shortage Detected`}
-                      </span>
-                    </div>
-                    <p className="text-xs text-stone-600 leading-relaxed">
-                      {stockValidationSummary.shortageItems === 0
-                        ? isId
-                          ? "Seluruh item BOM yang diajukan tersedia dalam stok gudang aktif."
-                          : "All requested BOM items exist in warehouse free stock."
-                        : isId
-                        ? "Item dengan kekurangan stok akan secara otomatis diteruskan ke tim Procurement untuk penerbitan Purchase Order (PO)."
-                        : "Items with stock shortages will be automatically routed to Procurement for Purchase Order creation."}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 text-xs text-stone-500">
-                    {isId
-                      ? "Klik Cek Stok Gudang untuk memeriksa ketersediaan stok fisik secara real-time sebelum menerbitkan PR."
-                      : "Click Validate Stock to check warehouse stock levels in real-time before issuing PR."}
-                  </div>
-                )}
-              </div>
-
-              {/* Action Box */}
-              <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-xs space-y-4">
-                <h3 className="text-xs font-black text-stone-900 uppercase tracking-wider pb-3 border-b border-stone-100">
-                  <span>{isId ? "3. Otorisasi & Penerbitan PR" : "3. Authorization & Issue PR"}</span>
-                </h3>
-
-                <div className="space-y-3">
-                  <Button
-                    type="button"
-                    onClick={handleSubmitAndIssuePr}
-                    disabled={isSubmitting}
-                    variant="primary"
-                    className="w-full bg-stone-900 hover:bg-black text-white rounded-xl py-3.5 text-xs font-black shadow-xs"
-                  >
-                    <span>
-                      {isSubmitting
-                        ? isId
-                          ? "Memproses..."
-                          : "Processing..."
-                        : isId
-                        ? "Terbitkan Purchase Request (PR)"
-                        : "Submit & Issue Purchase Request (PR)"}
-                    </span>
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
+      </div>
 
           {/* Ongoing Requisitions Log */}
           <div id="history-section" className="bg-white border border-stone-200 rounded-2xl p-6 shadow-xs space-y-4">
@@ -993,7 +930,7 @@ export default function GeneralRequest() {
 
                         <td className="p-3">
                           <span className="font-bold text-stone-800">{req.category}</span>
-                          <span className="block text-[10px] text-stone-400">{req.department}</span>
+                          <span className="block text-[10px] text-stone-400">{getDepartmentLabel(req.department)}</span>
                         </td>
 
                         <td className="p-3">
@@ -1040,8 +977,6 @@ export default function GeneralRequest() {
               </table>
             </div>
           </div>
-        </div>
-      )}
 
       {/* 4. Detail Modal */}
       <Modal
@@ -1070,7 +1005,7 @@ export default function GeneralRequest() {
             <div className="grid grid-cols-4 gap-3 p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs">
               <div>
                 <span className="text-[9px] font-bold text-stone-400 uppercase block">{isId ? "Departemen" : "Department"}</span>
-                <span className="font-bold text-stone-800">{selectedDetail.department}</span>
+                <span className="font-bold text-stone-800">{getDepartmentLabel(selectedDetail.department)}</span>
               </div>
               <div>
                 <span className="text-[9px] font-bold text-stone-400 uppercase block">{isId ? "Kategori" : "Category"}</span>

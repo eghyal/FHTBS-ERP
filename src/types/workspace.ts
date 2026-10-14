@@ -22,15 +22,26 @@ export type DocBlockType =
   | "DUAL_SIGNATURE";
 
 export type TargetDepartment =
+  | "FC"
+  | "HR"
+  | "ENGINEERING"
   | "PURCHASING"
-  | "FINANCE"
+  | "WAREHOUSE"
   | "PRODUCTION"
+  | "SALES"
+  | "FINANCE"
   | "FACTORY_CONTROLLER"
   | "MANAGEMENT"
-  | "WAREHOUSE"
   | "GENERAL";
 
 export type AuthorizationRole =
+  | "FC"
+  | "HR"
+  | "ENGINEERING"
+  | "PURCHASING"
+  | "WAREHOUSE"
+  | "PRODUCTION"
+  | "SALES"
   | "PURCHASING_MANAGER"
   | "FINANCE_HEAD"
   | "PRODUCTION_MANAGER"
@@ -47,7 +58,15 @@ export interface DocBlock {
   subtitle?: string;
   content?: string;
   style?: "NORMAL" | "WARNING" | "SUCCESS" | "INFO" | "OFFICIAL";
-  alignment?: "LEFT" | "CENTER" | "RIGHT";
+  alignment?: "LEFT" | "CENTER" | "RIGHT" | "JUSTIFY";
+  verticalAlignment?: "TOP" | "MIDDLE" | "BOTTOM";
+  fontSize?: number;
+  isBold?: boolean;
+  isItalic?: boolean;
+  isUnderline?: boolean;
+  isStrikethrough?: boolean;
+  textColor?: string;
+  highlightColor?: string;
   
   // For List / Bullet points
   listItems?: string[];
@@ -77,6 +96,8 @@ export interface DocBlock {
   tableData?: {
     headers: string[];
     rows: string[][];
+    colWidths?: number[];
+    rowHeights?: number[];
   };
 
   // Container sizing & free positioning (Hold & Move mouse resize / drag)

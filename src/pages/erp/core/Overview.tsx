@@ -337,8 +337,12 @@ export default function Overview() {
         setSelectedCenterId(workCentersRes.data[0].id);
       }
 
+      const isGeneral = (p: any) =>
+        ["GENERAL", "CONSUMABLE", "TRANSPORTATION", "OTHERS"].includes(p.id) ||
+        p.name?.toLowerCase().includes("general procurement");
+
       if (Array.isArray(ganttRes.data)) {
-        setProjects(ganttRes.data.filter((p: any) => !["CONSUMABLE", "TRANSPORTATION", "OTHERS"].includes(p.id)));
+        setProjects(ganttRes.data.filter((p: any) => !isGeneral(p)));
       } else {
         setProjects([]);
       }
@@ -348,11 +352,11 @@ export default function Overview() {
       setAnalytics(analyticsRes.data);
       setArchivedProjects(
         Array.isArray(archivedRes.data)
-          ? archivedRes.data.filter((p: any) => !["CONSUMABLE", "TRANSPORTATION", "OTHERS"].includes(p.id))
+          ? archivedRes.data.filter((p: any) => !isGeneral(p))
           : [],
       );
       if (Array.isArray(monitorRes.data)) {
-        setMonitorData(monitorRes.data.filter((p: any) => !["CONSUMABLE", "TRANSPORTATION", "OTHERS"].includes(p.id)));
+        setMonitorData(monitorRes.data.filter((p: any) => !isGeneral(p)));
       } else {
         setMonitorData([]);
       }

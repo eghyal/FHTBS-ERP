@@ -1,0 +1,6 @@
+{
+  "summary": "Plan to fix canvas center snap guide lines, remove raw asterisks from bold formatting, and solve text clipping on container resize in CanvaStudioEditor.",
+  "updatedAt": "2026-10-14T01:59:15.612166819Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

@@ -274,7 +274,7 @@ router.get("/api/projects/:id/cost-summary", (req, res) => {
       try {
         const projects = db
           .prepare(
-            "SELECT * FROM projects WHERE archived_at IS NULL AND status != 'PENDING_NTP' ORDER BY due_date ASC",
+            "SELECT * FROM projects WHERE archived_at IS NULL AND status != 'PENDING_NTP' AND id != 'GENERAL' AND UPPER(name) NOT LIKE '%GENERAL PROCUREMENT%' ORDER BY due_date ASC",
           )
           .all() as any[];
 

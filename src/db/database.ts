@@ -159,18 +159,7 @@ export function initDb() {
       );
     `);
 
-    safeExec(db, "ALTER TABLE items ADD COLUMN item_type TEXT DEFAULT 'MATERIAL';");
-    safeExec(db, "ALTER TABLE items ADD COLUMN machine_category TEXT;");
-    safeExec(db, "ALTER TABLE items ADD COLUMN capacity_per_hour REAL;");
-    safeExec(db, "ALTER TABLE items ADD COLUMN machine_status TEXT DEFAULT 'AVAILABLE';");
-    safeExec(db, "ALTER TABLE items ADD COLUMN bypass_multi_station INTEGER DEFAULT 0;");
-    safeExec(db, "ALTER TABLE items ADD COLUMN serial_number TEXT;");
-    safeExec(db, "ALTER TABLE items ADD COLUMN manufacturer TEXT;");
-    safeExec(db, "ALTER TABLE items ADD COLUMN machine_specifications TEXT;");
-    safeExec(db, "ALTER TABLE items ADD COLUMN alternative_machine_ids TEXT DEFAULT '[]';");
-    safeExec(db, "ALTER TABLE items ADD COLUMN operational_status TEXT DEFAULT 'AVAILABLE';");
-    safeExec(db, "ALTER TABLE items ADD COLUMN selling_price REAL;");
-    safeExec(db, "ALTER TABLE items ADD COLUMN barcode TEXT;");
+    // 2. Main Table Creations
 
     safeExec(db, "ALTER TABLE stations ADD COLUMN machine_ids TEXT DEFAULT '[]';");
     safeExec(db, "ALTER TABLE stations ADD COLUMN station_sequence INTEGER DEFAULT 1;");
@@ -636,6 +625,7 @@ CREATE TABLE IF NOT EXISTS items (
         item_type TEXT DEFAULT 'MATERIAL',
         uom TEXT NOT NULL,
         unit_price REAL DEFAULT 0,
+        selling_price REAL DEFAULT 0,
         lead_time_days INTEGER DEFAULT 0,
         category TEXT,
         description TEXT,
@@ -645,10 +635,13 @@ CREATE TABLE IF NOT EXISTS items (
         machine_category TEXT,
         capacity_per_hour REAL,
         operational_status TEXT DEFAULT 'AVAILABLE',
+        machine_status TEXT DEFAULT 'AVAILABLE',
         bypass_multi_station INTEGER DEFAULT 0,
         serial_number TEXT,
         manufacturer TEXT,
         machine_specifications TEXT,
+        alternative_machine_ids TEXT DEFAULT '[]',
+        barcode TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         deleted_at DATETIME
       );
@@ -2835,12 +2828,194 @@ CREATE TABLE IF NOT EXISTS items (
       CREATE INDEX IF NOT EXISTS idx_outbox_aggregate ON outbox_events(aggregate_type, aggregate_id);
     `);
 
+    // Ensure all post-table creation migrations are applied
+    runPostTableMigrations(db);
+
     // Seed master baseline data
     seedMasterBaseline(db);
   })();
 
   // Re-enable foreign keys
   db.pragma("foreign_keys = ON");
+}
+
+// Post-table creation migrations to safely alter columns on existing database instances
+function runPostTableMigrations(targetDb: any = db) {
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN item_type TEXT DEFAULT 'MATERIAL';");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN machine_category TEXT;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN capacity_per_hour REAL;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN machine_status TEXT DEFAULT 'AVAILABLE';");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN bypass_multi_station INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN serial_number TEXT;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN manufacturer TEXT;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN machine_specifications TEXT;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN alternative_machine_ids TEXT DEFAULT '[]';");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN operational_status TEXT DEFAULT 'AVAILABLE';");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN selling_price REAL;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN barcode TEXT;");
+
+  safeExec(targetDb, "ALTER TABLE stations ADD COLUMN machine_ids TEXT DEFAULT '[]';");
+  safeExec(targetDb, "ALTER TABLE stations ADD COLUMN station_sequence INTEGER DEFAULT 1;");
+  safeExec(targetDb, "ALTER TABLE stations ADD COLUMN station_code TEXT;");
+
+  safeExec(targetDb, "ALTER TABLE production_stations ADD COLUMN station_sequence INTEGER DEFAULT 1;");
+  safeExec(targetDb, "ALTER TABLE production_stations ADD COLUMN station_code TEXT;");
+  safeExec(targetDb, "ALTER TABLE production_stations ADD COLUMN station_name TEXT;");
+  safeExec(targetDb, "ALTER TABLE production_stations ADD COLUMN machine_ids TEXT DEFAULT '[]';");
+
+  safeExec(targetDb, "ALTER TABLE project_stations ADD COLUMN station_sequence INTEGER DEFAULT 1;");
+  safeExec(targetDb, "ALTER TABLE project_stations ADD COLUMN station_code TEXT;");
+  safeExec(targetDb, "ALTER TABLE project_stations ADD COLUMN station_name TEXT;");
+  safeExec(targetDb, "ALTER TABLE project_stations ADD COLUMN machine_ids TEXT DEFAULT '[]';");
+
+  safeExec(targetDb, "ALTER TABLE processes ADD COLUMN cycle_time_minutes REAL;");
+  safeExec(targetDb, "ALTER TABLE processes ADD COLUMN assigned_machine_id TEXT;");
+  safeExec(targetDb, "ALTER TABLE processes ADD COLUMN alternative_machine_ids TEXT DEFAULT '[]';");
+  safeExec(targetDb, "ALTER TABLE processes ADD COLUMN setup_time_minutes REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE processes ADD COLUMN teardown_time_minutes REAL DEFAULT 0;");
+
+  safeExec(targetDb, "ALTER TABLE wots ADD COLUMN qr_payload TEXT;");
+  safeExec(targetDb, "ALTER TABLE wots ADD COLUMN qr_image_url TEXT;");
+  safeExec(targetDb, "ALTER TABLE wots ADD COLUMN machine_id TEXT;");
+  safeExec(targetDb, "ALTER TABLE wots ADD COLUMN good_units INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE wots ADD COLUMN reject_units INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE wots ADD COLUMN rework_units INTEGER DEFAULT 0;");
+
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN urgency TEXT DEFAULT 'NORMAL';");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN priority INTEGER DEFAULT 3;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN spk_number TEXT;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN lot_size REAL DEFAULT 1;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN qty REAL DEFAULT 1;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN factory_factor REAL DEFAULT 85;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN bom_status TEXT DEFAULT 'DRAFT';");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN bom_authorized_by TEXT;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN bom_authorized_at DATETIME;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN bom_revision_note TEXT;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN bop_status TEXT DEFAULT 'DRAFT';");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN bop_authorized_by TEXT;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN bop_authorized_at DATETIME;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN bop_revision_note TEXT;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN is_master_set INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE projects ADD COLUMN master_set_at DATETIME;");
+
+  safeExec(targetDb, "ALTER TABLE work_centers ADD COLUMN code TEXT;");
+  safeExec(targetDb, "ALTER TABLE work_centers ADD COLUMN efficiency_index REAL DEFAULT 1.0;");
+  safeExec(targetDb, "ALTER TABLE work_centers ADD COLUMN status TEXT DEFAULT 'ACTIVE';");
+  safeExec(targetDb, "ALTER TABLE work_centers ADD COLUMN wip_limit INTEGER DEFAULT 20;");
+  safeExec(targetDb, "ALTER TABLE work_centers ADD COLUMN current_wip_count INTEGER DEFAULT 0;");
+
+  safeExec(targetDb, "ALTER TABLE lot_routing_executions ADD COLUMN scrap_qty REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE lot_routing_executions ADD COLUMN good_qty REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE lot_routing_executions ADD COLUMN operator_name TEXT;");
+  safeExec(targetDb, "ALTER TABLE lot_routing_executions ADD COLUMN end_time DATETIME;");
+  safeExec(targetDb, "ALTER TABLE lot_routing_executions ADD COLUMN start_time DATETIME;");
+
+  safeExec(targetDb, "ALTER TABLE notice_to_down_processes ADD COLUMN machine_id TEXT;");
+  safeExec(targetDb, "ALTER TABLE notice_to_down_processes ADD COLUMN affected_machine_id TEXT;");
+  safeExec(targetDb, "ALTER TABLE notice_to_down_processes ADD COLUMN ndp_number TEXT;");
+  safeExec(targetDb, "ALTER TABLE notice_to_down_processes ADD COLUMN ndp_code TEXT;");
+  safeExec(targetDb, "ALTER TABLE notice_to_down_processes ADD COLUMN reschedule_required INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE notice_to_down_processes ADD COLUMN estimated_down_hours REAL DEFAULT 48;");
+  safeExec(targetDb, "ALTER TABLE notice_to_down_processes ADD COLUMN down_started_at DATETIME;");
+
+  safeExec(targetDb, "ALTER TABLE ndps ADD COLUMN project_id TEXT;");
+  safeExec(targetDb, "ALTER TABLE ndps ADD COLUMN reschedule_required INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE ndps ADD COLUMN affected_machine_id TEXT;");
+  safeExec(targetDb, "ALTER TABLE ndps ADD COLUMN machine_id TEXT;");
+  safeExec(targetDb, "ALTER TABLE ndps ADD COLUMN estimated_down_hours REAL DEFAULT 48;");
+  safeExec(targetDb, "ALTER TABLE ndps ADD COLUMN down_started_at DATETIME;");
+
+  safeExec(targetDb, "ALTER TABLE delivery_notes ADD COLUMN delivery_date TEXT;");
+  safeExec(targetDb, "ALTER TABLE delivery_notes ADD COLUMN quotation_id TEXT;");
+  safeExec(targetDb, "ALTER TABLE delivery_notes ADD COLUMN vehicle_plate TEXT;");
+  safeExec(targetDb, "ALTER TABLE delivery_notes ADD COLUMN driver_name TEXT;");
+
+  safeExec(targetDb, "ALTER TABLE delivery_items ADD COLUMN delivery_id TEXT;");
+  safeExec(targetDb, "ALTER TABLE delivery_items ADD COLUMN item_code TEXT;");
+  safeExec(targetDb, "ALTER TABLE delivery_items ADD COLUMN item_name TEXT;");
+  safeExec(targetDb, "ALTER TABLE delivery_items ADD COLUMN qty_delivered REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE inventory ADD COLUMN min_stock REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE inventory ADD COLUMN max_stock REAL DEFAULT 0;");
+
+  safeExec(targetDb, "ALTER TABLE notice_to_down_processes ADD COLUMN description TEXT;");
+  safeExec(targetDb, "ALTER TABLE notice_to_down_processes ADD COLUMN photo_urls TEXT;");
+  safeExec(targetDb, "ALTER TABLE ndps ADD COLUMN bop_id TEXT;");
+  safeExec(targetDb, "ALTER TABLE ndps ADD COLUMN station_id TEXT;");
+
+  safeExec(targetDb, "ALTER TABLE material_dispatches ADD COLUMN station_id TEXT;");
+
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN request_date TEXT;");
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN requested_by TEXT;");
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN notes TEXT;");
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN cancelled_at DATETIME;");
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN archived INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN urgency TEXT DEFAULT 'NORMAL';");
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN category TEXT DEFAULT 'PROJECT';");
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN archived_at DATETIME;");
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN revision_note TEXT;");
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN remarks TEXT;");
+  safeExec(targetDb, "ALTER TABLE purchase_requests ADD COLUMN escalated_to TEXT;");
+
+  safeExec(targetDb, "ALTER TABLE users ADD COLUMN is_approved INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE users ADD COLUMN level TEXT DEFAULT 'STAFF';");
+  safeExec(targetDb, "ALTER TABLE users ADD COLUMN last_seen_at TEXT;");
+  safeExec(targetDb, "ALTER TABLE users ADD COLUMN device_type TEXT DEFAULT 'Desktop';");
+  safeExec(targetDb, "ALTER TABLE hr_applications ADD COLUMN archived_at DATETIME;");
+  safeExec(targetDb, "ALTER TABLE hr_jobs ADD COLUMN archived_at DATETIME;");
+  safeExec(targetDb, "ALTER TABLE customers ADD COLUMN archived_at DATETIME;");
+  safeExec(targetDb, "ALTER TABLE customers ADD COLUMN contact_person TEXT;");
+  safeExec(targetDb, "ALTER TABLE customers ADD COLUMN npwp TEXT;");
+  safeExec(targetDb, "ALTER TABLE suppliers ADD COLUMN npwp TEXT;");
+  safeExec(targetDb, "ALTER TABLE suppliers ADD COLUMN tax_scheme TEXT DEFAULT 'DPP_NILAI_LAIN';");
+  safeExec(targetDb, "ALTER TABLE suppliers ADD COLUMN payment_terms TEXT DEFAULT 'Net 30 Days';");
+  safeExec(targetDb, "ALTER TABLE quotations ADD COLUMN archived_at DATETIME;");
+  safeExec(targetDb, "ALTER TABLE quotations ADD COLUMN payment_terms TEXT;");
+  safeExec(targetDb, "ALTER TABLE quotations ADD COLUMN payment_method TEXT;");
+  safeExec(targetDb, "ALTER TABLE quotations ADD COLUMN tax_scheme TEXT DEFAULT 'DPP_NILAI_LAIN';");
+  safeExec(targetDb, "ALTER TABLE quotations ADD COLUMN dpp_nilai_lain REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE purchase_orders ADD COLUMN tax_scheme TEXT DEFAULT 'DPP_NILAI_LAIN';");
+  safeExec(targetDb, "ALTER TABLE purchase_orders ADD COLUMN dpp_nilai_lain REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE purchase_orders ADD COLUMN payment_terms TEXT DEFAULT 'Net 30 Days';");
+  safeExec(targetDb, "ALTER TABLE purchase_orders ADD COLUMN supplier_npwp TEXT;");
+  safeExec(targetDb, "ALTER TABLE purchase_orders ADD COLUMN rounding_factor REAL DEFAULT 0;");
+
+  safeExec(targetDb, "ALTER TABLE sales_order_items ADD COLUMN quantity REAL DEFAULT 1;");
+  safeExec(targetDb, "ALTER TABLE sales_order_items ADD COLUMN qty REAL DEFAULT 1;");
+
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN item_type TEXT DEFAULT 'MATERIAL';");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN machine_category TEXT;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN capacity_per_hour REAL;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN machine_status TEXT DEFAULT 'AVAILABLE';");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN bypass_multi_station INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN serial_number TEXT;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN manufacturer TEXT;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN machine_specifications TEXT;");
+
+  safeExec(targetDb, "ALTER TABLE production_stations ADD COLUMN machine_ids TEXT DEFAULT '[]';");
+  safeExec(targetDb, "ALTER TABLE bill_of_processes ADD COLUMN cycle_time_minutes REAL;");
+  safeExec(targetDb, "ALTER TABLE bill_of_processes ADD COLUMN manpower_allocated REAL DEFAULT 1;");
+  safeExec(targetDb, "ALTER TABLE bill_of_processes ADD COLUMN assigned_machine_id TEXT REFERENCES items(id);");
+  safeExec(targetDb, "ALTER TABLE bill_of_processes ADD COLUMN alternative_machine_ids TEXT DEFAULT '[]';");
+  safeExec(targetDb, "ALTER TABLE bill_of_processes ADD COLUMN setup_time_minutes REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE bill_of_processes ADD COLUMN teardown_time_minutes REAL DEFAULT 0;");
+
+  safeExec(targetDb, "ALTER TABLE work_order_tickets ADD COLUMN qr_payload TEXT;");
+  safeExec(targetDb, "ALTER TABLE work_order_tickets ADD COLUMN qr_image_url TEXT;");
+  safeExec(targetDb, "ALTER TABLE work_order_tickets ADD COLUMN machine_id TEXT REFERENCES items(id);");
+  safeExec(targetDb, "ALTER TABLE work_order_tickets ADD COLUMN good_units INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE work_order_tickets ADD COLUMN reject_units INTEGER DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE work_order_tickets ADD COLUMN rework_units INTEGER DEFAULT 0;");
+
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN category TEXT;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN description TEXT;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN min_stock REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN max_stock REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN stock_quantity REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE items ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP;");
+
+  safeExec(targetDb, "ALTER TABLE inventory ADD COLUMN physical_qty REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE inventory ADD COLUMN reserved_qty REAL DEFAULT 0;");
+  safeExec(targetDb, "ALTER TABLE inventory ADD COLUMN available_qty REAL DEFAULT 0;");
 }
 
 // Master Baseline Data Seeding - Guaranteed for both Initial Setup and Virgin State Factory Reset
