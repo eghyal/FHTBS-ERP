@@ -1,71 +1,101 @@
-# Rencana Perbaikan Studio Dokumen: Alignment Canvas Center Line, Pembersihan Bold Asterisks, & Auto-Height Container Resize
+# Rencana Implementasi: Stabilisasi Keamanan & Integritas Workflow Document Workshop Studio (Fase 0)
 
-Rencana implementasi ini mengatasi 3 masalah spesifik yang dilaporkan pengguna pada **Document Workshop Studio (CanvaStudioEditor)**.
+Rencana ini mengeksekusi perbaikan prioritas kritis (P0 & P1) dari Laporan Audit Komprehensif Document Workshop Studio: menutup bypass status approval, menegakkan RBAC dan validasi departemen, mengamankan identitas user via sesi JWT, menerapkan atomisitas submit approval, memperbaiki penomoran dokumen, mengunci dokumen berstatus `APPROVED` (immutable), serta menetapkan role resmi `FINANCE`.
 
 ---
 
-## Keputusan Pengguna & Hasil Klarifikasi
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> Hasil keputusan yang telah dikonfirmasi pengguna:
+> Berdasarkan sesi klarifikasi, berikut keputusan kunci yang telah disepakati dan menjadi landasan arsitektur Fase 0:
 
-1. **Garis Pandu Center Canvas**: Tampilkan garis bantu tegak lurus tegas (*Center Line*) ketika titik tengah blok (*Center X / Center Y*) tepat presisi sejajar dengan titik tengah kertas/kanvas.
-2. **Pembersihan Simbol Bold Asterisks (`**`)**: Hapus semua karakter `**` dari isi teks/paragraf. Bolding dilakukan sepenuhnya melalui properti CSS `isBold` / `font-bold` tanpa menyisipkan karakter `**` ke dalam string teks.
-3. **Perbaikan Resize Container Terpotong**: Mengubah perilaku `InlineTextarea` dan area teks di dalam blok agar fleksibel mengisi `100%` tinggi container yang di-resize tanpa terpotong (*no vertical text clipping*).
-
----
-
-## 1. Rincian Perbaikan
-
-### A. Alignment Guide Lines (Center Canvas Snap)
-- **Logika Snap**: Saat pengguna menyeret (*drag*) blok dengan kursor atau tombol *Geser*:
-  - **Sumbu Horizontal (X)**: Hitung `candidateCenterX = naturalLeft + newX + blockW / 2`. Jika selisihnya `Math.abs(candidateCenterX - sheetCenterX) <= 8px`, kunci `newX` tepat di tengah kanvas (`sheetCenterX`) dan tampilkan **Garis Pandu Merah/Biru Vertikal** melintasi tinggi kertas dari atas ke bawah.
-  - **Sumbu Vertikal (Y)**: Hitung `candidateCenterY = naturalTop + newY + blockH / 2`. Jika selisihnya `Math.abs(candidateCenterY - sheetCenterY) <= 8px`, kunci `newY` tepat di tengah kanvas (`sheetCenterY`) dan tampilkan **Garis Pandu Merah/Biru Horizontal** melintasi lebar kertas dari kiri ke kanan.
-- **Tampilan Visual**: Garis tegas `bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.8)]` dengan badge label `Rata Tengah Kertas (X: 400px)` & `Rata Tengah Kertas (Y: 565px)`.
-
-### B. Bolding Tanpa Karakter Asterisks (`**`)
-- **Pembersihan Otomatis (Sanitization)**: Tambahkan fungsi pembersih `stripBoldAsterisks(text)` pada state loader & handler edit untuk menghapus simbol `**` yang terlanjur tersimpan di konten.
-- **Fix Floating Toolbar**: Pada `FloatingTextToolbar`, ubah tombol **Bold** agar tidak lagi memanggil `onWrapText("**", "**")`, melainkan secara langsung mengubah status `isBold` pada `DocBlock`.
-- **Styling Input**: `InlineInput` dan `InlineTextarea` akan merender `fontWeight: block.isBold ? 700 : undefined` / class `font-bold` sehingga teks tampak tebal secara visual tanpa ada karakter asterisks.
-
-### C. Perbaikan Text Container Resize (No Text Clipping)
-- **Penyesuaian InlineTextarea**: Set `h-full min-h-full flex-1` pada `InlineTextarea` ketika `block.height` diatur oleh pengguna.
-- **Auto Auto-Height Adjust**: Mencegah properti `overflow: hidden` atau `rows={1}` memotong baris teks di bagian bawah container. Teks akan mengisi ruang container secara proporsional.
+- **Confirmed Decision 1 (Fokus Prioritas)**: Menyelesaikan seluruh perbaikan keamanan dan integritas workflow **Fase 0** terlebih dahulu sebelum melangkah ke integrasi engine dokumen eksternal.
+- **Confirmed Decision 2 (Kebijakan Dokumen Approved)**: Dokumen berstatus `APPROVED` dikunci secara permanen (immutable). Perubahan konten setelah disahkan wajib melalui pembuatan versi revisi/dokumen baru.
+- **Confirmed Decision 3 (Role Resmi Departemen Finance)**: Menambahkan `FINANCE` sebagai role RBAC resmi tersendiri di dalam sistem ERP, memisahkannya dari role `SALES`.
 
 ---
 
-## 2. Diagram Arsitektur Interaksi
+## 1. Overview & Core Concept
+
+- **What It Does**: Memperkuat backend dan alur interaksi frontend Document Workspace Studio sehingga seluruh proses pembuatan dokumen, penyimpanan draf, pengajuan otorisasi (submit), persetujuan (approve), dan permintaan revisi berjalan aman, atomik, dan patuh terhadap aturan Role-Based Access Control (RBAC).
+- **Target Audience / Persona**:
+  - *Pembuat Dokumen (Authors)*: Pengguna dari seluruh divisi operasional (Purchasing, HR, Production, Warehouse, Engineering, Finance, Sales).
+  - *Pejabat Berwenang (Department Approvers & Factory Controller)*: Approver yang memverifikasi dan menandatangani dokumen sesuai kewenangan departemen.
+- **Key Value**: Menjamin dokumen bisnis dan surat perintah kerja memiliki kepastian hukum, tidak dapat dimanipulasi statusnya oleh pihak tak berwenang, serta memiliki audit trail yang valid dan terpercaya.
+
+---
+
+## 2. User Experience & Visual Design
+
+- **State Guards & Read-Only Locks**:
+  - Pada dokumen berstatus `APPROVED`, editor kanvas dan form properties dinonaktifkan (`isEditable = false`), badge tanda tangan menampilkan stempel hijau "APPROVED" yang sah, dan tombol edit diubah menjadi opsi *"Buat Versi Baru / Klon Dokumen"*.
+  - Pada status `PENDING_APPROVAL`, dokumen dikunci dari pengeditan langsung oleh pembuat untuk menjaga integritas substansi yang sedang ditinjau.
+- **Feedback & Error Transparency**:
+  - Submit approval berjalan dalam satu langkah atomik dengan indikator pemrosesan; jika terjadi penolakan atau validasi gagal, UI menampilkan pesan error spesifik (HTTP 400), bukan error generik 500.
+- **Badge & Tampilan Role Finance**:
+  - Menghadirkan badge dan filter departemen `FINANCE` tersendiri dengan aksen emerald (`bg-emerald-50 border-emerald-200 text-emerald-800`), sejajar dengan 7 departemen ERP lainnya.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Penghapusan `status` dari Whitelist Update Umum (`PUT`)**
+  - *Chosen Approach*: Status dokumen hanya dapat berubah melalui endpoint transisi state machine (`/submit`, `/approve`, `/revise`). Payload pada endpoint update umum dilarang memuat perubahan field `status`.
+  - *Why*: Menghilangkan celah bypass P0-01 di mana client sembarang dapat mengirimkan `{"status": "APPROVED"}`.
+- **Decision 2: Penegakan Otorisasi Approver Berbasis Sesi JWT**
+  - *Chosen Approach*: Mengabaikan header `x-user-username` dan `x-user-name` yang tidak terpercaya; backend memvalidasi identitas approver langsung dari `req.user` (JWT session) dan memverifikasi fungsi `canUserApproveDepartment(userRole, doc.authorization_department)`.
+  - *Why*: Menutup celah P0-02 dan P0-03 sehingga user dari departemen lain (misal Sales) tidak dapat menyetujui dokumen Purchasing/Finance.
+- **Decision 3: Penomoran Dokumen Berbasis Sequence Atomik**
+  - *Chosen Approach*: Menggantikan kalkulasi `COUNT(*) + 1` dengan tabel sequence (`document_sequences`) yang di-increment secara atomik dalam transaksi pembuatan dokumen.
+  - *Why*: Menutup celah P0-05 yang menyebabkan tabrakan nomor unik (unique constraint violation) jika ada dokumen terdahulu yang dihapus.
+- **Decision 4: State Immutability untuk Dokumen `APPROVED`**
+  - *Chosen Approach*: Menolak mutasi `PUT` atau `DELETE` pada dokumen `APPROVED`. Menambahkan tombol *"Klon sebagai Revisi Baru"* di UI jika ada kebutuhan modifikasi dokumen setelah disahkan.
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+### System Workflow & RBAC State Machine
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          CanvaStudioEditor Canvas                           │
-│                                                                             │
-│  Sheet Center X (400px)                    Sheet Center Y (565px)           │
-│         │                                         │                         │
-│  ───────┼─────────────────────────────────────────┼─────── Guide Lines     │
-│         │  ┌───────────────────────────────────┐  │                         │
-│         │  │ Block Wrapper (Resized Container) │  │                         │
-│         └──┼───► Clean Bold Text (No **)       │──┼───                      │
-│            │     InlineTextarea (100% Height)  │                            │
-│            └───────────────────────────────────┘                            │
-└─────────────────────────────────────────────────────────────────────────────┘
+   ┌──────────────────────────────────────────────────────────────┐
+   │                     DRAFT (Editable by Author)               │
+   └──────────────────────────────┬───────────────────────────────┘
+                                  │ POST /submit (Atomic)
+                                  ▼
+   ┌──────────────────────────────────────────────────────────────┐
+   │               PENDING_APPROVAL (Locked for Review)           │
+   └───────────────┬──────────────────────────────┬───────────────┘
+                   │                              │
+  POST /approve    │                              │ POST /revise
+  (Dept Role / FC) │                              │ (Requires Note)
+                   ▼                              ▼
+┌─────────────────────────────────┐   ┌───────────────────────────┐
+│       APPROVED (Immutable)      │   │     REVISION_REQUIRED     │
+│  - Locked permanently           │   │  - Unlocks Draft Editor   │
+│  - Clone for new version        │   │  - Author addresses note  │
+└─────────────────────────────────┘   └─────────────┬─────────────┘
+                                                    │ Resubmit
+                                                    └─────────► [PENDING_APPROVAL]
 ```
 
----
+### Backend & Data Schema Hardening
 
-## 3. Langkah-Langkah Implementasi
-
-1. **Sanitasi String & Pembersihan Asterisks (`CanvaStudioEditor.tsx`)**:
-   - Buat helper `cleanBoldMarkdown(str: string): string` yang menghapus karakter `**` pada awal/akhir teks.
-   - Perbarui state loader dan event handler `onWrapText` agar tidak menyisipkan `**`.
-
-2. **Perbaikan Snap Center Guide Line (`CanvaStudioEditor.tsx`)**:
-   - Perbaiki perhitungan `sheetCenterX` dan `sheetCenterY` pada `handleMouseMove` saat dragging.
-   - Tampilkan garis pandu vertikal dan horizontal dengan warna kontras kontemporer (`rose-500` / `blue-500`) dan badge koordinat.
-
-3. **Perbaikan Container Height pada InlineTextarea (`CanvaStudioEditor.tsx`)**:
-   - Sesuaikan `InlineTextarea` agar mengambil tinggi container `h-full flex-1` jika `block.height` atau `minHeight` diatur.
-   - Hapus pembatas overflow yang memotong bagian bawah teks.
-
-4. **Verifikasi & Pengujian Build**:
-   - Jalankan `compile_applet` dan `lint_applet` untuk memastikan tidak ada eror syntax/TypeScript.
+1. **Tabel Sequence Dokumen (`document_sequences`)**:
+   ```sql
+   CREATE TABLE IF NOT EXISTS document_sequences (
+     scope TEXT PRIMARY KEY,
+     next_val INTEGER NOT NULL DEFAULT 1,
+     updated_at TEXT NOT NULL
+   );
+   ```
+2. **Schema Validator & Request Sanitizer (Zod)**:
+   - Validasi payload `title`, `content` (`DocBlock[]`), `document_type`, dan `layout_preset`.
+   - Mengembalikan HTTP 400 dengan rincian `fieldErrors` jika payload tidak valid.
+3. **Penyelarasan RBAC Role Finance**:
+   - Update `src/constants/rbac.ts` untuk menyertakan `FINANCE` dalam `ERPDepartmentRole` dan `ERP_DEPARTMENT_OPTIONS`.
+   - Update `normalizeDepartmentToRole` agar mengenali keyword `FINANCE`, `ACCOUNTING`, `KEUANGAN` sebagai role `FINANCE`.
+   - Update `DEPARTMENT_ROUTING_CONFIG` di `CanvaStudioEditor.tsx` agar mengarahkan blok tanda tangan Finance ke role `FINANCE`.
+4. **Endpoint Transaksional Baru**:
+   - `POST /api/workspace-documents/:id/submit`: Menyimpan content terakhir dan mengubah status ke `PENDING_APPROVAL` dalam satu transaksi database.
+   - `POST /api/workspace-documents/:id/clone`: Membuat draf baru dari dokumen yang sudah disetujui untuk siklus revisi formal.

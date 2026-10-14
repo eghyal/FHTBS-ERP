@@ -29,6 +29,8 @@ import {
   FilePlus2,
   ChevronRight,
   Inbox,
+  Copy,
+  Lock,
 } from "lucide-react";
 import {
   CanvaStudioEditor,
@@ -338,6 +340,7 @@ export function DocumentWorkspace() {
   const [studioInitialAuthName, setStudioInitialAuthName] = useState("");
   const [studioInitialBlocks, setStudioInitialBlocks] = useState<DocBlock[]>([]);
   const [studioInitialLayoutPreset, setStudioInitialLayoutPreset] = useState<LayoutPreset>("A4_PORTRAIT");
+  const [studioInitialStatus, setStudioInitialStatus] = useState<string>("DRAFT");
   const [isSaving, setIsSaving] = useState(false);
 
   // Preview & Authorization Action Modal States
@@ -492,6 +495,7 @@ export function DocumentWorkspace() {
       ]);
       setStudioInitialLayoutPreset("A4_PORTRAIT");
     }
+    setStudioInitialStatus("DRAFT");
     setIsStudioOpen(true);
   };
 
@@ -506,6 +510,7 @@ export function DocumentWorkspace() {
     setStudioInitialAuthName(doc.authorization_user_name || "");
     setStudioInitialBlocks(doc.content || []);
     setStudioInitialLayoutPreset(doc.layout_preset || "A4_PORTRAIT");
+    setStudioInitialStatus(doc.status);
     setIsStudioOpen(true);
   };
 
@@ -536,31 +541,45 @@ export function DocumentWorkspace() {
         authorization_role: docData.authorization_role,
         authorization_department: docData.authorization_department,
         authorization_user_name: docData.authorization_user_name,
-        status: docData.submitForApproval ? "PENDING_APPROVAL" : editingDocId ? undefined : "DRAFT",
       };
 
       let res;
       if (editingDocId) {
-        res = await apiFetch(`/api/workspace-documents/${editingDocId}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        }, user?.username);
-
-        if (res.ok && docData.submitForApproval) {
-          await apiFetch(`/api/workspace-documents/${editingDocId}/submit-approval`, {
+        if (docData.submitForApproval) {
+          // P0-04 Atomic Submit Endpoint
+          res = await apiFetch(`/api/workspace-documents/${editingDocId}/submit`, {
             method: "POST",
+            body: JSON.stringify(payload),
+          }, user?.username);
+        } else {
+          // Normal Draft Update
+          res = await apiFetch(`/api/workspace-documents/${editingDocId}`, {
+            method: "PUT",
+            body: JSON.stringify(payload),
           }, user?.username);
         }
       } else {
+        // Create New Document
         res = await apiFetch("/api/workspace-documents", {
           method: "POST",
           body: JSON.stringify(payload),
         }, user?.username);
 
         if (res.ok && res.data?.id && docData.submitForApproval) {
-          await apiFetch(`/api/workspace-documents/${res.data.id}/submit-approval`, {
+          // Atomically transition newly created document to PENDING_APPROVAL
+          const submitRes = await apiFetch(`/api/workspace-documents/${res.data.id}/submit`, {
             method: "POST",
+            body: JSON.stringify(payload),
           }, user?.username);
+
+          if (!submitRes.ok) {
+            showToast(
+              submitRes.error || (isId ? "Dokumen tersimpan namun gagal diajukan untuk otorisasi." : "Document saved but submission failed."),
+              "error"
+            );
+            fetchDocs();
+            return;
+          }
         }
       }
 
@@ -568,7 +587,7 @@ export function DocumentWorkspace() {
         showToast(
           docData.submitForApproval
             ? isId
-              ? `Dokumen berhasil diteruskan ke Departemen ${docData.authorization_department} untuk diotorisasi!`
+              ? `Dokumen berhasil diajukan dan diteruskan ke ${docData.authorization_department} untuk otorisasi!`
               : `Document submitted to ${docData.authorization_department} department for authorization!`
             : isId
             ? "Dokumen berhasil disimpan sebagai draft."
@@ -657,6 +676,33 @@ export function DocumentWorkspace() {
     }
   };
 
+  // Clone Document (P0-07 Immutability workflow: clone approved doc to start a new revision draft)
+  const handleCloneDocument = async (doc: WorkspaceDocument) => {
+    try {
+      const res = await apiFetch(`/api/workspace-documents/${doc.id}/clone`, {
+        method: "POST",
+      }, user?.username);
+
+      if (res.ok && res.data?.id) {
+        showToast(
+          isId
+            ? `Dokumen berhasil disalin sebagai draf baru (${res.data.document_code}).`
+            : `Document cloned as new draft (${res.data.document_code}).`,
+          "success"
+        );
+        fetchDocs();
+        const fullDocRes = await apiFetch(`/api/workspace-documents/${res.data.id}`, {}, user?.username);
+        if (fullDocRes.ok && fullDocRes.data) {
+          handleEditExistingDoc(fullDocRes.data);
+        }
+      } else {
+        showToast(res.error || "Gagal menduplikasi dokumen", "error");
+      }
+    } catch (err) {
+      showToast("Gagal menduplikasi dokumen", "error");
+    }
+  };
+
   /* ============================ RENDER ============================ */
 
   const renderStatusBadge = (status: string) => {
@@ -669,6 +715,7 @@ export function DocumentWorkspace() {
   };
 
   const renderDocActions = (doc: WorkspaceDocument, compact?: boolean) => {
+    const isApproved = doc.status === "APPROVED";
     const canDelete =
       (doc.status === "DRAFT" || doc.status === "REVISION_REQUIRED") &&
       doc.created_by_username === user?.username;
@@ -685,17 +732,33 @@ export function DocumentWorkspace() {
           <Eye className="w-3.5 h-3.5 text-stone-500" />
           {!compact && <span>{isId ? "Pratinjau" : "Preview"}</span>}
         </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleEditExistingDoc(doc);
-          }}
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10.5px] font-bold bg-stone-900 border border-stone-900 text-white hover:bg-stone-800 cursor-pointer transition-colors"
-          title={isId ? "Buka di Studio Editor" : "Open in Studio Editor"}
-        >
-          <PenTool className="w-3.5 h-3.5 text-amber-300" />
-          {!compact && <span>{isId ? "Edit" : "Edit"}</span>}
-        </button>
+
+        {isApproved ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCloneDocument(doc);
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10.5px] font-bold bg-stone-900 border border-stone-900 text-amber-400 hover:bg-black cursor-pointer transition-colors"
+            title={isId ? "Klon & Buat Versi Revisi Baru" : "Clone & Create New Revision"}
+          >
+            <Copy className="w-3.5 h-3.5" />
+            {!compact && <span>{isId ? "Klon Revisi" : "Clone Revision"}</span>}
+          </button>
+        ) : (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEditExistingDoc(doc);
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10.5px] font-bold bg-stone-900 border border-stone-900 text-white hover:bg-stone-800 cursor-pointer transition-colors"
+            title={isId ? "Buka di Studio Editor" : "Open in Studio Editor"}
+          >
+            <PenTool className="w-3.5 h-3.5 text-amber-300" />
+            {!compact && <span>{isId ? "Edit" : "Edit"}</span>}
+          </button>
+        )}
+
         {canDelete && (
           <button
             onClick={(e) => {
@@ -719,11 +782,11 @@ export function DocumentWorkspace() {
         title={isId ? "Studio Dokumen Workspace" : "Document Workspace Studio"}
         subtitle={
           isId
-            ? "Susun dokumen resmi dengan editor visual bergaya Canva: blok teks, alamat, dan kolom TTD yang otomatis mengarahkan otorisasi ke departemen tujuan."
-            : "Compose official documents with a Canva-style visual editor: text blocks, address templates, and auto-routing signature columns."
+            ? "Editor visual dokumen resmi ERP."
+            : "Official ERP document editor."
         }
-        icon={<FileText className="w-5 h-5 text-stone-900" />}
-        iconBgClassName="bg-stone-100 border border-stone-200/80 text-stone-900"
+        icon={<FileText className="w-5 h-5 text-amber-700" />}
+        iconBgClassName="bg-amber-50 border border-amber-200/80 text-amber-700 shadow-2xs"
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -1172,6 +1235,14 @@ export function DocumentWorkspace() {
           initialAuthName={studioInitialAuthName}
           initialBlocks={studioInitialBlocks}
           initialLayoutPreset={studioInitialLayoutPreset}
+          initialStatus={studioInitialStatus}
+          onClone={() => {
+            const currentDoc = docs.find((d) => d.id === editingDocId);
+            if (currentDoc) {
+              setIsStudioOpen(false);
+              handleCloneDocument(currentDoc);
+            }
+          }}
           onSave={handleSaveFromStudio}
           onClose={() => setIsStudioOpen(false)}
           isSaving={isSaving}
@@ -1454,6 +1525,42 @@ export function DocumentWorkspace() {
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl px-5 py-2 shadow-2xs"
                   >
                     {isId ? "Setujui & Otorisasi Dokumen" : "Approve & Authorize"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Approved Document Immutability Banner & Clone Action (P0-07) */}
+            {previewDoc.status === "APPROVED" && (
+              <div className="p-4 bg-stone-900 text-white rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <div className="text-xs font-black text-amber-400 flex items-center gap-1.5">
+                    <Lock className="w-4 h-4" />
+                    <span>
+                      {isId
+                        ? "Dokumen Resmi Telah Diotorisasi (Terkunci Permanen)"
+                        : "Official Document Approved (Permanently Locked)"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-300">
+                    {isId
+                      ? "Dokumen ini sah dan immutable. Untuk melakukan perubahan, salin menjadi draf revisi baru."
+                      : "This document is legally binding and immutable. To make changes, clone into a new revision draft."}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    onClick={() => {
+                      const docToClone = previewDoc;
+                      setPreviewDoc(null);
+                      handleCloneDocument(docToClone);
+                    }}
+                    variant="primary"
+                    className="bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs rounded-xl px-4 py-2 shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{isId ? "Klon & Buat Versi Revisi Baru" : "Clone for New Revision"}</span>
                   </Button>
                 </div>
               </div>

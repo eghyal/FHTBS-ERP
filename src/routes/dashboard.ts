@@ -152,6 +152,7 @@ export const router = Router();
         "PRODUCTION",
         "WAREHOUSE",
         "SALES",
+        "FINANCE",
       ]),
       (req, res) => {
         try {

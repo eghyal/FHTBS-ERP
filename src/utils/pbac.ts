@@ -48,6 +48,13 @@ export const Action = {
   VIEW_FINANCE: "VIEW_FINANCE",
   MANAGE_FINANCE: "MANAGE_FINANCE",
   CREATE_QUOTATION: "CREATE_QUOTATION",
+
+  // Finance & Accounting Granular Actions
+  POST_JOURNAL: "POST_JOURNAL",
+  AUTH_PAYROLL: "AUTH_PAYROLL",
+  AUTH_EXPENSE: "AUTH_EXPENSE",
+  MANAGE_PAYABLES: "MANAGE_PAYABLES",
+  CLOSE_PERIOD: "CLOSE_PERIOD",
 } as const;
 
 export type Action = keyof typeof Action;
@@ -117,6 +124,18 @@ export function getRolePolicies(): Record<Role, Action[]> {
       Action.MANAGE_INVOICES,
       Action.VIEW_MASTER_DATA,
     ],
+    FINANCE: [
+      Action.VIEW_FINANCE,
+      Action.VIEW_INVOICES,
+      Action.VIEW_MASTER_DATA,
+      Action.POST_JOURNAL,
+      Action.MANAGE_FINANCE,
+      Action.MANAGE_INVOICES,
+      Action.MANAGE_PAYABLES,
+      Action.AUTH_PAYROLL,
+      Action.AUTH_EXPENSE,
+      Action.CLOSE_PERIOD,
+    ],
     HR: [Action.VIEW_MASTER_DATA],
   };
 }
@@ -139,6 +158,11 @@ export const ACTIONS_REQUIRING_MANAGER: Action[] = [
   Action.MANAGE_PRODUCTION_CONFIG,
   Action.MANAGE_BOM,
   Action.SALES_ACTION,
+  Action.MANAGE_FINANCE,
+  Action.MANAGE_PAYABLES,
+  Action.AUTH_PAYROLL,
+  Action.AUTH_EXPENSE,
+  Action.CLOSE_PERIOD,
 ];
 
 export function hasPermission(

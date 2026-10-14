@@ -42,6 +42,7 @@ export type AuthorizationRole =
   | "WAREHOUSE"
   | "PRODUCTION"
   | "SALES"
+  | "FINANCE"
   | "PURCHASING_MANAGER"
   | "FINANCE_HEAD"
   | "PRODUCTION_MANAGER"

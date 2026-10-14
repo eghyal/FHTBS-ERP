@@ -347,6 +347,7 @@ export default function ManageAccounts() {
                               <option value="WAREHOUSE">Warehouse</option>
                               <option value="PRODUCTION">Production</option>
                               <option value="SALES">Sales</option>
+                              <option value="FINANCE">Finance & Accounting</option>
                             </Select>
 
                             {editRole !== "FC" && (

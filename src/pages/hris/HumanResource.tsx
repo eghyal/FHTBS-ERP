@@ -2312,6 +2312,7 @@ export default function HumanResource() {
                                 "PURCHASING",
                                 "WAREHOUSE",
                                 "SALES",
+                                "FINANCE",
                                 "HR",
                               ].map((dept) => (
                                 <button

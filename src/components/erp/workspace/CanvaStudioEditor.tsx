@@ -81,6 +81,8 @@ interface CanvaStudioEditorProps {
   initialAuthName?: string;
   initialBlocks: DocBlock[];
   initialLayoutPreset: LayoutPreset;
+  initialStatus?: string;
+  onClone?: () => void;
   onSave: (
     docData: {
       title: string;
@@ -185,14 +187,14 @@ export const DEPARTMENT_ROUTING_CONFIG: Record<
     descriptionEn: "This document routes to Sales Department for commercial commitment.",
   },
   FINANCE: {
-    role: "SALES",
-    deptNameId: "Sales",
-    deptNameEn: "Sales",
-    signatoryTitleId: "Sales & Finance Head",
-    signatoryTitleEn: "Sales & Finance Head",
-    badgeColor: "bg-stone-100 border-stone-200 text-stone-900 font-bold",
-    descriptionId: "Dokumen ini diteruskan ke Sales untuk otorisasi.",
-    descriptionEn: "This document routes to Sales for authorization.",
+    role: "FINANCE",
+    deptNameId: "Finance & Accounting",
+    deptNameEn: "Finance & Accounting",
+    signatoryTitleId: "Head of Finance & Accounting",
+    signatoryTitleEn: "Head of Finance & Accounting",
+    badgeColor: "bg-teal-50 border-teal-200 text-teal-800 font-bold",
+    descriptionId: "Dokumen ini diteruskan ke Departemen Finance & Accounting untuk otorisasi anggaran.",
+    descriptionEn: "This document routes to Finance & Accounting Department for authorization.",
   },
   FACTORY_CONTROLLER: {
     role: "FC",
@@ -740,12 +742,26 @@ function InlineTextarea({ value, onChange, className, placeholder, editable, sty
 
   useEffect(() => {
     const el = ref.current;
-    if (el) {
+    if (!el) return;
+
+    const adjustHeight = () => {
       el.style.height = "auto";
       const parentH = el.parentElement?.clientHeight || 0;
       el.style.height = `${Math.max(el.scrollHeight + 2, parentH)}px`;
-    }
-  }, [cleanVal, editable]);
+    };
+
+    adjustHeight();
+
+    const parent = el.parentElement;
+    if (!parent || typeof ResizeObserver === "undefined") return;
+
+    const ro = new ResizeObserver(() => {
+      adjustHeight();
+    });
+    ro.observe(parent);
+
+    return () => ro.disconnect();
+  }, [cleanVal, editable, style]);
 
   if (!editable) {
     return (
@@ -1966,6 +1982,8 @@ export function CanvaStudioEditor({
   initialAuthName = "",
   initialBlocks,
   initialLayoutPreset = "A4_PORTRAIT",
+  initialStatus,
+  onClone,
   onSave,
   onClose,
   isSaving,
@@ -2382,19 +2400,19 @@ export function CanvaStudioEditor({
         const sheetCenterX = sheetWidth / 2;
         const sheetCenterY = sheetHeight / 2;
 
-        // 1. Center Horizontal with Sheet
+        // 1. Center Horizontal with Sheet (Garis Tengah Canvas)
         if (Math.abs(candidateCenterX - sheetCenterX) <= SNAP_THRESHOLD) {
           newX = Math.round(sheetCenterX - naturalLeft - blockW / 2);
-          snappedVertical = { x: sheetCenterX, label: isId ? "Rata Tengah Kanvas (X)" : "Center Canvas (X)" };
-        } else if (Math.abs(newX) <= 6) {
+          snappedVertical = { x: sheetCenterX, label: isId ? "Garis Tengah Canvas" : "Canvas Center Line" };
+        } else if (Math.abs(newX) <= 6 && Math.abs((naturalLeft + blockW / 2) - sheetCenterX) <= SNAP_THRESHOLD) {
           newX = 0;
-          snappedVertical = { x: naturalLeft + blockW / 2, label: isId ? "Sumbu Flow Dokumen (0px)" : "Flow Axis (0px)" };
+          snappedVertical = { x: sheetCenterX, label: isId ? "Garis Tengah Canvas" : "Canvas Center Line" };
         }
 
-        // 2. Center Vertical with Sheet
+        // 2. Center Vertical with Sheet (Garis Tengah Canvas)
         if (Math.abs(candidateCenterY - sheetCenterY) <= SNAP_THRESHOLD) {
           newY = Math.round(sheetCenterY - naturalTop - blockH / 2);
-          snappedHorizontal = { y: sheetCenterY, label: isId ? "Rata Tengah Kanvas (Y)" : "Center Canvas (Y)" };
+          snappedHorizontal = { y: sheetCenterY, label: isId ? "Garis Tengah Canvas (Vertikal)" : "Canvas Vertical Center Line" };
         }
 
         // 3. Align with other blocks on sheet
@@ -2897,7 +2915,8 @@ export function CanvaStudioEditor({
   }, [libraryQuery, sidebarTab]);
 
   const activeDeptConfig = DEPARTMENT_ROUTING_CONFIG[targetAuthDept] || DEPARTMENT_ROUTING_CONFIG.PURCHASING;
-  const isEditable = viewMode === "edit";
+  const isApproved = initialStatus === "APPROVED";
+  const isEditable = viewMode === "edit" && !isApproved;
 
   /* ============================ RENDER ============================ */
 
@@ -3199,31 +3218,54 @@ export function CanvaStudioEditor({
 
           <div className="h-5 w-px bg-stone-200 hidden sm:block" />
 
-          {/* Save draft */}
-          <Button
-            onClick={() => handleSave(false, false)}
-            disabled={isSaving}
-            variant="outline"
-            size="sm"
-            className="rounded-xl border-stone-300 bg-white hover:bg-stone-50 text-stone-800 text-xs font-bold gap-1.5 shadow-2xs"
-          >
-            <Save className="w-3.5 h-3.5 text-stone-600" />
-            <span className="hidden sm:inline">{isId ? "Simpan" : "Save"}</span>
-          </Button>
+          {/* If Approved, show locked state & clone button (P0-07) */}
+          {isApproved ? (
+            <div className="flex items-center gap-2">
+              <span className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold">
+                <Lock className="w-3.5 h-3.5 text-amber-700" />
+                <span>{isId ? "Terkunci (APPROVED)" : "Locked (APPROVED)"}</span>
+              </span>
+              {onClone && (
+                <Button
+                  onClick={onClone}
+                  variant="primary"
+                  size="sm"
+                  className="rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-black gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{isId ? "Klon Dokumen Ini" : "Clone Document"}</span>
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Save draft */}
+              <Button
+                onClick={() => handleSave(false, false)}
+                disabled={isSaving}
+                variant="outline"
+                size="sm"
+                className="rounded-xl border-stone-300 bg-white hover:bg-stone-50 text-stone-800 text-xs font-bold gap-1.5 shadow-2xs"
+              >
+                <Save className="w-3.5 h-3.5 text-stone-600" />
+                <span className="hidden sm:inline">{isId ? "Simpan" : "Save"}</span>
+              </Button>
 
-          {/* Submit */}
-          <Button
-            onClick={() => handleSave(true, true)}
-            disabled={isSaving}
-            variant="primary"
-            size="sm"
-            className="rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black gap-1.5 shadow-2xs"
-          >
-            <Send className="w-3.5 h-3.5" />
-            <span>
-              {isId ? `Kirim ke ${targetAuthDept}` : `Submit to ${targetAuthDept}`}
-            </span>
-          </Button>
+              {/* Submit */}
+              <Button
+                onClick={() => handleSave(true, true)}
+                disabled={isSaving}
+                variant="primary"
+                size="sm"
+                className="rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black gap-1.5 shadow-2xs"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>
+                  {isId ? `Kirim ke ${targetAuthDept}` : `Submit to ${targetAuthDept}`}
+                </span>
+              </Button>
+            </>
+          )}
 
           <button
             onClick={() => setShowRightPanel(true)}

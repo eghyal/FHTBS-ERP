@@ -13,6 +13,7 @@ export type Role =
   | "WAREHOUSE"
   | "PRODUCTION"
   | "SALES"
+  | "FINANCE"
   | "HR";
 export type Level = "STAFF" | "MANAGER";
 

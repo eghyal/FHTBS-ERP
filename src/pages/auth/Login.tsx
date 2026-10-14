@@ -236,6 +236,7 @@ export default function Login() {
                     <option value="WAREHOUSE">Warehouse</option>
                     <option value="PRODUCTION">Production</option>
                     <option value="SALES">Sales</option>
+                    <option value="FINANCE">Finance & Accounting</option>
                     <option value="HR">Human Resources</option>
                   </Select>
                 </div>

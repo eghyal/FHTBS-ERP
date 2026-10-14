@@ -5,7 +5,8 @@ export type ERPDepartmentRole =
   | "PURCHASING"
   | "WAREHOUSE"
   | "PRODUCTION"
-  | "SALES";
+  | "SALES"
+  | "FINANCE";
 
 export interface ERPDepartmentOption {
   value: ERPDepartmentRole;
@@ -57,10 +58,16 @@ export const ERP_DEPARTMENT_OPTIONS: ERPDepartmentOption[] = [
     nameEn: "Sales",
     badgeColor: "bg-sky-50 border-sky-200 text-sky-700",
   },
+  {
+    value: "FINANCE",
+    label: "Finance & Accounting",
+    nameEn: "Finance & Accounting",
+    badgeColor: "bg-teal-50 border-teal-200 text-teal-700",
+  },
 ];
 
 /**
-  Normalizes any legacy department string or role code to one of the 7 official ERP RBAC Roles.
+  Normalizes any legacy department string or role code to one of the 8 official ERP RBAC Roles.
  */
 export function normalizeDepartmentToRole(deptOrRole?: string): ERPDepartmentRole {
   if (!deptOrRole) return "FC";
@@ -84,7 +91,10 @@ export function normalizeDepartmentToRole(deptOrRole?: string): ERPDepartmentRol
   if (upper === "PRODUCTION" || upper.includes("PRODUKSI") || upper.includes("PLANT") || upper.includes("WORKSHOP") || upper.includes("MAINTENANCE") || upper.includes("OPERATIONS")) {
     return "PRODUCTION";
   }
-  if (upper === "SALES" || upper.includes("COMMERCIAL") || upper.includes("FINANCE") || upper.includes("MARKETING")) {
+  if (upper === "FINANCE" || upper.includes("FINANCE") || upper.includes("ACCOUNTING") || upper.includes("KEUANGAN") || upper.includes("PAYROLL") || upper.includes("INVOICE")) {
+    return "FINANCE";
+  }
+  if (upper === "SALES" || upper.includes("COMMERCIAL") || upper.includes("MARKETING")) {
     return "SALES";
   }
 

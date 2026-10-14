@@ -14,11 +14,24 @@ import crypto from "crypto";
 
 export const router = Router();
 
+function requireFinanceManager(req: any, res: any): boolean {
+  const role = (req.userRole || req.user?.role || "").toString().trim().toUpperCase();
+  const level = (req.userLevel || req.user?.level || "").toString().trim().toUpperCase();
+  const EXECUTIVE_ROLES = ["FC", "BOD", "DIRECTOR", "ADMIN", "SUPERADMIN", "GOD_MODE"];
+  if (EXECUTIVE_ROLES.includes(role) || level === "SUPER_ADMIN") return true;
+  if (role === "FINANCE" && level === "MANAGER") return true;
+  res.status(403).json({
+    error: "Akses ditolak: Operasi ini membutuhkan otorisasi Finance Manager atau Full Control.",
+  });
+  return false;
+}
+
     router.put(
       "/api/finance/payrolls/:id/void",
-      requireRole(["FC", "BOD"]),
+      requireRole(["FC", "BOD", "FINANCE"]),
       (req, res) => {
         try {
+          if (!requireFinanceManager(req, res)) return;
           const { pin, notes } = req.body;
           if (
             pin &&
@@ -101,7 +114,7 @@ export const router = Router();
       },
     );
 
-    router.get("/api/finance/payrolls", requireRole(["FC", "HR"]), (req, res) => {
+    router.get("/api/finance/payrolls", requireRole(["FC", "HR", "FINANCE"]), (req, res) => {
       try {
         const payrolls = db
           .prepare("SELECT * FROM finance_payroll ORDER BY created_at DESC")
@@ -148,7 +161,7 @@ export const router = Router();
 
     router.get(
       ["/api/finance/payrolls/:id", "/api/finance/payrolls/:id/details"],
-      requireRole(["FC", "HR"]),
+      requireRole(["FC", "HR", "FINANCE"]),
       (req, res) => {
         try {
           const payroll = db
@@ -170,9 +183,10 @@ export const router = Router();
 
     router.delete(
       "/api/finance/payrolls/:id",
-      requireRole(["FC", "HR"]),
+      requireRole(["FC", "HR", "FINANCE"]),
       (req, res) => {
         try {
+          if (!requireFinanceManager(req, res)) return;
           const payroll = db
             .prepare("SELECT * FROM finance_payroll WHERE id = ?")
             .get(req.params.id) as any;
@@ -208,9 +222,10 @@ export const router = Router();
 
     router.delete(
       "/api/finance/payrolls",
-      requireRole(["FC", "HR"]),
+      requireRole(["FC", "HR", "FINANCE"]),
       (req, res) => {
         try {
+          if (!requireFinanceManager(req, res)) return;
           const draftedPayrolls = db
             .prepare(
               "SELECT period_name FROM finance_payroll WHERE status = 'DRAFTED'",
@@ -244,9 +259,10 @@ export const router = Router();
 
     router.put(
       "/api/finance/payrolls/:id/pay",
-      requireRole(["FC"]),
+      requireRole(["FC", "FINANCE"]),
       (req, res) => {
         try {
+          if (!requireFinanceManager(req, res)) return;
           const { pin } = req.body;
           if (
             !pin ||
@@ -345,9 +361,10 @@ export const router = Router();
 
     router.put(
       "/api/finance/payables/:id/void",
-      requireRole(["FC", "BOD"]),
+      requireRole(["FC", "BOD", "FINANCE"]),
       (req, res) => {
         try {
+          if (!requireFinanceManager(req, res)) return;
           const { pin, notes } = req.body;
           if (
             !pin ||
@@ -433,10 +450,11 @@ export const router = Router();
 
     router.post(
       "/api/finance/expenses",
-      requireRole(["FC", "BOD"]),
+      requireRole(["FC", "BOD", "FINANCE"]),
       validateBody(ExpenseTransactionSchema),
       (req, res) => {
         try {
+          if (!requireFinanceManager(req, res)) return;
           const { amount, category, payment_method, notes, pin } = req.body;
           const userEmail = getActor(req);
 
@@ -498,7 +516,7 @@ export const router = Router();
 
     router.get(
       "/api/finance/analytics",
-      requireRole(["FC", "SALES", "BOD"]),
+      requireRole(["FC", "SALES", "BOD", "FINANCE"]),
       (req, res) => {
         try {
           const globalData = db.prepare("SELECT * FROM finance_global_summary WHERE id = 1").get() as any;
@@ -547,7 +565,7 @@ export const router = Router();
 
     router.put(
       "/api/finance/invoices/:id/pay",
-      requireRole(["FC", "SALES", "BOD", "ADMIN"]),
+      requireRole(["FC", "SALES", "BOD", "ADMIN", "FINANCE"]),
       validateBody(InvoicePaymentSchema),
       (req, res) => {
         try {
@@ -691,9 +709,10 @@ export const router = Router();
 
     router.put(
       "/api/finance/invoices/:id/void",
-      requireRole(["FC", "BOD"]),
+      requireRole(["FC", "BOD", "FINANCE"]),
       (req, res) => {
         try {
+          if (!requireFinanceManager(req, res)) return;
           const { pin, notes } = req.body;
           if (
             !pin ||
@@ -765,7 +784,7 @@ export const router = Router();
 
     router.get(
       "/api/finance/payables",
-      requireRole(["FC", "SALES", "PURCHASING"]),
+      requireRole(["FC", "SALES", "PURCHASING", "FINANCE"]),
       (req, res) => {
         try {
           const d = db
@@ -796,9 +815,10 @@ export const router = Router();
 
     router.put(
       "/api/finance/payables/:id/pay",
-      requireRole(["FC", "SALES", "PURCHASING"]),
+      requireRole(["FC", "SALES", "PURCHASING", "FINANCE"]),
       (req, res) => {
         try {
+          if (!requireFinanceManager(req, res)) return;
           const { pin, amount, payment_method, notes, vendor_invoice_number, vendor_invoice_amount } = req.body;
           if (
             !pin ||
@@ -962,7 +982,7 @@ export const router = Router();
 
     router.get(
       "/api/finance/journals",
-      requireRole(["FC", "BOD", "SALES", "PURCHASING", "ADMIN"]),
+      requireRole(["FC", "BOD", "SALES", "PURCHASING", "ADMIN", "FINANCE"]),
       async (req, res) => {
         try {
           const { reference_type, search, limit = 150 } = req.query;
@@ -981,7 +1001,7 @@ export const router = Router();
 
     router.get(
       "/api/finance/journal-entries",
-      requireRole(["FC", "BOD", "SALES", "PURCHASING", "ADMIN"]),
+      requireRole(["FC", "BOD", "SALES", "PURCHASING", "ADMIN", "FINANCE"]),
       async (req, res) => {
         try {
           const { category, search, limit = 150 } = req.query;
@@ -1000,7 +1020,7 @@ export const router = Router();
 
     router.post(
       "/api/finance/journal-entries",
-      requireRole(["FC", "BOD", "ADMIN"]),
+      requireRole(["FC", "BOD", "ADMIN", "FINANCE"]),
       validateBody(CreateJournalEntrySchema),
       async (req, res) => {
         try {
@@ -1022,7 +1042,7 @@ export const router = Router();
 
     router.post(
       "/api/finance/journals",
-      requireRole(["FC", "BOD", "ADMIN"]),
+      requireRole(["FC", "BOD", "ADMIN", "FINANCE"]),
       validateBody(CreateJournalEntrySchema),
       async (req, res) => {
         try {
@@ -1038,7 +1058,7 @@ export const router = Router();
     // --- CHART OF ACCOUNTS (COA) API ---
     router.get(
       "/api/finance/chart-of-accounts",
-      requireRole(["FC", "BOD", "ADMIN", "SALES", "PURCHASING"]),
+      requireRole(["FC", "BOD", "ADMIN", "SALES", "PURCHASING", "FINANCE"]),
       async (req, res) => {
         try {
           const accounts = await financeService.getChartOfAccounts();
@@ -1051,7 +1071,7 @@ export const router = Router();
 
     router.post(
       "/api/finance/chart-of-accounts",
-      requireRole(["FC", "BOD", "ADMIN"]),
+      requireRole(["FC", "BOD", "ADMIN", "FINANCE"]),
       validateBody(COAAccountSchema),
       async (req, res) => {
         try {
@@ -1068,7 +1088,7 @@ export const router = Router();
     // --- TRIAL BALANCE & FINANCIAL STATEMENTS API ---
     router.get(
       "/api/finance/trial-balance",
-      requireRole(["FC", "BOD", "ADMIN"]),
+      requireRole(["FC", "BOD", "ADMIN", "FINANCE"]),
       (req, res) => {
         try {
           const rows = db.prepare(`
@@ -1132,7 +1152,7 @@ export const router = Router();
     // --- ACCOUNTING PERIODS & LOCKING API ---
     router.get(
       "/api/finance/periods",
-      requireRole(["FC", "BOD", "ADMIN"]),
+      requireRole(["FC", "BOD", "ADMIN", "FINANCE"]),
       (req, res) => {
         try {
           const periods = db.prepare(`
@@ -1151,7 +1171,7 @@ export const router = Router();
 
     router.post(
       "/api/finance/periods",
-      requireRole(["FC", "BOD", "ADMIN"]),
+      requireRole(["FC", "BOD", "ADMIN", "FINANCE"]),
       (req, res) => {
         try {
           const { period_key, period_name, start_date, end_date, notes } = req.body;
@@ -1182,9 +1202,10 @@ export const router = Router();
 
     router.put(
       "/api/finance/periods/:id/status",
-      requireRole(["FC", "BOD", "ADMIN"]),
+      requireRole(["FC", "BOD", "ADMIN", "FINANCE"]),
       (req, res) => {
         try {
+          if (!requireFinanceManager(req, res)) return;
           const { status, pin, notes } = req.body;
           const userEmail = getActor(req);
 
@@ -1245,7 +1266,7 @@ export const router = Router();
     // --- AR AGING & INTELLIGENT DUNNING API ---
     router.get(
       "/api/finance/ar-aging",
-      requireRole(["FC", "SALES", "BOD", "ADMIN"]),
+      requireRole(["FC", "SALES", "BOD", "ADMIN", "FINANCE"]),
       (req, res) => {
         try {
           const invoices = db.prepare(`
@@ -1346,7 +1367,7 @@ export const router = Router();
     // --- CASHFLOW FORECASTING ENGINE API ---
     router.get(
       "/api/finance/cashflow-forecast",
-      requireRole(["FC", "BOD", "ADMIN"]),
+      requireRole(["FC", "BOD", "ADMIN", "FINANCE"]),
       (req, res) => {
         try {
           // 1. Current Cash & Bank Balance
