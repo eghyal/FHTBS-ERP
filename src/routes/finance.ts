@@ -275,12 +275,18 @@ function requireFinanceManager(req: any, res: any): boolean {
             .get(req.params.id) as any;
           if (!payroll)
             return res.status(404).json({ error: "Payroll not found" });
+          if (payroll.status === "PAID") {
+            return res.status(400).json({ error: "Payroll has already been disbursed (PAID)." });
+          }
 
           const userEmail = getActor(req);
           db.transaction(() => {
-            db.prepare(
-              "UPDATE finance_payroll SET status = 'PAID', paid_at = CURRENT_TIMESTAMP WHERE id = ?",
+            const upd = db.prepare(
+              "UPDATE finance_payroll SET status = 'PAID', paid_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'PAID'",
             ).run(req.params.id);
+            if (upd.changes === 0) {
+              throw new Error("Payroll has already been disbursed (PAID).");
+            }
 
             // PIPE: Mark HR payslips as PAID for this period
             db.prepare(
@@ -354,7 +360,7 @@ function requireFinanceManager(req: any, res: any): boolean {
         } catch (e: any) {
           res
             .status(500)
-            .json({ error: "Failed to process payroll disbursement" });
+            .json({ error: e?.message || "Failed to process payroll disbursement" });
         }
       },
     );
@@ -386,14 +392,15 @@ function requireFinanceManager(req: any, res: any): boolean {
           const userEmail = getActor(req);
 
           db.transaction(() => {
-            // 1. Revert PO Status (Wait to recalculate PO status based on GRN, default to RECEIVED or ISSUED)
-            // But we can just set amount_paid to 0, since status might be RECEIVED or ISSUED
-            db.prepare(
-              "UPDATE purchase_orders SET payment_status = 'UNPAID', amount_paid = 0 WHERE id = ?",
+            // 1. Revert PO Status atomically
+            const updPo = db.prepare(
+              "UPDATE purchase_orders SET payment_status = 'UNPAID', amount_paid = 0 WHERE id = ? AND payment_status = 'PAID'",
             ).run(req.params.id);
+            if (updPo.changes === 0) {
+              throw new Error("Payable is already unpaid or voided.");
+            }
             
             // Re-evaluate main status based on GRNs
-            const poData = db.prepare("SELECT * FROM purchase_orders WHERE id = ?").get(req.params.id);
             const totalOrderedResult = db
               .prepare("SELECT COALESCE(SUM(qty), 0) as total FROM pr_items WHERE po_id = ?")
               .get(req.params.id);
@@ -1400,10 +1407,10 @@ function requireFinanceManager(req: any, res: any): boolean {
           `).all() as any[];
 
           const weeks = [
-            { week_label: "Minggu Ini (W+1)", inflows: 0, outflows: 0, net: 0, projected_balance: startingCash },
-            { week_label: "Minggu Ke-2 (W+2)", inflows: 0, outflows: 0, net: 0, projected_balance: 0 },
-            { week_label: "Minggu Ke-3 (W+3)", inflows: 0, outflows: 0, net: 0, projected_balance: 0 },
-            { week_label: "Minggu Ke-4 (W+4)", inflows: 0, outflows: 0, net: 0, projected_balance: 0 },
+            { week_label: "Current Week (W+1)", inflows: 0, outflows: 0, net: 0, projected_balance: startingCash },
+            { week_label: "Week 2 (W+2)", inflows: 0, outflows: 0, net: 0, projected_balance: 0 },
+            { week_label: "Week 3 (W+3)", inflows: 0, outflows: 0, net: 0, projected_balance: 0 },
+            { week_label: "Week 4 (W+4)", inflows: 0, outflows: 0, net: 0, projected_balance: 0 },
           ];
 
           const now = Date.now();

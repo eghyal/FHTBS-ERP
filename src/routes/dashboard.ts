@@ -13,15 +13,20 @@ export const router = Router();
         "ENGINEERING",
         "PURCHASING",
         "PRODUCTION",
+        "PPIC",
+        "QA_QC",
         "WAREHOUSE",
         "SALES",
+        "FINANCE",
+        "FC",
+        "ADMIN",
       ]),
       (req, res) => {
         try {
           const activeProjects = db
             .prepare(
               `
-        SELECT p.id, p.name, p.status, p.due_date 
+        SELECT p.id, p.name, p.status, p.due_date, p.is_master_set 
         FROM projects p 
         WHERE 1=1 
         AND p.status NOT IN ('FINISHED', 'CLOSED', 'CANCELLED')
@@ -91,7 +96,7 @@ export const router = Router();
           const tasksByProject = db
             .prepare(
               `
-        SELECT project_id, id, task_name, start_date, end_date, progress, status, actual_start_date, actual_end_date 
+        SELECT project_id, id, task_name, start_date, end_date, progress, status, actual_start_date, actual_end_date, pr_id 
         FROM project_tasks 
         WHERE project_id IN (${placeholders})
         ORDER BY start_date ASC
@@ -119,18 +124,27 @@ export const router = Router();
           }
 
           const monitorData = activeProjects.map((p) => {
+            const rawTasks = taskMap.get(p.id) || [];
+            const isMasterSet = Boolean(p.is_master_set);
+            const visibleTasks = rawTasks.filter((t) => {
+              const isPr = Boolean(t.pr_id || (t.task_name && t.task_name.includes("[Procurement]")));
+              if (!isMasterSet && !isPr) return false;
+              return true;
+            });
+
             return {
               id: p.id,
               name: p.name,
               status: p.status,
               dueDate: p.due_date,
+              is_master_set: isMasterSet,
               prItemCount: prMap.get(p.id) || 0,
               stockItemCount: stockMap.get(p.id) || 0,
               prProgress: {
                 total_pr_qty: prQtyMap.get(p.id) || 0,
                 total_received_qty: receivedQtyMap.get(p.id) || 0,
               },
-              tasks: taskMap.get(p.id) || [],
+              tasks: visibleTasks,
             };
           });
 
@@ -150,9 +164,13 @@ export const router = Router();
         "ENGINEERING",
         "PURCHASING",
         "PRODUCTION",
+        "PPIC",
+        "QA_QC",
         "WAREHOUSE",
         "SALES",
         "FINANCE",
+        "FC",
+        "ADMIN",
       ]),
       (req, res) => {
         try {
@@ -190,19 +208,39 @@ export const router = Router();
             });
           });
 
-          // 2. POs waiting for receipt (Issued but not received)
+          // 2. POs waiting for QC Incoming Material receipt & GRN creation
           const pendingPos = db
             .prepare(
-              "SELECT po_number FROM purchase_orders WHERE status = 'ISSUED' LIMIT 20",
+              "SELECT po_number FROM purchase_orders WHERE status IN ('ISSUED', 'PARTIAL') LIMIT 20",
             )
             .all() as any[];
           pendingPos.forEach((po) => {
             actions.push({
               type: "PO_RECEIPT",
-              title: `Pending Goods Receipt`,
-              description: `${po.po_number} is issued. Awaiting delivery.`,
-              link: `/procurement`,
+              title: `Incoming Material & GRN`,
+              description: `${po.po_number} is issued. Awaiting delivery & QC GRN inspection.`,
+              link: `/qc-incoming`,
               priority: "MEDIUM",
+            });
+          });
+
+          // 2b. GRNs inspected by QC awaiting Warehouse Material Intake
+          const pendingWarehouseGrns = db
+            .prepare(
+              `SELECT g.id, po.po_number 
+               FROM grns g 
+               JOIN purchase_orders po ON g.po_id = po.id 
+               WHERE g.inventory_updated_at IS NULL AND g.qc_status IN ('PASSED', 'CONDITIONAL') 
+               LIMIT 15`
+            )
+            .all() as any[];
+          pendingWarehouseGrns.forEach((grn) => {
+            actions.push({
+              type: "GRN_INTAKE",
+              title: `Warehouse Material Intake`,
+              description: `${grn.id} (${grn.po_number}) passed QC and awaits warehouse stock intake.`,
+              link: `/warehouse`,
+              priority: "HIGH",
             });
           });
 

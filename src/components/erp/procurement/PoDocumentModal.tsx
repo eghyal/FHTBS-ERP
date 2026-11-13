@@ -1,6 +1,9 @@
 import React, { memo } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { useAuth } from "@/contexts/AuthContext";
+import { canViewDocFinancials } from "@/utils/rbacFinancials";
+import { ConfidentialBadge } from "@/components/shared/ConfidentialBadge";
 import { PdfPreviewWrapper } from "@/components/shared/PdfPreviewWrapper";
 import { PrintTemplate } from "@/components/erp/PrintTemplate";
 import { Download, QrCode } from "lucide-react";
@@ -19,6 +22,7 @@ interface PoDocumentModalProps {
   exportPoPdf: () => void;
   language: string;
   isPrintModeHidden?: boolean;
+  maskFinancials?: boolean;
 }
 
 export const PoDocumentModal = memo(function PoDocumentModal({
@@ -30,7 +34,14 @@ export const PoDocumentModal = memo(function PoDocumentModal({
   exportPoPdf,
   language,
   isPrintModeHidden,
+  maskFinancials,
 }: PoDocumentModalProps) {
+  const { user } = useAuth();
+  const canViewPrices =
+    maskFinancials !== undefined
+      ? !maskFinancials
+      : canViewDocFinancials(user, "PO");
+
   if (!selectedPoDetails) return null;
 
   const printContent = (
@@ -44,7 +55,7 @@ export const PoDocumentModal = memo(function PoDocumentModal({
             date={
               selectedPoDetails.created_at
                 ? new Date(selectedPoDetails.created_at).toLocaleDateString(
-                    "id-ID",
+                    "en-US",
                     {
                       timeZone: "Asia/Jakarta",
                       year: "numeric",
@@ -62,7 +73,7 @@ export const PoDocumentModal = memo(function PoDocumentModal({
             <div className="grid grid-cols-2 gap-6 mb-6">
               <div>
                 <div className="text-xs text-stone-900 uppercase tracking-widest font-black mb-2">
-                  Mitra Pemasok <span className="text-stone-400 font-normal">/ Supplier Partner</span>
+                  Supplier Partner
                 </div>
                 <div className="text-xl font-black text-stone-900 uppercase">
                   {selectedPoDetails.supplier_name}
@@ -71,14 +82,14 @@ export const PoDocumentModal = memo(function PoDocumentModal({
                   <div>Corporate Partner • Registered Supplier</div>
                   {selectedPoDetails.supplier_npwp && (
                     <div className="font-mono text-stone-700">
-                      NPWP: {selectedPoDetails.supplier_npwp}
+                      Tax ID: {selectedPoDetails.supplier_npwp}
                     </div>
                   )}
                 </div>
               </div>
               <div className="text-right">
                 <div className="text-xs text-stone-900 uppercase tracking-widest font-black mb-2">
-                  Target Pengiriman <span className="text-stone-400 font-normal">/ Expected Delivery</span>
+                  Expected Delivery
                 </div>
                 <div className="text-lg font-black text-stone-900 font-mono">
                   {selectedPoDetails.expected_date || "TBD"}
@@ -94,15 +105,15 @@ export const PoDocumentModal = memo(function PoDocumentModal({
             {/* Subject / Reference Area */}
             <div className="mb-6 p-4 bg-white rounded-lg border border-stone-200">
               <div className="text-xs text-stone-900 uppercase tracking-widest font-black mb-1">
-                Referensi Proyek & Permintaan Pembelian <span className="text-stone-400 font-normal">/ Project & PR Reference</span>
+                Project & Purchase Requisition Reference
               </div>
               <div className="text-sm font-black text-stone-900 tracking-tight leading-tight uppercase flex items-center justify-between">
                 <div>
-                  <span className="text-stone-500 font-normal text-xs mr-2">Sistem Proyek:</span>
+                  <span className="text-stone-500 font-normal text-xs mr-2">Project System:</span>
                   {selectedPoDetails.project_ids || selectedPoDetails.project_name || "-"}
                 </div>
                 <div>
-                  <span className="text-stone-500 font-normal text-xs mr-2">Ref PR:</span>
+                  <span className="text-stone-500 font-normal text-xs mr-2">PR Ref:</span>
                   <span className="font-mono text-stone-900">{selectedPoDetails.pr_numbers || "-"}</span>
                 </div>
               </div>
@@ -111,30 +122,25 @@ export const PoDocumentModal = memo(function PoDocumentModal({
             {/* Items Table */}
             <div className="flex-1 w-full">
               <div className="text-sm text-stone-900 uppercase tracking-widest font-black mb-3 ml-1">
-                Rincian Pemesanan Barang <span className="text-xs text-stone-400 font-normal">/ Purchase Order Specifications</span>
+                Purchase Order Specifications
               </div>
               <table className="w-full text-left">
                 <thead>
                   <tr className="border-b border-stone-300 bg-white">
                     <th className="py-3 px-3 font-extrabold text-stone-900 uppercase tracking-wider text-xs">
-                      Deskripsi Barang
-                      <div className="text-[10px] font-bold text-stone-400 tracking-widest mt-0.5">ITEM & DESCRIPTION</div>
+                      Item & Description
                     </th>
                     <th className="py-3 px-3 font-extrabold text-stone-900 text-center uppercase tracking-wider text-xs w-20">
-                      Jml
-                      <div className="text-[10px] font-bold text-stone-400 tracking-widest mt-0.5">QTY</div>
+                      Qty
                     </th>
                     <th className="py-3 px-3 font-extrabold text-stone-900 text-center uppercase tracking-wider text-xs w-20">
-                      Sat
-                      <div className="text-[10px] font-bold text-stone-400 tracking-widest mt-0.5">UOM</div>
+                      UOM
                     </th>
                     <th className="py-3 px-3 font-extrabold text-stone-900 text-right uppercase tracking-wider text-xs w-32">
-                      Harga / Unit
-                      <div className="text-[10px] font-bold text-stone-400 tracking-widest mt-0.5">PRICE / UNIT</div>
+                      Price / Unit
                     </th>
                     <th className="py-3 px-3 font-extrabold text-stone-900 text-right uppercase tracking-wider text-xs w-36">
                       Subtotal
-                      <div className="text-[10px] font-bold text-stone-400 tracking-widest mt-0.5">AMOUNT</div>
                     </th>
                   </tr>
                 </thead>
@@ -165,10 +171,14 @@ export const PoDocumentModal = memo(function PoDocumentModal({
                             {item.uom}
                           </td>
                           <td className="py-4 px-3 text-right text-stone-800 font-mono font-bold text-sm">
-                            {formatIDR(unitPrice || 0)}
+                            {canViewPrices
+                              ? formatIDR(unitPrice || 0)
+                              : <ConfidentialBadge />}
                           </td>
                           <td className="py-4 px-3 text-right text-stone-900 font-mono font-black text-sm">
-                            {formatIDR(item.qty * unitPrice)}
+                            {canViewPrices
+                              ? formatIDR(item.qty * unitPrice)
+                              : <ConfidentialBadge />}
                           </td>
                         </tr>
                       );
@@ -209,33 +219,39 @@ export const PoDocumentModal = memo(function PoDocumentModal({
                     <div className="w-[460px] space-y-2">
                       <div className="flex justify-between items-center text-xs uppercase tracking-wider px-3 font-bold gap-2">
                         <span className="text-stone-900 whitespace-nowrap">
-                          Subtotal DPP <span className="font-semibold text-[10px] text-stone-500">/ Net Total</span>
+                          Taxable Base (Net Total)
                         </span>
                         <span className="font-mono text-stone-950 font-bold whitespace-nowrap">
-                          {formatIDR(breakdown.dpp)}
+                          {canViewPrices
+                            ? formatIDR(breakdown.dpp)
+                            : <ConfidentialBadge />}
                         </span>
                       </div>
 
                       {breakdown.isDppNilaiLain && (
                         <div className="flex justify-between items-center text-xs uppercase tracking-wider px-3 font-medium text-stone-500 gap-2 bg-stone-50 py-1 rounded">
                           <span className="text-[10px] whitespace-nowrap">
-                            Basis DPP Nilai Lain (11/12):
+                            Adjusted Tax Base (11/12):
                           </span>
                           <span className="font-mono font-bold text-stone-700 whitespace-nowrap">
-                            {formatIDRWithDecimals(breakdown.dppNilaiLain, 2)}
+                            {canViewPrices
+                              ? formatIDRWithDecimals(breakdown.dppNilaiLain, 2)
+                              : <ConfidentialBadge />}
                           </span>
                         </div>
                       )}
 
                       <div className="flex justify-between items-center text-xs uppercase tracking-wider px-3 font-bold gap-2">
                         <span className="text-stone-900 whitespace-nowrap">
-                          VAT / PPN{" "}
+                          VAT{" "}
                           <span className="font-semibold text-[10px] text-stone-500">
                             ({breakdown.isDppNilaiLain ? `12%` : `${breakdown.taxRate}%`})
                           </span>
                         </span>
                         <span className="font-mono text-stone-950 font-bold whitespace-nowrap">
-                          + {formatIDR(breakdown.ppnAmount)}
+                          {canViewPrices
+                            ? `+ ${formatIDR(breakdown.ppnAmount)}`
+                            : <ConfidentialBadge />}
                         </span>
                       </div>
 
@@ -243,7 +259,9 @@ export const PoDocumentModal = memo(function PoDocumentModal({
                         <div className="flex justify-between items-center text-xs uppercase tracking-wider px-3 font-medium text-stone-500 gap-2">
                           <span className="whitespace-nowrap">Rounding Adjustment:</span>
                           <span className="font-mono whitespace-nowrap">
-                            {breakdown.roundingFactor > 0 ? "+" : ""}{formatIDR(breakdown.roundingFactor)}
+                            {canViewPrices
+                              ? `${breakdown.roundingFactor > 0 ? "+" : ""}${formatIDR(breakdown.roundingFactor)}`
+                              : <ConfidentialBadge />}
                           </span>
                         </div>
                       )}
@@ -253,7 +271,9 @@ export const PoDocumentModal = memo(function PoDocumentModal({
                           GRAND TOTAL <span className="font-bold text-[10px] text-stone-500 font-normal">/ TOTAL PO</span>
                         </span>
                         <span className="text-base font-black tracking-tight font-mono text-stone-900 whitespace-nowrap">
-                          {formatIDR(breakdown.grandTotal)}
+                          {canViewPrices
+                            ? formatIDR(breakdown.grandTotal)
+                            : <ConfidentialBadge size="sm" />}
                         </span>
                       </div>
 
@@ -261,18 +281,18 @@ export const PoDocumentModal = memo(function PoDocumentModal({
                         <div className="mt-2 p-2.5 bg-stone-50 border border-stone-200 rounded-lg space-y-1 text-xs">
                           <div className="flex justify-between items-center text-stone-600">
                             <span className="text-[11px] font-semibold">
-                              Potongan PPh 23 ({breakdown.pphRate}% Withholding):
+                              Withholding Tax ({breakdown.pphRate}%):
                             </span>
                             <span className="font-mono font-bold text-rose-600">
-                              - {formatIDR(breakdown.pphAmount)}
+                              {canViewPrices ? `- ${formatIDR(breakdown.pphAmount)}` : <ConfidentialBadge />}
                             </span>
                           </div>
                           <div className="flex justify-between items-center pt-1 border-t border-stone-200 text-stone-900 font-black">
                             <span className="text-[11px] uppercase tracking-wider">
-                              Net Payable Supplier (Nilai Bayar Bersih):
+                              Net Payable to Supplier:
                             </span>
                             <span className="font-mono text-sm text-emerald-700">
-                              {formatIDR(breakdown.netPayable)}
+                              {canViewPrices ? formatIDR(breakdown.netPayable) : <ConfidentialBadge />}
                             </span>
                           </div>
                         </div>
@@ -287,7 +307,7 @@ export const PoDocumentModal = memo(function PoDocumentModal({
             <div className="mt-4 pt-3 border-t border-stone-200 grid grid-cols-2 gap-8 text-center">
               <div>
                 <div className="text-xs font-black uppercase tracking-wider text-stone-900 mb-0.5">
-                  Dibuat Oleh <span className="text-stone-500 font-normal">/ Created By</span>
+                  Created By
                 </div>
                 <div className="text-[10px] text-stone-500 uppercase font-bold mb-1">Procurement Team</div>
                 <div className="h-10 flex items-center justify-center my-0.5">
@@ -296,7 +316,7 @@ export const PoDocumentModal = memo(function PoDocumentModal({
                     <div className="text-left">
                       <div className="text-[9px] font-black text-emerald-800 uppercase leading-none mb-0.5">Validated System</div>
                       <div className="text-[8px] font-mono text-emerald-700 leading-none">
-                        {new Date(selectedPoDetails.created_at || Date.now()).toLocaleDateString("id-ID")}
+                        {new Date(selectedPoDetails.created_at || Date.now()).toLocaleDateString("en-US")}
                       </div>
                     </div>
                   </div>
@@ -307,7 +327,7 @@ export const PoDocumentModal = memo(function PoDocumentModal({
               </div>
               <div>
                 <div className="text-xs font-black uppercase tracking-wider text-stone-900 mb-0.5">
-                  Disetujui Oleh <span className="text-stone-500 font-normal">/ Approved By</span>
+                  Approved By
                 </div>
                 <div className="text-[10px] text-stone-500 uppercase font-bold mb-1">Procurement Manager</div>
                 <div className="h-10 flex items-center justify-center my-0.5">
@@ -360,22 +380,16 @@ export const PoDocumentModal = memo(function PoDocumentModal({
           onClick={onClose}
           className="px-6 py-2.5 rounded-xl text-sm"
         >
-          {language === "id" ? "Tutup" : "Close"}
+          Close
         </Button>
         <Button
-          variant="primary"
+          variant="dark"
           onClick={exportPoPdf}
           isLoading={isSubmitting}
           className="px-6 py-2.5 rounded-xl text-sm shadow-md"
         >
           {!isSubmitting && <Download className="w-4 h-4" />}
-          {language === "id"
-            ? isSubmitting
-              ? "Mengekspor..."
-              : "Ekspor PDF (A4)"
-            : isSubmitting
-              ? "Generating..."
-              : "Export PDF (A4)"}
+          {isSubmitting ? "Generating..." : "Export PDF (A4)"}
         </Button>
       </div>
     </Modal>

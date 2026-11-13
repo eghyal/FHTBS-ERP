@@ -34,7 +34,7 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
     try {
       await generatePDF(
         printDocRef.current,
-        `NTP_${ntp.ntp_number || project.id}.pdf`,
+        `NTP_${project.id || ntp.ntp_number}.pdf`,
       );
       showToast("Notice to Proceed PDF generated", "success");
     } catch (err) {
@@ -46,12 +46,12 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
   };
 
   const issueDateStr = ntp.created_at
-    ? new Date(ntp.created_at).toLocaleDateString("id-ID", {
+    ? new Date(ntp.created_at).toLocaleDateString("en-US", {
         day: "2-digit",
         month: "long",
         year: "numeric",
       })
-    : new Date().toLocaleDateString("id-ID", {
+    : new Date().toLocaleDateString("en-US", {
         day: "2-digit",
         month: "long",
         year: "numeric",
@@ -65,14 +65,6 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
     ntp.due_date ||
     "";
 
-  const deadlineFormattedId = deadlineRaw
-    ? new Date(deadlineRaw).toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      })
-    : "Sesuai Kesepakatan / Per Schedule";
-
   const deadlineFormattedEn = deadlineRaw
     ? new Date(deadlineRaw).toLocaleDateString("en-US", {
         month: "short",
@@ -81,7 +73,7 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
       })
     : "Per Agreed Schedule";
 
-  const refNo = ntp.ntp_number || ntp.id || "SPK/NTP-DRAFT";
+  const refNo = project.id || ntp.ntp_number || ntp.id || "WO/NTP-DRAFT";
 
   return (
     <Modal
@@ -95,9 +87,9 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
         <PdfPreviewWrapper>
         <PrintTemplate
           ref={printDocRef}
-          documentTitleId="SURAT PERINTAH KERJA (SPK)"
+          documentTitleId="NOTICE TO PROCEED (NTP / WORK ORDER)"
           documentTitleEn="NOTICE TO PROCEED & PROJECT CHARTER"
-          documentNameId="surat perintah kerja resmi"
+          documentNameId="formal notice to proceed"
           documentNameEn="formal notice to proceed"
           date={issueDateStr}
           referenceNumber={refNo}
@@ -113,23 +105,23 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="bg-stone-50 border border-stone-200 rounded-lg p-3">
               <div className="text-[10px] text-stone-500 uppercase tracking-widest font-black mb-1.5 flex items-center justify-between">
-                <span>Unit Penerima Target <span className="font-normal text-stone-400">/ Target Recipient Unit</span></span>
+                <span>Target Recipient Unit</span>
               </div>
               <div className="text-xs font-black text-stone-900 uppercase tracking-tight">
-                DIVISI OPERASIONAL & LOGISTIK
+                OPERATIONS & LOGISTICS DIVISION
               </div>
               <div className="text-[10px] text-stone-500 font-bold uppercase tracking-wide mt-0.5">
-                / Operational & Logistics Division
+                Manufacturing & Supply Chain Execution
               </div>
               <div className="text-[11px] text-stone-700 font-semibold mt-2 pt-2 border-t border-stone-200 flex items-center justify-between">
                 <span>Digital Facility - Production Control Unit</span>
-                <span className="text-[9px] text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">Mandat Aktif</span>
+                <span className="text-[9px] text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">Active Mandate</span>
               </div>
             </div>
 
             <div className="bg-stone-50 border border-stone-200 rounded-lg p-3">
               <div className="text-[10px] text-stone-500 uppercase tracking-widest font-black mb-1.5 flex items-center justify-between">
-                <span>Subjek Proyek <span className="font-normal text-stone-400">/ Subject Project</span></span>
+                <span>Subject Project</span>
                 <span className="text-[9px] font-mono font-bold bg-white text-stone-900 border border-stone-300 px-1.5 py-0.5 rounded whitespace-nowrap">
                   ID: {project.id}
                 </span>
@@ -139,7 +131,7 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
               </div>
               <div className="mt-2 pt-2 border-t border-stone-200 grid grid-cols-2 gap-2 text-left">
                 <div>
-                  <div className="text-[9px] text-stone-400 font-bold uppercase tracking-widest">Kuantitas / Qty</div>
+                  <div className="text-[9px] text-stone-400 font-bold uppercase tracking-widest">Quantity / Qty</div>
                   <div className="text-xs font-black text-stone-900 font-mono mt-0.5 whitespace-nowrap">
                     {project.qty || project.quotation_qty || 1} {project.uom || "Unit"}
                   </div>
@@ -158,18 +150,15 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
           <div className="mb-4 p-3.5 bg-white text-stone-900 rounded-lg border border-stone-200 relative overflow-hidden">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-black uppercase tracking-widest text-stone-600">
-                Persetujuan Operasional Resmi{" "}
-                <span className="font-normal text-stone-400">
-                  / Formal Operational Clearance
-                </span>
+                Formal Operational Clearance
               </span>
               <span className="text-[9px] font-bold uppercase tracking-wider bg-stone-100 text-stone-800 border border-stone-300 px-2 py-0.5 rounded">
-                Mandat Eksekusi Resmi
+                Official Execution Mandate
               </span>
             </div>
 
             <div className="text-sm font-black text-stone-900 uppercase tracking-tight leading-snug">
-              Eksekusi Wajib Untuk Proyek <span className="font-normal text-stone-500">/ Mandatory Execution for Project:</span>{" "}
+              Mandatory Execution for Project:{" "}
               <span className="font-mono bg-stone-100 px-2 py-0.5 rounded border border-stone-300 text-stone-900 whitespace-nowrap">
                 {project.id}
               </span>
@@ -177,10 +166,7 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
 
             <div className="text-xs mt-2 leading-relaxed">
               <p className="text-stone-800 font-medium leading-snug">
-                • Tim operasional dengan ini diberi wewenang penuh untuk memulai aktivitas manufaktur, pengadaan (PR/PO), dan alur logistik. Semua protokol pelaksanaan wajib mematuhi penawaran harga, toleransi mutu, serta spesifikasi proyek yang dirujuk.
-              </p>
-              <p className="text-stone-500 font-normal text-[10px] leading-tight mt-1 italic">
-                / Operational teams are fully authorized to initiate manufacturing, procurement (PR/PO), and logistics activities. All execution protocols must strictly adhere to referenced quotation, quality tolerances, and technical specifications.
+                • Operational teams are hereby fully authorized to initiate manufacturing, procurement (PR/PO), and logistics activities. All execution protocols must strictly adhere to the referenced quotation, quality tolerances, and technical specifications.
               </p>
             </div>
 
@@ -188,18 +174,15 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
             <div className="mt-3 p-2.5 bg-stone-50 border border-stone-200 rounded-md grid grid-cols-2 gap-4 items-center">
               <div>
                 <div className="text-[9px] uppercase font-black tracking-widest text-stone-500">
-                  Target Batas Waktu Penyelesaian SPK <span className="font-normal text-stone-400">/ Project Execution Deadline</span>
+                  Project Execution Deadline
                 </div>
                 <div className="text-xs font-black text-stone-900 font-mono mt-0.5 flex items-baseline gap-1.5 flex-wrap">
-                  <span className="whitespace-nowrap">{deadlineFormattedId}</span>
-                  <span className="text-[10px] font-bold text-stone-500 font-sans whitespace-nowrap">
-                    ({deadlineFormattedEn})
-                  </span>
+                  <span className="whitespace-nowrap">{deadlineFormattedEn}</span>
                 </div>
               </div>
               <div className="text-right border-l border-stone-200 pl-4">
                 <div className="text-[9px] uppercase font-black tracking-widest text-stone-500">
-                  Tanggal Terbit / Effective Date
+                  Effective Issue Date
                 </div>
                 <div className="text-xs font-bold text-stone-900 font-mono mt-0.5 whitespace-nowrap">
                   {issueDateStr}
@@ -211,25 +194,25 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
           {/* Section 3: Project Specifications Summary Strip */}
           <div className="mb-4 bg-stone-50 border border-stone-200 rounded-lg p-2.5">
             <div className="text-[9px] font-black uppercase tracking-widest text-stone-500 mb-1.5">
-              Parameter Eksekusi Proyek <span className="font-normal text-stone-400">/ Project Execution Parameters</span>
+              Project Execution Parameters
             </div>
             <div className="grid grid-cols-3 gap-3 text-left">
               <div>
-                <div className="text-[8.5px] font-bold text-stone-400 uppercase tracking-wider">Work Center / Fasilitas</div>
+                <div className="text-[8.5px] font-bold text-stone-400 uppercase tracking-wider">Work Center / Facility</div>
                 <div className="text-[10.5px] font-bold text-stone-800 mt-0.5 truncate">
-                  Pusat Manufaktur & Perakitan
+                  Manufacturing & Assembly Hub
                 </div>
               </div>
               <div>
-                <div className="text-[8.5px] font-bold text-stone-400 uppercase tracking-wider">Acuan Teknis / Routing</div>
+                <div className="text-[8.5px] font-bold text-stone-400 uppercase tracking-wider">Technical Reference / Routing</div>
                 <div className="text-[10.5px] font-bold text-stone-800 mt-0.5 truncate">
                   BOP Routing & Approved BOM
                 </div>
               </div>
               <div>
-                <div className="text-[8.5px] font-bold text-stone-400 uppercase tracking-wider">Standar Inspeksi / QC</div>
+                <div className="text-[8.5px] font-bold text-stone-400 uppercase tracking-wider">Inspection Standard / QC</div>
                 <div className="text-[10.5px] font-bold text-stone-800 mt-0.5 truncate">
-                  Toleransi Mutu CV. Batu Emas Group
+                  CV. Batu Emas Group Quality Standard
                 </div>
               </div>
             </div>
@@ -239,10 +222,7 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
           <div className="mb-4">
             <div className="text-xs text-stone-900 uppercase tracking-widest font-black mb-2 flex items-center justify-between">
               <span>
-                Arahan Alur Kerja & Protokol Standar{" "}
-                <span className="font-normal text-stone-500">
-                  / Workflow Directives & Protocols
-                </span>
+                Workflow Directives & Standard Protocols
               </span>
               <span className="text-[9px] font-mono text-stone-400 font-normal uppercase">
                 3 Standard SOP Stages
@@ -252,24 +232,18 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
               {[
                 {
                   step: "01",
-                  titleId: "ALOKASI SUMBER DAYA & PENGADAAN MATERIAL",
-                  titleEn: "Resource Allocation & Procurement",
-                  descId: "Tim pengadaan segera menerbitkan Permintaan Pembelian (PR) untuk seluruh material & komponen dalam Bill of Materials (BOM) yang telah disetujui.",
-                  descEn: "Procurement teams to initiate Purchase Requests for all items listed in the approved BOM.",
+                  titleEn: "RESOURCE ALLOCATION & MATERIAL PROCUREMENT",
+                  descEn: "Procurement teams to immediately initiate Purchase Requests (PR) for all materials & components listed in the approved Bill of Materials (BOM).",
                 },
                 {
                   step: "02",
-                  titleId: "PENJADWALAN PRODUKSI & ALOKASI MESIN",
-                  titleEn: "Production Scheduling & Machine Allocation",
-                  descId: "Manajer lantai produksi menetapkan stasiun kerja prioritas, alokasi kapasitas mesin, dan jadwal eksekusi WOT.",
-                  descEn: "Manufacturing floor managers to designate priority work centers, machine capacity allocation, and WOT schedules.",
+                  titleEn: "PRODUCTION SCHEDULING & MACHINE ALLOCATION",
+                  descEn: "Manufacturing floor managers to designate priority work centers, machine capacity allocation, and WOT execution schedules.",
                 },
                 {
                   step: "03",
-                  titleId: "SINKRONISASI KONTROL KUALITAS (QC)",
-                  titleEn: "Quality Control & Tolerance Sync",
-                  descId: "Protokol inspeksi dimensi, uji ketahanan, dan kriteria penerimaan disinkronkan secara ketat dengan toleransi teknis proyek.",
-                  descEn: "Inspection protocols and testing criteria must be strictly synchronized with project technical tolerances.",
+                  titleEn: "QUALITY CONTROL (QC) & TOLERANCE SYNC",
+                  descEn: "Dimensional inspection protocols, strength testing, and acceptance criteria must be strictly synchronized with project technical tolerances.",
                 },
               ].map((d) => (
                 <div
@@ -282,17 +256,11 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-1.5 flex-wrap">
                       <span className="text-[11px] font-black text-stone-900 uppercase tracking-wide">
-                        {d.titleId}
-                      </span>
-                      <span className="text-[9.5px] text-stone-500 font-normal italic">
-                        / {d.titleEn}
+                        {d.titleEn}
                       </span>
                     </div>
                     <p className="text-[10.5px] text-stone-800 font-medium mt-0.5 leading-snug">
-                      {d.descId}
-                    </p>
-                    <p className="text-[9.5px] text-stone-500 font-normal mt-0.5 leading-tight italic">
-                      / {d.descEn}
+                      {d.descEn}
                     </p>
                   </div>
                 </div>
@@ -304,10 +272,7 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
           <div className="mb-4 p-3 bg-stone-50 rounded-lg border border-stone-200">
             <h4 className="text-[10px] font-black text-stone-900 uppercase tracking-widest mb-1 flex items-center justify-between">
               <span>
-                Catatan Kepatuhan Operasional{" "}
-                <span className="font-normal text-stone-500">
-                  / Compliance Remarks
-                </span>
+                Operational Compliance Remarks
               </span>
               <span className="text-[8.5px] font-mono text-stone-400">SOP-REF: STD/OPS/2026</span>
             </h4>
@@ -325,22 +290,16 @@ export const NtpPreviewModal: React.FC<NtpPreviewModalProps> = ({
           onClick={onClose}
           className="px-6 py-2.5 rounded-xl text-sm"
         >
-          {language === "id" ? "Tutup" : "Close"}
+          Close
         </Button>
         <Button
           variant="primary"
           onClick={handleExportPdf}
           isLoading={isExporting}
-          className="px-6 py-2.5 rounded-xl text-sm shadow-md"
+          className="px-6 py-2.5 rounded-xl text-sm shadow-md bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600"
         >
           {!isExporting && <Download className="w-4 h-4" />}
-          {language === "id"
-            ? isExporting
-              ? "Mengekspor..."
-              : "Ekspor PDF (A4)"
-            : isExporting
-              ? "Generating..."
-              : "Export PDF (A4)"}
+          {isExporting ? "Generating..." : "Export PDF (A4)"}
         </Button>
       </div>
     </Modal>

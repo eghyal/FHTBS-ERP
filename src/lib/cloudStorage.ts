@@ -4,7 +4,8 @@ import { storage } from "./firebase.ts";
 /**
  * Converts a File or Blob to a standard Base64 Data URL
  */
-export function blobToDataUrl(blob: Blob | File): Promise<string> {
+function blobToDataUrl(blob: Blob | File): Promise<string> {
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -17,10 +18,11 @@ export function blobToDataUrl(blob: Blob | File): Promise<string> {
  * Uploads a file/blob to the server's local high-speed storage endpoint.
  * This is the primary and fastest storage tier (takes <100ms and never hits CORS/bucket limits).
  */
-export async function uploadFileToServer(
+async function uploadFileToServer(
   file: File | Blob,
   pathPrefix: string = "uploads"
 ): Promise<{ url: string; filename: string }> {
+
   const formData = new FormData();
   const fileName = (file instanceof File ? file.name : "image.webp").replace(/[^a-zA-Z0-9._-]/g, "_");
   formData.append("file", file, fileName);
@@ -59,11 +61,12 @@ export async function uploadFileToServer(
  * Uploads a file/blob to Firebase Cloud Storage bucket with a strict timeout failsafe.
  * Returns the public / download URL and the storage path.
  */
-export async function uploadFileToCloudStorage(
+async function uploadFileToCloudStorage(
   file: File | Blob,
   pathPrefix: string = "uploads",
   timeoutMs: number = 4000
 ): Promise<{ url: string; path: string }> {
+
   const timestamp = Date.now();
   const random = Math.round(Math.random() * 1e9);
   const fileName = (file instanceof File ? file.name : "file.bin").replace(/[^a-zA-Z0-9._-]/g, "_");

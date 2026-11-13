@@ -40,14 +40,14 @@ export function assertAccountingPeriodOpen(db: Database.Database, dateStr?: stri
     const period = db.prepare("SELECT * FROM accounting_periods WHERE period_key = ?").get(periodKey) as any;
     if (period) {
       if (period.status === "HARD_CLOSED") {
-        throw new Error(`PERIODE DITUTUP: Periode akuntansi ${period.period_name} (${period.period_key}) telah HARD_CLOSED. Transaksi finansial tidak dapat diposting.`);
+        throw new Error(`PERIOD CLOSED: Accounting period ${period.period_name} (${period.period_key}) is HARD_CLOSED. Financial transactions cannot be posted.`);
       }
       if (period.status === "SOFT_LOCKED") {
-        throw new Error(`PERIODE TERKUNCI: Periode akuntansi ${period.period_name} (${period.period_key}) sedang SOFT_LOCKED untuk proses rekonsiliasi tutup buku.`);
+        throw new Error(`PERIOD LOCKED: Accounting period ${period.period_name} (${period.period_key}) is SOFT_LOCKED for period-end reconciliation.`);
       }
     }
   } catch (err: any) {
-    if (err.message && (err.message.includes("PERIODE DITUTUP") || err.message.includes("PERIODE TERKUNCI"))) {
+    if (err.message && (err.message.includes("PERIOD CLOSED") || err.message.includes("PERIOD LOCKED"))) {
       throw err;
     }
   }
@@ -160,14 +160,14 @@ export function postGoodsReceiptJournal(
     lines: [
       {
         account_code: "1104",
-        account_name: "Persediaan Bahan Baku (Raw Materials Inventory)",
+        account_name: "Raw Materials Inventory",
         debit: total_inventory_cost,
         credit: 0,
         memo: `Physical stock intake PO ${po_number}`,
       },
       {
         account_code: "2105",
-        account_name: "Hutang Penerimaan Barang Belum Ditagih (Unbilled GRN Accrual / GRNI)",
+        account_name: "Unbilled GRN Accrual (GRNI)",
         debit: 0,
         credit: total_inventory_cost,
         memo: `Accrued liability for PO ${po_number}`,
@@ -206,7 +206,7 @@ export function postVendorBillMatchingJournal(
   const lines: JournalLine[] = [
     {
       account_code: "2105",
-      account_name: "Hutang Penerimaan Barang Belum Ditagih (Unbilled GRN Accrual / GRNI)",
+      account_name: "Unbilled GRN Accrual (GRNI)",
       debit: grn_cleared_cost,
       credit: 0,
       memo: `Clear GRNI accrual for PO ${po_number} upon vendor bill match`,
@@ -216,7 +216,7 @@ export function postVendorBillMatchingJournal(
   if (tax_amount > 0) {
     lines.push({
       account_code: "1106",
-      account_name: "PPN Masukan (Input VAT / Prepaid Tax)",
+      account_name: "Input VAT / Prepaid Tax",
       debit: tax_amount,
       credit: 0,
       memo: `Input VAT from vendor invoice ${vendor_invoice_number}`,
@@ -230,7 +230,7 @@ export function postVendorBillMatchingJournal(
   if (variance > 0.01) {
     lines.push({
       account_code: "5103",
-      account_name: "Selisih Harga Pembelian (Purchase Price Variance / PPV)",
+      account_name: "Purchase Price Variance (PPV)",
       debit: variance,
       credit: 0,
       memo: `Unfavorable invoice variance PO ${po_number} vs invoice ${vendor_invoice_number}`,
@@ -238,7 +238,7 @@ export function postVendorBillMatchingJournal(
   } else if (variance < -0.01) {
     lines.push({
       account_code: "5103",
-      account_name: "Selisih Harga Pembelian (Purchase Price Variance / PPV)",
+      account_name: "Purchase Price Variance (PPV)",
       debit: 0,
       credit: Math.abs(variance),
       memo: `Favorable invoice discount/variance PO ${po_number} vs invoice ${vendor_invoice_number}`,
@@ -248,7 +248,7 @@ export function postVendorBillMatchingJournal(
   // Credit Accounts Payable (Total Payable)
   lines.push({
     account_code: "2101",
-    account_name: "Hutang Usaha (Accounts Payable)",
+    account_name: "Accounts Payable",
     debit: 0,
     credit: total_billed,
     memo: `Accounts Payable verified for PO ${po_number} (Inv: ${vendor_invoice_number})`,
@@ -329,17 +329,18 @@ export function postCommercialInvoiceJournal(
 ) {
   if (grand_total <= 0) return null;
 
+  const netReceivable = Math.max(0, grand_total - pph);
   const lines: JournalLine[] = [
     {
       account_code: "1102",
-      account_name: "Accounts Receivable (Piutang Usaha)",
-      debit: grand_total,
+      account_name: "Accounts Receivable",
+      debit: pph > 0 ? netReceivable : grand_total,
       credit: 0,
       memo: `AR created for Invoice ${ci_number}`,
     },
     {
       account_code: "4101",
-      account_name: "Sales Operating Revenue (Pendapatan Usaha)",
+      account_name: "Sales Operating Revenue",
       debit: 0,
       credit: dpp,
       memo: `Revenue recognized for Invoice ${ci_number}`,
@@ -349,20 +350,20 @@ export function postCommercialInvoiceJournal(
   if (ppn > 0) {
     lines.push({
       account_code: "2102",
-      account_name: "VAT / PPN Payable (Hutang Pajak Keluaran)",
+      account_name: "Output VAT Payable",
       debit: 0,
       credit: ppn,
-      memo: `PPN Output liability for ${ci_number}`,
+      memo: `Output VAT liability for ${ci_number}`,
     });
   }
 
   if (pph > 0) {
     lines.push({
       account_code: "1107",
-      account_name: "Prepaid Tax PPh 23 (Uang Muka PPh)",
+      account_name: "Prepaid Withholding Tax",
       debit: pph,
       credit: 0,
-      memo: `Prepaid tax deduction for ${ci_number}`,
+      memo: `Prepaid withholding tax deduction for ${ci_number}`,
     });
   }
 
@@ -371,6 +372,165 @@ export function postCommercialInvoiceJournal(
     reference_id: ci_id,
     reference_number: ci_number,
     description: `Billing Recognition for Commercial Invoice ${ci_number}`,
+    lines,
+    created_by: user || "FINANCE_BILLING",
+  });
+}
+
+// 3b. Down Payment (DP) Commercial Invoice Generation (Unearned Customer Deposit COA 2106)
+export function postDownPaymentInvoiceJournal(
+  db: Database.Database,
+  {
+    ci_id,
+    ci_number,
+    dp_dpp,
+    dp_ppn = 0,
+    dp_grand_total,
+    is_paid = false,
+    user,
+  }: {
+    ci_id: string;
+    ci_number: string;
+    dp_dpp: number;
+    dp_ppn?: number;
+    dp_grand_total: number;
+    is_paid?: boolean;
+    user?: string;
+  },
+) {
+  if (dp_grand_total <= 0) return null;
+
+  const lines: JournalLine[] = [
+    {
+      account_code: is_paid ? "1108" : "1102",
+      account_name: is_paid
+        ? "Storefront & Down Payment Cash/Bank"
+        : "Accounts Receivable (Down Payment)",
+      debit: dp_grand_total,
+      credit: 0,
+      memo: `Down Payment (DP) invoice billing/receipt ${ci_number}`,
+    },
+    {
+      account_code: "2106",
+      account_name: "Customer Deposits (Unearned Revenue)",
+      debit: 0,
+      credit: dp_dpp,
+      memo: `Unearned customer deposit liability recognition ${ci_number}`,
+    },
+  ];
+
+  if (dp_ppn > 0) {
+    lines.push({
+      account_code: "2102",
+      account_name: "Output VAT Payable",
+      debit: 0,
+      credit: dp_ppn,
+      memo: `Output VAT on Down Payment invoice ${ci_number}`,
+    });
+  }
+
+  return postJournalEntry(db, {
+    reference_type: "COMMERCIAL_INVOICE",
+    reference_id: ci_id,
+    reference_number: ci_number,
+    description: `Down Payment (DP) Invoice Recognition ${ci_number}`,
+    lines,
+    created_by: user || "FINANCE_BILLING",
+  });
+}
+
+// 3c. Final Settlement Commercial Invoice (Knock-off Customer Deposit COA 2106 & Recognize Full Revenue COA 4101)
+export function postFinalSettlementInvoiceJournal(
+  db: Database.Database,
+  {
+    ci_id,
+    ci_number,
+    full_dpp,
+    full_ppn = 0,
+    pph = 0,
+    dp_dpp_deducted = 0,
+    dp_ppn_deducted = 0,
+    user,
+  }: {
+    ci_id: string;
+    ci_number: string;
+    full_dpp: number;
+    full_ppn?: number;
+    pph?: number;
+    dp_dpp_deducted?: number;
+    dp_ppn_deducted?: number;
+    user?: string;
+  },
+) {
+  const safeFullDpp = Math.max(0, Math.round(full_dpp));
+  const safeFullPpn = Math.max(0, Math.round(full_ppn));
+  const safeDpDpp = Math.min(safeFullDpp, Math.max(0, Math.round(dp_dpp_deducted)));
+  const safeDpPpn = Math.min(safeFullPpn, Math.max(0, Math.round(dp_ppn_deducted)));
+  const safePph = Math.max(0, Math.round(pph));
+
+  const remainingPpn = Math.max(0, safeFullPpn - safeDpPpn);
+  const netRemainingReceivable = Math.max(
+    0,
+    safeFullDpp + remainingPpn - safeDpDpp - safePph,
+  );
+
+  if (safeFullDpp <= 0) return null;
+
+  const lines: JournalLine[] = [];
+
+  if (netRemainingReceivable > 0) {
+    lines.push({
+      account_code: "1102",
+      account_name: "Accounts Receivable (Final Settlement Balance)",
+      debit: netRemainingReceivable,
+      credit: 0,
+      memo: `Remaining settlement receivable after DP deduction (${ci_number})`,
+    });
+  }
+
+  if (safeDpDpp > 0) {
+    lines.push({
+      account_code: "2106",
+      account_name: "Customer Deposits (Knock-off)",
+      debit: safeDpDpp,
+      credit: 0,
+      memo: `Customer deposit knock-off on final settlement ${ci_number}`,
+    });
+  }
+
+  if (safePph > 0) {
+    lines.push({
+      account_code: "1107",
+      account_name: "Prepaid Withholding Tax",
+      debit: safePph,
+      credit: 0,
+      memo: `Withholding tax deduction on final settlement ${ci_number}`,
+    });
+  }
+
+  lines.push({
+    account_code: "4101",
+    account_name: "Sales Operating Revenue",
+    debit: 0,
+    credit: safeFullDpp,
+    memo: `Full sales revenue recognition on final settlement ${ci_number}`,
+  });
+
+  if (remainingPpn > 0) {
+    lines.push({
+      account_code: "2102",
+      account_name: "Output VAT Payable",
+      debit: 0,
+      credit: remainingPpn,
+      memo: `Remaining output VAT on final settlement invoice ${ci_number}`,
+    });
+  }
+
+  return postJournalEntry(db, {
+    reference_type: "COMMERCIAL_INVOICE",
+    reference_id: ci_id,
+    reference_number: ci_number,
+    description: `Final Settlement Invoice & DP Knock-off Recognition ${ci_number}`,
     lines,
     created_by: user || "FINANCE_BILLING",
   });
@@ -408,7 +568,7 @@ export function postInvoicePaymentJournal(
       },
       {
         account_code: "1102",
-        account_name: "Accounts Receivable (Piutang Usaha)",
+        account_name: "Accounts Receivable",
         debit: 0,
         credit: payment_amount,
         memo: `AR settlement for ${ci_number}`,
@@ -443,7 +603,7 @@ export function postPurchaseOrderPaymentJournal(
     lines: [
       {
         account_code: "2101",
-        account_name: "Accounts Payable (Hutang Usaha)",
+        account_name: "Accounts Payable",
         debit: payment_amount,
         credit: 0,
         memo: `AP settlement for PO ${po_number}`,
@@ -487,22 +647,22 @@ export function postPayrollDisbursementJournal(
 ) {
   const lines: JournalLine[] = [];
 
-  // Debits: Direct Labor to HPP (Account 5102 - Biaya Tenaga Kerja Langsung)
+  // Debits: Direct Labor to HPP (Account 5102)
   if (total_direct_labor > 0) {
     lines.push({
       account_code: "5102",
-      account_name: "Direct Labor Cost (BTKL / HPP Tenaga Kerja)",
+      account_name: "Direct Labor Cost (COGS)",
       debit: total_direct_labor,
       credit: 0,
       memo: `Direct factory labor & overtime for ${period_name}`,
     });
   }
 
-  // Debits: General staff to OPEX (Account 6101 - Beban Gaji & Upah Operasional)
+  // Debits: General staff to OPEX (Account 6101)
   if (total_opex > 0) {
     lines.push({
       account_code: "6101",
-      account_name: "Operational Salaries & Wages (Beban Gaji Kantor & Umum)",
+      account_name: "Operational Salaries & Wages",
       debit: total_opex,
       credit: 0,
       memo: `Operational staff salaries for ${period_name}`,
@@ -521,25 +681,25 @@ export function postPayrollDisbursementJournal(
   }
 
   // Credits:
-  // BPJS Payable
+  // Social Security Payable
   if (total_bpjs > 0) {
     lines.push({
       account_code: "2103",
-      account_name: "BPJS Withholding Payable (Hutang BPJS)",
+      account_name: "Social Security Withholding Payable",
       debit: 0,
       credit: total_bpjs,
-      memo: `BPJS deduction payable for ${period_name}`,
+      memo: `Social Security deduction payable for ${period_name}`,
     });
   }
 
-  // PPh 21 Payable
+  // Employee Income Tax Payable
   if (total_pph21 > 0) {
     lines.push({
       account_code: "2104",
-      account_name: "Income Tax Payable (Hutang PPh 21)",
+      account_name: "Employee Income Tax Payable",
       debit: 0,
       credit: total_pph21,
-      memo: `PPh 21 withholding payable for ${period_name}`,
+      memo: `Employee income tax withholding payable for ${period_name}`,
     });
   }
 
@@ -560,7 +720,7 @@ export function postPayrollDisbursementJournal(
     reference_type: "PAYROLL",
     reference_id: payroll_id,
     reference_number: voucher_number,
-    description: `Payroll Disbursement & HPP Direct Labor Allocation for ${period_name}`,
+    description: `Payroll Disbursement & COGS Direct Labor Allocation for ${period_name}`,
     lines,
     created_by: user || "FINANCE_PAYROLL",
   });
@@ -591,18 +751,18 @@ export function postMaterialIssuanceJournal(
     reference_type: "WIP_MATERIAL_ISSUE",
     reference_id: reference_id || project_id,
     reference_number: spk_number || project_id,
-    description: `Material Issuance to Floor: SPK ${spk_number} (${item_summary})`,
+    description: `Material Issuance to Floor: Work Order ${spk_number} (${item_summary})`,
     lines: [
       {
         account_code: "1105",
-        account_name: "Pekerjaan Dalam Proses (WIP Inventory)",
+        account_name: "Work in Progress (WIP Inventory)",
         debit: material_cost,
         credit: 0,
-        memo: `WIP allocation for SPK ${spk_number}`,
+        memo: `WIP allocation for Work Order ${spk_number}`,
       },
       {
         account_code: "1104",
-        account_name: "Persediaan Bahan Baku (Raw Materials Inventory)",
+        account_name: "Raw Materials Inventory",
         debit: 0,
         credit: material_cost,
         memo: `Raw materials issued to production floor`,
@@ -637,37 +797,37 @@ export function postProductionFinishJournal(
   const lines: JournalLine[] = [
     {
       account_code: "1103",
-      account_name: "Persediaan Barang Jadi (Finished Goods Inventory)",
+      account_name: "Finished Goods Inventory",
       debit: totalCost,
       credit: 0,
-      memo: `Finished Goods intake from completed SPK ${spk_number}`,
+      memo: `Finished Goods intake from completed Work Order ${spk_number}`,
     },
     {
       account_code: "1105",
-      account_name: "Pekerjaan Dalam Proses (WIP Inventory)",
+      account_name: "Work in Progress (WIP Inventory)",
       debit: 0,
       credit: total_material_cost,
-      memo: `WIP raw material relief for SPK ${spk_number}`,
+      memo: `WIP raw material relief for Work Order ${spk_number}`,
     },
   ];
 
   if (total_labor_cost > 0) {
     lines.push({
       account_code: "5102",
-      account_name: "Beban Tenaga Kerja Langsung (Direct Labor Absorbed)",
+      account_name: "Direct Labor Absorbed",
       debit: 0,
       credit: total_labor_cost,
-      memo: `Direct Labor absorbed into finished goods SPK ${spk_number}`,
+      memo: `Direct Labor absorbed into finished goods Work Order ${spk_number}`,
     });
   }
 
   if (total_overhead_cost > 0) {
     lines.push({
       account_code: "5104",
-      account_name: "Biaya Overhead Pabrik Dibebankan (Applied Factory Overhead)",
+      account_name: "Applied Factory Overhead",
       debit: 0,
       credit: total_overhead_cost,
-      memo: `Factory overhead absorbed into finished goods SPK ${spk_number}`,
+      memo: `Factory overhead absorbed into finished goods Work Order ${spk_number}`,
     });
   }
 
@@ -675,7 +835,7 @@ export function postProductionFinishJournal(
     reference_type: "PRODUCTION_FINISH",
     reference_id: project_id,
     reference_number: spk_number || project_id,
-    description: `Production Completion & Finished Goods Capitalization for SPK ${spk_number}`,
+    description: `Production Completion & Finished Goods Capitalization for Work Order ${spk_number}`,
     lines,
     created_by: user || "PRODUCTION_QC_FINISH",
   });

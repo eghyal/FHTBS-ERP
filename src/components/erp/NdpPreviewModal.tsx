@@ -49,11 +49,11 @@ export const NdpPreviewModal: React.FC<NdpPreviewModalProps> = ({
         <PdfPreviewWrapper>
           <PrintTemplate
             ref={printDocRef}
-            documentTitleId="PEMBERITAHUAN PENGHENTIAN PROSES"
+            documentTitleId="NOTICE TO DOWN PROCESS"
             documentTitleEn="NOTICE TO DOWN PROCESS"
-            documentNameId="pemberitahuan penghentian proses"
+            documentNameId="notice to down process"
             documentNameEn="notice to down process"
-            date={new Date(ndp.created_at || ndp.down_started_at).toLocaleDateString("id-ID", {
+            date={new Date(ndp.created_at || ndp.down_started_at).toLocaleDateString("en-GB", {
               timeZone: "Asia/Jakarta",
               year: "numeric",
               month: "short",
@@ -67,25 +67,25 @@ export const NdpPreviewModal: React.FC<NdpPreviewModalProps> = ({
             <div className="grid grid-cols-2 gap-6 mb-6 border-b border-stone-100 pb-4">
               <div>
                 <div className="text-[8px] font-bold tracking-widest uppercase text-stone-900 mb-2 border-b border-stone-100 pb-1">
-                  Identifikasi Proyek <span className="font-normal text-[7px] text-stone-400">/ PROJECT IDENTIFICATION</span>
+                  PROJECT IDENTIFICATION
                 </div>
                 <div className="text-xl font-black text-stone-900 mb-1 tracking-tight leading-none">
                   {project?.name || ndp.project_name || "N/A"}
                 </div>
                 <div className="text-[9px] font-medium text-stone-500 uppercase tracking-widest flex items-center gap-2">
-                  <span>SPK: {project?.spk_number || ndp.spk_number || "N/A"}</span>
+                  <span>Work Order: {project?.spk_number || ndp.spk_number || "N/A"}</span>
                 </div>
               </div>
               <div className="text-right">
                 <div className="text-[8px] font-bold tracking-widest uppercase text-stone-900 mb-2 border-b border-stone-100 pb-1">
-                  Konteks Produksi <span className="font-normal text-[7px] text-stone-400">/ PRODUCTION CONTEXT</span>
+                  PRODUCTION CONTEXT
                 </div>
                 <div className="flex justify-between items-center text-[10px] font-medium mb-1">
-                  <span className="text-stone-900 uppercase tracking-widest font-bold text-[8px]">PROSES (STEP):</span>
+                  <span className="text-stone-900 uppercase tracking-widest font-bold text-[8px]">PROCESS STEP:</span>
                   <span className="text-stone-700">{ndp.process_name || "Production Step"}</span>
                 </div>
                 <div className="flex justify-between items-center text-[10px] font-medium mb-1">
-                  <span className="text-stone-900 uppercase tracking-widest font-bold text-[8px]">WAKTU MULAI (START):</span>
+                  <span className="text-stone-900 uppercase tracking-widest font-bold text-[8px]">START TIME:</span>
                   <span className="text-stone-700">{new Date(ndp.down_started_at || ndp.created_at).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-[10px] font-medium">
@@ -100,7 +100,7 @@ export const NdpPreviewModal: React.FC<NdpPreviewModalProps> = ({
             {/* Root Cause Section */}
             <div className="mb-6">
               <div className="text-[8px] font-bold tracking-widest uppercase text-stone-900 mb-3 border-b border-stone-100 pb-1">
-                Kategori Akar Masalah <span className="font-normal text-[7px] text-stone-400">/ ROOT CAUSE CATEGORY</span>
+                ROOT CAUSE CATEGORY
               </div>
               <div className="p-3 bg-red-50/50 border border-red-200 rounded-xl text-xs font-bold text-red-700 w-full text-center tracking-wider">
                 {getCategoryLabel(ndp.reason_category)}
@@ -110,7 +110,7 @@ export const NdpPreviewModal: React.FC<NdpPreviewModalProps> = ({
             {/* Incident Details */}
             <div className="mb-6">
               <div className="text-[8px] font-bold tracking-widest uppercase text-stone-900 mb-3 border-b border-stone-100 pb-1">
-                Detail Kejadian & Catatan Teknis <span className="font-normal text-[7px] text-stone-400">/ INCIDENT DETAIL & ENGINEERING NOTES</span>
+                INCIDENT DETAIL & ENGINEERING NOTES
               </div>
               <div className="p-4 bg-white border border-stone-200 rounded-xl text-[10px] leading-relaxed text-stone-700 min-h-[90px] whitespace-pre-wrap">
                 {ndp.reason_detail || "No detailed notes provided."}
@@ -134,7 +134,7 @@ export const NdpPreviewModal: React.FC<NdpPreviewModalProps> = ({
             {/* Signatures */}
             <div className="grid grid-cols-2 gap-12 mt-12 mb-4">
               <div className="text-center">
-                <div className="text-[9px] text-stone-400 mb-16 uppercase tracking-wider">Authorized By / Otorisasi Oleh</div>
+                <div className="text-[9px] text-stone-400 mb-16 uppercase tracking-wider">Authorized By</div>
                 <div className="border-b-2 border-stone-900 pb-1 font-bold text-sm text-stone-900 mx-8">
                   {ndp.authorized_by}
                 </div>

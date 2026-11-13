@@ -18,6 +18,8 @@ import {
   QrCode,
   FileText
 } from "lucide-react";
+import { canViewDocFinancials } from "@/utils/rbacFinancials";
+import { ConfidentialBadge } from "@/components/shared/ConfidentialBadge";
 
 interface ThermalReceiptModalProps {
   isOpen: boolean;
@@ -34,6 +36,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 }) => {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const canViewPrices = canViewDocFinancials(user, "QUOTATION");
   const [data, setData] = useState<any>(initialData || null);
   const [loading, setLoading] = useState(false);
   const [paperWidth, setPaperWidth] = useState<"80mm" | "58mm">("80mm");
@@ -74,11 +77,19 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   }, [isOpen, quotationId, initialData, user?.username]);
 
   const handlePrint = () => {
+    if (!canViewPrices) {
+      showToast("Printing restricted: Financial figures are confidential.", "error");
+      return;
+    }
     if (!receiptRef.current) return;
     window.print();
   };
 
   const handleCopyWhatsApp = () => {
+    if (!canViewPrices) {
+      showToast("Copy restricted: Financial figures are confidential.", "error");
+      return;
+    }
     if (!data) return;
 
     const receiptNo = data.receipt_number || data.quotation_number || "-";
@@ -194,10 +205,26 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
           </div>
 
           <div className="space-y-2 pt-4">
+            {!canViewPrices && (
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs text-rose-700 dark:text-rose-300 mb-2">
+                <div className="font-bold flex items-center gap-1.5 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-rose-500 inline-block animate-pulse"></span>
+                  Confidential Document
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  Financial figures are confidential. Export actions (print & copy) are restricted.
+                </p>
+              </div>
+            )}
             <button
               type="button"
               onClick={handlePrint}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-xl shadow-sm transition-colors"
+              disabled={!canViewPrices}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 font-medium text-sm rounded-xl shadow-sm transition-colors ${
+                canViewPrices
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                  : "bg-stone-200 dark:bg-stone-800 text-stone-400 cursor-not-allowed border border-stone-300 dark:border-stone-700"
+              }`}
             >
               <Printer className="w-4 h-4" />
               Print Thermal Receipt
@@ -206,7 +233,12 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             <button
               type="button"
               onClick={handleCopyWhatsApp}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 font-medium text-sm rounded-xl transition-colors border border-stone-200 dark:border-stone-700"
+              disabled={!canViewPrices}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 font-medium text-sm rounded-xl transition-colors border ${
+                canViewPrices
+                  ? "bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 border-stone-200 dark:border-stone-700 cursor-pointer"
+                  : "bg-stone-200 dark:bg-stone-800 text-stone-400 cursor-not-allowed border-stone-300 dark:border-stone-700"
+              }`}
             >
               {isCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
               {isCopied ? "Copied!" : "Copy Text Receipt"}
@@ -235,10 +267,18 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             >
               {/* Header */}
               <div className="text-center border-b border-dashed border-stone-400 pb-3 mb-3">
-                <h3 className="font-bold text-sm tracking-wider uppercase">FHTBS ENTERPRISE</h3>
-                <p className="text-[10px] text-stone-600">Industrial & Retail Direct Supply</p>
-                <p className="text-[10px] text-stone-600">Jl. Industri Raya No. 88, Cibitung</p>
-                <p className="text-[10px] text-stone-600">Tel: (021) 8988-1234</p>
+                <img
+                  src="/logo.png"
+                  alt="Logo"
+                  className="w-10 h-10 object-contain mx-auto mb-1.5"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+                <h3 className="font-bold text-sm tracking-wider uppercase">PAVING JOSS</h3>
+                <p className="text-[10px] text-stone-600">CV Batu Emas Group &bull; Banyuwangi</p>
+                <p className="text-[10px] text-stone-600">Dusun Petahunan, Gambiran, Banyuwangi</p>
+                <p className="text-[10px] text-stone-600">WhatsApp: 0811-1111-3993</p>
               </div>
 
               {/* Transaction Metadata */}
@@ -279,11 +319,14 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                     return (
                       <div key={idx} className="space-y-0.5">
                         <div className="font-semibold truncate text-[11px]">{it.title}</div>
-                        <div className="flex justify-between text-[10px] text-stone-600">
+                        <div className="flex justify-between items-center text-[10px] text-stone-600">
                           <span>
-                            {it.qty} {it.uom || "PCS"} x {formatIDR(Number(it.unit_price) || 0)}
+                            {it.qty} {it.uom || "PCS"} x{" "}
+                            {canViewPrices ? formatIDR(Number(it.unit_price) || 0) : <ConfidentialBadge size="sm" />}
                           </span>
-                          <span className="font-bold text-stone-900">{formatIDR(lineSubtotal)}</span>
+                          <span className="font-bold text-stone-900">
+                            {canViewPrices ? formatIDR(lineSubtotal) : <ConfidentialBadge size="sm" />}
+                          </span>
                         </div>
                       </div>
                     );
@@ -293,43 +336,45 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
               {/* Totals Breakdown */}
               <div className="text-[11px] space-y-1 border-b border-dashed border-stone-400 pb-2 mb-2">
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span>Subtotal:</span>
-                  <span>{formatIDR(data?.dpp || grandTotal)}</span>
+                  <span>{canViewPrices ? formatIDR(data?.dpp || grandTotal) : <ConfidentialBadge size="sm" />}</span>
                 </div>
                 {discountRate > 0 && (
-                  <div className="flex justify-between text-stone-600">
+                  <div className="flex justify-between items-center text-stone-600">
                     <span>Discount ({discountRate}%):</span>
-                    <span>- {formatIDR((grandTotal * discountRate) / 100)}</span>
+                    <span>{canViewPrices ? `- ${formatIDR((grandTotal * discountRate) / 100)}` : <ConfidentialBadge size="sm" />}</span>
                   </div>
                 )}
                 {taxRate > 0 && (
-                  <div className="flex justify-between text-stone-600">
+                  <div className="flex justify-between items-center text-stone-600">
                     <span>VAT ({taxRate}%):</span>
-                    <span>{formatIDR(data?.ppn_amount || 0)}</span>
+                    <span>{canViewPrices ? formatIDR(data?.ppn_amount || 0) : <ConfidentialBadge size="sm" />}</span>
                   </div>
                 )}
-                <div className="flex justify-between font-bold text-xs pt-1 border-t border-stone-300">
+                <div className="flex justify-between items-center font-bold text-xs pt-1 border-t border-stone-300">
                   <span>GRAND TOTAL:</span>
-                  <span className="text-sm font-black">{formatIDR(grandTotal)}</span>
+                  <span className="text-sm font-black">
+                    {canViewPrices ? formatIDR(grandTotal) : <ConfidentialBadge />}
+                  </span>
                 </div>
               </div>
 
               {/* Payment Settlement */}
               <div className="text-[11px] space-y-1 border-b border-dashed border-stone-400 pb-2 mb-3">
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span>Payment Method:</span>
                   <span className="font-bold uppercase">{data?.payment_method || "CASH"}</span>
                 </div>
                 {cashTendered > 0 && (
                   <>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span>Cash Tendered:</span>
-                      <span>{formatIDR(cashTendered)}</span>
+                      <span>{canViewPrices ? formatIDR(cashTendered) : <ConfidentialBadge size="sm" />}</span>
                     </div>
-                    <div className="flex justify-between font-bold">
+                    <div className="flex justify-between items-center font-bold">
                       <span>Change Due:</span>
-                      <span>{formatIDR(changeDue)}</span>
+                      <span>{canViewPrices ? formatIDR(changeDue) : <ConfidentialBadge size="sm" />}</span>
                     </div>
                   </>
                 )}
@@ -338,7 +383,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               {/* QR Code & Footer */}
               <div className="text-center flex flex-col items-center justify-center space-y-2 pt-1">
                 <QRCodeSVG
-                  value={`FHTBS-VERIFIED-SALE:${receiptNo}:${grandTotal}:${data?.paid_at || new Date().toISOString()}`}
+                  value={`FHTBS-VERIFIED-SALE:${receiptNo}:${canViewPrices ? grandTotal : "CONFIDENTIAL"}:${data?.paid_at || new Date().toISOString()}`}
                   size={72}
                   level="M"
                 />

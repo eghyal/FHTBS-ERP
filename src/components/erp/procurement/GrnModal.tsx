@@ -2,7 +2,18 @@ import React, { memo } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
-import { ClipboardCheck, X, ShieldCheck } from "lucide-react";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { Badge } from "@/components/ui/Badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/Table";
+import { ClipboardCheck, ShieldCheck, Layers } from "lucide-react";
 
 interface GrnModalProps {
   isOpen: boolean;
@@ -19,6 +30,8 @@ interface GrnModalProps {
       received_date: string;
       qc_status: string;
       remarks: string;
+      engineering_user?: string;
+      qc_user?: string;
     }>
   >;
   grnItems: any[];
@@ -45,229 +58,386 @@ export const GrnModal = memo(function GrnModal({
 }: GrnModalProps) {
   if (!selectedPoDetails) return null;
 
+  const syncOverallStatusFromItems = (updatedItems: any[]) => {
+    let totalDeliv = 0;
+    let totalPass = 0;
+    let totalRej = 0;
+    for (const it of updatedItems) {
+      const deliv = Math.max(0, Number(it.qty_received || 0));
+      const rej = Math.max(0, Math.min(deliv, Number(it.qty_rejected || 0)));
+      const pass =
+        it.qty_passed !== undefined
+          ? Math.max(0, Math.min(deliv, Number(it.qty_passed)))
+          : Math.max(0, deliv - rej);
+      totalDeliv += deliv;
+      totalPass += pass;
+      totalRej += rej;
+    }
+    let nextStatus = grnForm.qc_status;
+    if (totalDeliv > 0) {
+      if (totalPass === 0 && totalRej > 0) {
+        nextStatus = "REJECTED";
+      } else if (totalPass > 0 && totalRej > 0) {
+        nextStatus = "CONDITIONAL";
+      } else if (totalPass > 0 && totalRej === 0) {
+        nextStatus = "PASSED";
+      }
+    }
+    if (nextStatus !== grnForm.qc_status) {
+      setGrnForm((prev) => ({ ...prev, qc_status: nextStatus }));
+    }
+  };
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="4xl"
-      contentClassName="p-0 flex flex-col h-[90vh]"
-    >
-      <div className="p-4 border-b border-stone-100 flex justify-between items-center bg-white shrink-0">
+      maxWidth="5xl"
+      title={
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-stone-100 rounded-lg flex items-center justify-center">
-            <ClipboardCheck className="w-4 h-4 text-stone-900" />
+          <div className="w-8 h-8 bg-stone-100 border border-stone-200/80 rounded-lg flex items-center justify-center shrink-0">
+            <ClipboardCheck className="w-4 h-4 text-stone-700" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-stone-900 tracking-tight">
-              Material Receiving Confirmation (GRN)
-            </h3>
-            <p className="text-xs text-stone-500 font-medium tracking-widest uppercase mt-1">
-              {selectedPoDetails?.po_number || "N/A"}
-            </p>
+            <div className="text-base font-bold text-stone-900 tracking-tight">
+              Incoming Material QC &amp; Receiving Confirmation (GRN)
+            </div>
+            <div className="text-[11px] text-stone-500 font-mono tabular-nums font-semibold uppercase mt-0.5">
+              {selectedPoDetails?.po_number || "N/A"} · Supplier:{" "}
+              {selectedPoDetails?.supplier_name || "Vendor"}
+            </div>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 text-stone-400 hover:text-stone-600 transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
+      }
+      footer={
+        <div className="flex flex-wrap justify-between items-center gap-2 w-full">
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            onClick={() => {
+              const updated = grnItems.map((item) => {
+                const pending = Math.max(
+                  0,
+                  Number(item.qty || 0) - Number(item.received_qty || 0)
+                );
+                return {
+                  ...item,
+                  qty_received: pending,
+                  qty_passed: pending,
+                  qty_rejected: 0,
+                };
+              });
+              setGrnItems(updated);
+              syncOverallStatusFromItems(updated);
+            }}
+          >
+            Auto-Fill All Pending (100% Pass)
+          </Button>
+          <div className="flex gap-2.5">
+            <Button variant="secondary" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              form="grn-form"
+              type="submit"
+              size="sm"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Processing..." : "Confirm QC & Issue GRN"}
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <form id="grn-form" onSubmit={handleCompleteGrn} className="space-y-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="Received Date"
+            required
+            type="date"
+            value={grnForm.received_date}
+            onChange={(e) =>
+              setGrnForm({ ...grnForm, received_date: e.target.value })
+            }
+          />
+          <Select
+            label="Overall GRN QC Disposition"
+            value={grnForm.qc_status}
+            onChange={(e) => {
+              const nextStatus = e.target.value;
+              setGrnForm({ ...grnForm, qc_status: nextStatus });
+              if (nextStatus === "REJECTED") {
+                setGrnItems((prev) =>
+                  prev.map((it) => ({
+                    ...it,
+                    qty_passed: 0,
+                    qty_rejected: Number(it.qty_received || 0),
+                  }))
+                );
+              } else if (nextStatus === "PASSED") {
+                setGrnItems((prev) =>
+                  prev.map((it) => ({
+                    ...it,
+                    qty_passed: Number(it.qty_received || 0),
+                    qty_rejected: 0,
+                  }))
+                );
+              }
+            }}
+          >
+            <option value="PASSED">Passed (All Items Conform)</option>
+            <option value="CONDITIONAL">
+              Conditional / Partial Pass (Split Pass &amp; Reject)
+            </option>
+            <option value="REJECTED">Rejected (Hold / Return to Vendor)</option>
+          </Select>
+        </div>
 
-      <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-stone-50/30 space-y-6">
-        <form id="grn-form" onSubmit={handleCompleteGrn} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-2 px-1">
-                Received Date
-              </label>
-              <input
-                required
-                type="date"
-                value={grnForm.received_date}
-                onChange={(e) =>
-                  setGrnForm({ ...grnForm, received_date: e.target.value })
-                }
-                className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs font-bold focus:border-stone-400 outline-none transition-all shadow-2xs"
-              />
+        <div className="p-3.5 bg-stone-50 border border-stone-200/80 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 font-bold text-xs uppercase">
+              {(user?.name || user?.username || "P").charAt(0)}
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-2 px-1">
-                Engineering Decision
-              </label>
-              <Select
-                value={grnForm.qc_status}
-                onChange={(e) =>
-                  setGrnForm({ ...grnForm, qc_status: e.target.value })
-                }
-                className="w-full bg-white border border-stone-200 rounded-xl text-xs font-bold focus:border-stone-400 shadow-2xs cursor-pointer"
-              >
-                <option value="PASSED">Passed</option>
-                <option value="REJECTED">Rejected</option>
-                <option value="CONDITIONAL">Conditional</option>
-              </Select>
+              <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                Inspector &amp; Receiver
+              </div>
+              <div className="text-xs font-bold text-stone-900 mt-0.5">
+                {user?.name || user?.username || "QA/QC Team"}{" "}
+                <span className="font-medium text-stone-500 text-[10px]">
+                  ({user?.role || "QA_QC"})
+                </span>
+              </div>
             </div>
           </div>
-
-          <div className="p-4 bg-stone-50 border border-stone-200/80 rounded-xl flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 font-bold text-xs uppercase">
-                {(user?.name || user?.username || "P").charAt(0)}
-              </div>
-              <div>
-                <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-                  Inspector & Receiver
-                </div>
-                <div className="text-xs font-bold text-stone-900 mt-0.5">
-                  {user?.name || user?.username || "Purchasing Team"}{" "}
-                  <span className="font-medium text-stone-500 text-[10px]">
-                    ({user?.role || "Purchasing"})
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200/80 text-[10px] font-bold tracking-wider uppercase">
-              <ShieldCheck className="w-3.5 h-3.5" /> Direct Verified
-            </div>
+          <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200/80 text-[10px] font-bold tracking-wider uppercase">
+            <ShieldCheck className="w-3.5 h-3.5" /> BOM Spec &amp; Split QC Gate
           </div>
+        </div>
 
-          <div>
-            <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-2 px-1">
-              Item Confirmations (Engineering Verification)
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-stone-500" />
+              Per-Item BOM Specification Check &amp; Split Quantity Disposition
             </label>
-            <div className="border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-stone-50 border-b border-stone-200">
-                  <tr className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.2em]">
-                    <th className="px-4 py-3">Item Target</th>
-                    <th className="px-4 py-3 text-center">Pending Volume</th>
-                    <th className="px-4 py-3 text-right w-40">Count Received</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100 bg-white">
-                  {grnItems.map((item, idx) => (
-                    <tr
-                      key={idx}
-                      className="hover:bg-stone-50/50 transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="text-xs font-bold text-stone-900 tracking-tight">
+            <span className="text-[10px] font-mono text-stone-500">
+              Only <strong>QC Passed</strong> qty enters Warehouse Stock
+            </span>
+          </div>
+
+          <Table compact>
+            <TableHeader>
+              <TableRow hoverable={false}>
+                <TableHead>Material &amp; Engineering BOM Spec</TableHead>
+                <TableHead className="w-40">Batch / COA Ref</TableHead>
+                <TableHead className="text-center w-24">Pending PO</TableHead>
+                <TableHead className="text-right w-28">Qty Delivered</TableHead>
+                <TableHead className="text-right w-28">QC Passed</TableHead>
+                <TableHead className="text-right w-28">QC Rejected</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {grnItems.map((item, idx) => {
+                const pendingVolume = Math.max(
+                  0,
+                  Number(item.qty || 0) - Number(item.received_qty || 0)
+                );
+                const qtyDelivered = Math.max(0, Number(item.qty_received ?? pendingVolume));
+                const qtyRejected = Math.max(
+                  0,
+                  Math.min(qtyDelivered, Number(item.qty_rejected ?? 0))
+                );
+                const qtyPassed =
+                  item.qty_passed !== undefined
+                    ? Math.max(0, Math.min(qtyDelivered, Number(item.qty_passed)))
+                    : Math.max(0, qtyDelivered - qtyRejected);
+
+                return (
+                  <TableRow key={item.item_id || idx}>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-mono font-bold text-stone-900 tabular-nums tracking-tight">
                           {item.item_code}
-                        </div>
-                        <div className="text-[10px] uppercase tracking-widest text-stone-400 truncate max-w-[200px] mt-0.5">
-                          {item.item_name}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center text-xs font-medium text-stone-600">
-                        <span className="text-xs font-semibold text-stone-900 font-mono">
-                          {item.qty - (item.received_qty || 0)}
                         </span>
-                        <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400 ml-1">
+                        {qtyRejected > 0 && (
+                          <Badge variant="danger" size="sm">
+                            {qtyRejected} Rej
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-xs font-semibold text-stone-800 truncate max-w-[230px] mt-0.5">
+                        {item.item_name}
+                      </div>
+                      {(item.dimension || item.spec) ? (
+                        <div className="text-[10px] font-mono text-emerald-800 bg-emerald-50/70 border border-emerald-200/70 px-1.5 py-0.5 rounded mt-1 inline-block">
+                          BOM Spec: {[item.dimension, item.spec].filter(Boolean).join(" · ")}
+                        </div>
+                      ) : (
+                        <div className="text-[10px] font-mono text-stone-400 mt-0.5">
+                          Standard Catalog Tolerance
+                        </div>
+                      )}
+                    </TableCell>
+
+                    <TableCell>
+                      <input
+                        type="text"
+                        placeholder="COA / Lot #..."
+                        value={item.batch_lot_number || ""}
+                        onChange={(e) => {
+                          const next = [...grnItems];
+                          next[idx] = {
+                            ...next[idx],
+                            batch_lot_number: e.target.value,
+                          };
+                          setGrnItems(next);
+                        }}
+                        className="w-full h-8 bg-stone-50 border border-stone-200/90 hover:bg-white rounded-lg px-2 text-[11px] font-mono tabular-nums text-stone-800 focus:bg-white focus:border-stone-400 outline-none transition-all"
+                      />
+                    </TableCell>
+
+                    <TableCell className="text-center">
+                      <span className="text-xs font-bold text-stone-900 font-mono tabular-nums">
+                        {pendingVolume}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 ml-1">
+                        {item.uom}
+                      </span>
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max={pendingVolume}
+                          value={qtyDelivered}
+                          onChange={(e) => {
+                            const newDeliv = Math.max(
+                              0,
+                              Math.min(pendingVolume, Number(e.target.value) || 0)
+                            );
+                            const newRej = Math.min(newDeliv, qtyRejected);
+                            const newPass = Math.max(0, newDeliv - newRej);
+                            const next = [...grnItems];
+                            next[idx] = {
+                              ...next[idx],
+                              qty_received: newDeliv,
+                              qty_passed: newPass,
+                              qty_rejected: newRej,
+                            };
+                            setGrnItems(next);
+                            syncOverallStatusFromItems(next);
+                          }}
+                          className="w-full h-8 bg-stone-50 border border-stone-200/90 hover:bg-white rounded-lg px-2 pr-8 text-right text-xs font-mono tabular-nums font-bold text-stone-900 focus:bg-white focus:border-stone-400 outline-none transition-all"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-bold text-stone-400 uppercase pointer-events-none">
                           {item.uom}
                         </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="relative">
-                          <input
-                            type="number"
-                            min="0"
-                            max={item.qty - (item.received_qty || 0)}
-                            value={item.qty_received}
-                            onChange={(e) => {
-                              const newItems = [...grnItems];
-                              newItems[idx].qty_received = Number(
-                                e.target.value,
-                              );
-                              setGrnItems(newItems);
-                            }}
-                            className="w-full bg-stone-50 border border-stone-200 hover:bg-white rounded-lg px-3 py-1.5 pr-8 text-right text-xs font-mono font-bold text-stone-900 focus:bg-white focus:border-stone-400 outline-none transition-all shadow-2xs"
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold text-stone-400 uppercase tracking-widest leading-none pointer-events-none mt-px">
-                            {item.uom}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                      </div>
+                    </TableCell>
 
-          <div>
-            <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-2 px-1">
-              Smart e-Approval PIN
-            </label>
-            <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl flex items-start gap-4 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-white border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
-                <ShieldCheck className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div className="w-full">
-                <h4 className="text-xs font-bold text-stone-900 mb-1">
-                  Embedded Smart e-Approval
-                </h4>
-                <p className="text-[10px] text-stone-500 leading-relaxed mb-3">
-                  Please enter your 6-digit authorization PIN to digitally sign and
-                  release this Goods Receiving Note (GRN).
-                </p>
-                <input
-                  type="password"
-                  maxLength={6}
-                  required
-                  value={grnAuthPin}
-                  onChange={(e) => setGrnAuthPin(e.target.value.toUpperCase())}
-                  placeholder="Enter 6-digit PIN"
-                  className="w-full text-xs placeholder:text-stone-400 font-mono tracking-[0.5em] px-3.5 py-2 rounded-xl border-stone-200 focus:border-emerald-500 focus:ring-emerald-500 transition-shadow bg-white"
-                />
-              </div>
-            </div>
-          </div>
+                    <TableCell>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max={qtyDelivered}
+                          value={qtyPassed}
+                          onChange={(e) => {
+                            const newPass = Math.max(
+                              0,
+                              Math.min(qtyDelivered, Number(e.target.value) || 0)
+                            );
+                            const newRej = Math.max(0, qtyDelivered - newPass);
+                            const next = [...grnItems];
+                            next[idx] = {
+                              ...next[idx],
+                              qty_passed: newPass,
+                              qty_rejected: newRej,
+                            };
+                            setGrnItems(next);
+                            syncOverallStatusFromItems(next);
+                          }}
+                          className="w-full h-8 bg-emerald-50/60 border border-emerald-200 hover:bg-white rounded-lg px-2 pr-8 text-right text-xs font-mono tabular-nums font-bold text-emerald-800 focus:bg-white focus:border-emerald-500 outline-none transition-all"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-bold text-emerald-600 uppercase pointer-events-none">
+                          {item.uom}
+                        </span>
+                      </div>
+                    </TableCell>
 
-          <div>
-            <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-2 px-1">
-              Notes / Syarat / Physical Observations
-            </label>
-            <textarea
-              placeholder="Physical condition, missing parts, why conditionally accepted..."
-              value={grnForm.remarks}
-              onChange={(e) =>
-                setGrnForm({ ...grnForm, remarks: e.target.value })
-              }
-              className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:border-stone-400 outline-none transition-all shadow-2xs h-24 resize-none"
+                    <TableCell>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max={qtyDelivered}
+                          value={qtyRejected}
+                          onChange={(e) => {
+                            const newRej = Math.max(
+                              0,
+                              Math.min(qtyDelivered, Number(e.target.value) || 0)
+                            );
+                            const newPass = Math.max(0, qtyDelivered - newRej);
+                            const next = [...grnItems];
+                            next[idx] = {
+                              ...next[idx],
+                              qty_passed: newPass,
+                              qty_rejected: newRej,
+                            };
+                            setGrnItems(next);
+                            syncOverallStatusFromItems(next);
+                          }}
+                          className="w-full h-8 bg-rose-50/60 border border-rose-200 hover:bg-white rounded-lg px-2 pr-8 text-right text-xs font-mono tabular-nums font-bold text-rose-700 focus:bg-white focus:border-rose-500 outline-none transition-all"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-bold text-rose-500 uppercase pointer-events-none">
+                          {item.uom}
+                        </span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="p-4 bg-emerald-50/50 border border-emerald-200/80 rounded-xl flex items-start gap-3.5">
+          <div className="w-9 h-9 rounded-lg bg-white border border-emerald-200/80 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          </div>
+          <div className="w-full">
+            <h4 className="text-xs font-bold text-stone-900 mb-0.5">
+              Embedded Smart e-Approval PIN
+            </h4>
+            <p className="text-[11px] text-stone-500 leading-relaxed mb-2.5">
+              Enter your 6-digit authorization PIN to digitally sign and release this Goods Receiving Note (GRN).
+            </p>
+            <Input
+              type="password"
+              maxLength={6}
+              required
+              value={grnAuthPin}
+              onChange={(e) => setGrnAuthPin(e.target.value.toUpperCase())}
+              placeholder="Enter 6-digit PIN"
+              className="font-mono tracking-[0.5em] bg-white"
             />
           </div>
-        </form>
-      </div>
-
-      <div className="p-4 md:p-6 border-t border-stone-100 bg-white flex justify-between items-center shrink-0">
-        <Button
-          variant="secondary"
-          size="sm"
-          type="button"
-          onClick={() => {
-            const updated = grnItems.map((item) => ({
-              ...item,
-              qty_received: item.qty - (item.received_qty || 0),
-            }));
-            setGrnItems(updated);
-          }}
-        >
-          Auto-Fill All Pending
-        </Button>
-        <div className="flex gap-3">
-          <Button variant="secondary" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            form="grn-form"
-            type="submit"
-            size="sm"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? "Processing..." : "Confirm Receipt"}
-          </Button>
         </div>
-      </div>
+
+        <Textarea
+          label="Notes / Dimensional Observations / Vendor Claim Remarks"
+          placeholder="Record caliper measurements, surface condition, or reason for partial/full rejection..."
+          value={grnForm.remarks}
+          onChange={(e) =>
+            setGrnForm({ ...grnForm, remarks: e.target.value })
+          }
+          className="h-20 resize-none"
+        />
+      </form>
     </Modal>
   );
 });

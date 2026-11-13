@@ -22,18 +22,18 @@ export class FinanceService {
     const totalCredit = entry.lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
 
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
-      throw new Error(`Jurnal tidak balance. Total Debit: ${totalDebit}, Total Credit: ${totalCredit}`);
+      throw new Error(`Journal is out of balance. Total Debit: ${totalDebit}, Total Credit: ${totalCredit}`);
     }
 
     if (entry.lines.length < 2) {
-      throw new Error("Jurnal harus memiliki setidaknya 2 baris (Debit & Kredit).");
+      throw new Error("Journal must have at least 2 lines (Debit & Credit).");
     }
 
     // 3. Verify that all account codes exist in COA
     for (const line of entry.lines) {
       const coa = db.prepare("SELECT code, name FROM chart_of_accounts WHERE code = ?").get(line.account_code);
       if (!coa) {
-        throw new Error(`Akun dengan kode '${line.account_code}' tidak ditemukan di Chart of Accounts.`);
+        throw new Error(`Account with code '${line.account_code}' not found in Chart of Accounts.`);
       }
     }
 

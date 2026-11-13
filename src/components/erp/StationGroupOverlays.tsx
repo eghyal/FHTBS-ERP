@@ -58,22 +58,24 @@ export function StationGroupOverlays({ stations, bopSteps }: { stations: any[], 
                borderRadius: '24px',
              }}
            >
-             <div style={{
-               position: 'absolute',
-               top: -16,
-               left: 24,
-               backgroundColor: 'white',
-               border: `2px solid ${color}`,
-               color: color,
-               padding: '4px 12px',
-               borderRadius: '12px',
-               fontSize: '14px',
-               fontWeight: 'bold',
-               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-               display: 'flex',
-               alignItems: 'center',
-               gap: '8px'
-             }}>
+             <div
+               style={{
+                 position: 'absolute',
+                 top: -16,
+                 left: 24,
+                 border: `2px solid ${color}`,
+                 color: color,
+                 padding: '4px 12px',
+                 borderRadius: '12px',
+                 fontSize: '14px',
+                 fontWeight: 'bold',
+                 boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: '8px'
+               }}
+               className="bg-white dark:bg-stone-900 shadow-sm"
+             >
                 <Layers className="w-4 h-4" />
                 {station.station_code} - {station.station_name}
              </div>

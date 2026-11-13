@@ -29,7 +29,8 @@ export function rotateVisitorSession(): string {
   return getVisitorSessionId();
 }
 
-export function getCurrentCustomerId(): string | null {
+function getCurrentCustomerId(): string | null {
+
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(CUSTOMER_SESSION_KEY);
@@ -203,20 +204,3 @@ export function trackJobApplyClick(job: { id: string; title: string }) {
   });
 }
 
-export function trackContactClick(channel: "WHATSAPP" | "MAPS" | "PHONE" | "EMAIL", info?: string) {
-  trackActivity({
-    module: "PUBLIC",
-    activity_type: "CONTACT_CLICK",
-    title: `Klik Kontak: ${channel} ${info ? `(${info})` : ""}`,
-    details: { channel, info },
-  });
-}
-
-export function trackBrochureDownload(docName: string) {
-  trackActivity({
-    module: "PUBLIC",
-    activity_type: "BROCHURE_DOWNLOAD",
-    title: `Unduh Dokumen / Katalog: ${docName}`,
-    details: { document_name: docName },
-  });
-}

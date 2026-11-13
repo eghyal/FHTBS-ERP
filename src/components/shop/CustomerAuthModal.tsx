@@ -11,18 +11,20 @@ import {
   Sparkles,
   CheckCircle2,
 } from "lucide-react";
-import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import {
+  authenticateWithGoogleStore,
+  syncCustomerToFirestore,
+} from "@/lib/googleStoreAuth";
 import { ShopProduct } from "@/types/shop";
 import { formatIDR } from "@/lib/utils";
 import { getVisitorSessionId } from "@/lib/tracker";
 import { isCorporateBusinessEmail } from "@/lib/scoutIntelligence";
 
 export interface PendingAuthAction {
-  product: ShopProduct;
-  qty: number;
+  product?: ShopProduct;
+  qty?: number;
   isInstantBuy?: boolean;
-  actionType?: "VIEW_DETAIL" | "ADD_CART" | "INSTANT_BUY";
+  actionType?: "VIEW_DETAIL" | "ADD_CART" | "INSTANT_BUY" | "OPEN_ORDERS" | "OPEN_RFQ";
 }
 
 interface CustomerAuthModalProps {
@@ -52,28 +54,71 @@ export function CustomerAuthModal({
   if (!isOpen) return null;
 
   const isViewDetailAction = pendingProduct?.actionType === "VIEW_DETAIL";
+  const isOpenOrdersAction = pendingProduct?.actionType === "OPEN_ORDERS";
+  const isOpenRfqAction = pendingProduct?.actionType === "OPEN_RFQ";
+  const hasPendingProduct = Boolean(pendingProduct?.product);
   const { isCorporate: isCorporateEmail, domain: emailDomain } = isCorporateBusinessEmail(email);
 
-  // 1-Click Native Google Sign-In via Firebase Auth
+  // 1-Click Hybrid Google Sign-In (Firebase Auth + GIS + OAuth Chooser Bridge)
   const handleGoogleOneClick = async () => {
+    if (!consentTerms) {
+      setErrorMsg("Harap setujui syarat layanan dan kebijakan privasi.");
+      return;
+    }
+
     setLoading(true);
     setErrorMsg(null);
 
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+      const googleUser = await authenticateWithGoogleStore();
 
       const derivedName =
-        user.displayName || user.email?.split("@")[0] || "Customer";
+        googleUser.displayName ||
+        googleUser.email?.split("@")[0] ||
+        "Customer";
+
+      // Collect existing guest cart items so they are preserved on the server profile
+      let combinedCartItems: any[] = [];
+      try {
+        const guestRaw = localStorage.getItem("pavingjoss_shop_cart_guest");
+        const parsedGuest = guestRaw ? JSON.parse(guestRaw) : [];
+        if (Array.isArray(parsedGuest)) {
+          combinedCartItems = [...parsedGuest];
+        }
+      } catch {}
+
+      if (
+        pendingProduct?.product &&
+        pendingProduct.actionType !== "VIEW_DETAIL" &&
+        pendingProduct.actionType !== "OPEN_ORDERS" &&
+        pendingProduct.actionType !== "OPEN_RFQ"
+      ) {
+        const targetProd = pendingProduct.product;
+        const targetQty = pendingProduct.qty || 1;
+        const existsIdx = combinedCartItems.findIndex(
+          (c) => c?.product?.id === targetProd.id
+        );
+        if (existsIdx > -1) {
+          combinedCartItems[existsIdx] = {
+            product: targetProd,
+            qty: combinedCartItems[existsIdx].qty + targetQty,
+          };
+        } else {
+          combinedCartItems.push({
+            product: targetProd,
+            qty: targetQty,
+          });
+        }
+      }
 
       const payload = {
         customer_name: derivedName,
-        email: user.email || null,
-        phone: user.phoneNumber || null,
-        company: null,
+        email: googleUser.email || null,
+        phone: googleUser.phoneNumber || phone.trim() || null,
+        company: googleUser.company || company.trim() || null,
         auth_provider: "GOOGLE",
+        id_token: googleUser.idToken || null,
+        access_token: googleUser.accessToken || null,
         session_id: getVisitorSessionId(),
         consents: {
           terms: consentTerms,
@@ -81,18 +126,11 @@ export function CustomerAuthModal({
           profiling: consentProfiling,
         },
         avatar_url:
-          user.photoURL ||
+          googleUser.photoURL ||
           `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
             derivedName
           )}&backgroundColor=b02524,1c1917,047857`,
-        cart_items: pendingProduct
-          ? [
-              {
-                product: pendingProduct.product,
-                qty: pendingProduct.qty,
-              },
-            ]
-          : [],
+        cart_items: combinedCartItems,
       };
 
       const res = await fetch("/api/shop/customer-auth", {
@@ -111,23 +149,20 @@ export function CustomerAuthModal({
         JSON.stringify(json.data)
       );
       window.dispatchEvent(new Event("shop_customer_auth_changed"));
+      // Sync B2B Customer Profile to Cloud Firestore in background without blocking sign-in
+      syncCustomerToFirestore(json.data).catch(() => {});
       onSuccess(json.data);
       onClose();
     } catch (err: any) {
-      console.warn("Google One-Click sign-in note:", err);
+      console.warn("Google Sign-In note:", err);
       if (
-        err.code === "auth/popup-closed-by-user" ||
-        err.code === "auth/cancelled-popup-request"
+        err?.userCancelled ||
+        err?.code === "auth/popup-closed-by-user" ||
+        err?.code === "auth/cancelled-popup-request"
       ) {
         return;
       }
-      if (err.code === "auth/popup-blocked") {
-        setErrorMsg(
-          "Jendela login Google diblokir browser. Silakan izinkan pop-up atau isi formulir identitas bisnis di bawah."
-        );
-        return;
-      }
-      setErrorMsg(err.message || "Gagal masuk dengan akun Google.");
+      setErrorMsg(err?.message || "Gagal masuk dengan akun Google.");
     } finally {
       setLoading(false);
     }
@@ -185,14 +220,18 @@ export function CustomerAuthModal({
         avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
           cleanName
         )}&backgroundColor=1c1917,b02524,2563eb`,
-        cart_items: pendingProduct
-          ? [
-              {
-                product: pendingProduct.product,
-                qty: pendingProduct.qty,
-              },
-            ]
-          : [],
+        cart_items:
+          pendingProduct?.product &&
+          pendingProduct.actionType !== "VIEW_DETAIL" &&
+          pendingProduct.actionType !== "OPEN_ORDERS" &&
+          pendingProduct.actionType !== "OPEN_RFQ"
+            ? [
+                {
+                  product: pendingProduct.product,
+                  qty: pendingProduct.qty || 1,
+                },
+              ]
+            : [],
       };
 
       const res = await fetch("/api/shop/customer-auth", {
@@ -211,6 +250,7 @@ export function CustomerAuthModal({
         JSON.stringify(json.data)
       );
       window.dispatchEvent(new Event("shop_customer_auth_changed"));
+      syncCustomerToFirestore(json.data).catch(() => {});
       onSuccess(json.data);
       onClose();
     } catch (err: any) {
@@ -220,11 +260,12 @@ export function CustomerAuthModal({
     }
   };
 
-  const productPrice = pendingProduct
-    ? (pendingProduct.product.promo_price > 0
-        ? pendingProduct.product.promo_price
-        : pendingProduct.product.unit_price) * pendingProduct.qty
-    : 0;
+  const productPrice =
+    pendingProduct?.product
+      ? (pendingProduct.product.promo_price > 0
+          ? pendingProduct.product.promo_price
+          : pendingProduct.product.unit_price) * (pendingProduct.qty || 1)
+      : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
@@ -240,18 +281,26 @@ export function CustomerAuthModal({
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-base font-bold text-stone-900 tracking-tight">
-                {isViewDetailAction
-                  ? "Sign-In untuk Melihat Detail"
-                  : pendingProduct
-                  ? "Lengkapi Kontak & Identitas Bisnis"
+                {isOpenRfqAction
+                  ? "Masuk Akun untuk Mengajukan RFQ Proyek"
+                  : isOpenOrdersAction
+                  ? "Masuk Akun untuk Melihat Pesanan Saya"
+                  : isViewDetailAction
+                  ? "Masuk Akun untuk Melihat Detail"
+                  : hasPendingProduct
+                  ? "Lengkapi Kontak & Identitas Pemesan"
                   : "Masuk Akun Pelanggan"}
               </h3>
               <p className="text-xs text-stone-500 mt-0.5">
-                {isViewDetailAction
+                {isOpenRfqAction
+                  ? "Masuk dengan akun Google atau verifikasi identitas bisnis Anda untuk mengajukan permintaan penawaran proyek (RFQ) langsung ke tim Sales & Engineering ERP kami."
+                  : isOpenOrdersAction
+                  ? "Masuk dengan akun Google atau identitas bisnis Anda untuk melihat daftar pesanan yang telah dibeli, memantau progres pengiriman, dan mencetak invoice."
+                  : isViewDetailAction
                   ? "Masuk dengan Google atau verifikasi kontak bisnis untuk membuka spesifikasi teknis dan detail lengkap produk."
-                  : pendingProduct
+                  : hasPendingProduct
                   ? "Dapatkan penawaran harga pabrik resmi, PPN, dan estimasi tonase pengiriman."
-                  : "Akses riwayat pesanan, lacak pengiriman, dan katalog khusus."}
+                  : "Akses riwayat pesanan, pantau pengiriman armada, dan katalog khusus."}
               </p>
             </div>
             <button
@@ -264,7 +313,7 @@ export function CustomerAuthModal({
           </div>
 
           {/* Pending Product Context (If Any) */}
-          {pendingProduct && (
+          {pendingProduct?.product && (
             <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
                 <img
@@ -282,7 +331,7 @@ export function CustomerAuthModal({
                   <p className="text-[10px] text-stone-500">
                     {isViewDetailAction
                       ? `Kategori: ${pendingProduct.product.category}`
-                      : `${pendingProduct.qty} ${pendingProduct.product.uom}`}
+                      : `${pendingProduct.qty || 1} ${pendingProduct.product.uom}`}
                   </p>
                 </div>
               </div>
@@ -388,7 +437,7 @@ export function CustomerAuthModal({
                   </label>
                   {isCorporateEmail && (
                     <span className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" /> B2B Verified
+                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" /> Terverifikasi B2B
                     </span>
                   )}
                 </div>

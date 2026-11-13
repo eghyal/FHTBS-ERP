@@ -23,16 +23,37 @@ import {
   Receipt,
   Calendar,
   DollarSign,
+  Cloud,
 } from "lucide-react";
 import { apiFetch } from "@/utils/api";
 import { motion, AnimatePresence } from "motion/react";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { lazy, Suspense } from "react";
+import {
+  Button,
+  Card,
+  Badge,
+  Input,
+  StatCard,
+  EmptyState,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  Tabs,
+} from "@/components/ui";
+import { lazy, Suspense, useMemo } from "react";
+import { IntegrityReconciliationWidget } from "@/components/erp/IntegrityReconciliationWidget";
+import { DatabaseBackupPanel } from "@/components/erp/DatabaseBackupPanel";
 
-const ScannerModal = lazy(() => import("@/components/shared/ScannerModal").then(m => ({ default: m.ScannerModal })));
+const ScannerModal = lazy(() =>
+  import("@/components/shared/ScannerModal").then((m) => ({
+    default: m.ScannerModal,
+  })),
+);
 
-import { cn } from "@/lib/utils";
-import { formatIDR } from "@/lib/utils";
+import { cn, formatIDR } from "@/lib/utils";
 
 export default function DataCenter() {
   const [query, setQuery] = useState("");
@@ -122,6 +143,8 @@ export default function DataCenter() {
     setIsScannerOpen(false);
   };
 
+  const [activeTab, setActiveTab] = useState<"lineage" | "integrity" | "backup">("lineage");
+
   const toggleExpand = (id: string) => {
     const newSet = new Set(expandedProjects);
     if (newSet.has(id)) newSet.delete(id);
@@ -130,56 +153,126 @@ export default function DataCenter() {
   };
 
   return (
-    <div className="space-y-12 pb-20 animate-in fade-in duration-500">
+    <div className="space-y-6 pb-20 animate-in fade-in duration-500">
       <PageHeader
-        title="Master Data Hub"
-        subtitle="Master records and data lineage"
-        icon={<Database className="w-6 h-6" />}
+        title="Master Data & Lineage"
+        subtitle="Document lineage & database backups"
+        icon={<Database className="w-5 h-5" />}
         actions={
-          <div className="flex items-center gap-3">
-            <button
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => navigate("/import")}
-              className="px-6 py-3 bg-white border border-stone-200 text-stone-700 text-sm font-bold rounded-2xl hover:bg-stone-50 transition-all active:scale-95 flex items-center gap-2 shadow-sm"
+              leftIcon={<Database className="w-3.5 h-3.5" />}
             >
-              <Database className="w-5 h-5" />
               <span className="hidden md:inline">Import Master Data</span>
-            </button>
-            <button
+              <span className="md:hidden">Import</span>
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => setIsScannerOpen(true)}
-              className="px-8 py-3 bg-stone-800 text-white text-sm font-bold rounded-2xl hover:bg-stone-900 transition-all active:scale-95 flex items-center gap-2 shadow-sm disabled:opacity-50"
+              leftIcon={<Scan className="w-3.5 h-3.5" />}
             >
-              <Scan className="w-5 h-5" />
-              <span className="hidden md:inline">Scan Code</span>
-            </button>
+              <span className="hidden md:inline">Scan Barcode / QR</span>
+              <span className="md:hidden">Scan</span>
+            </Button>
           </div>
         }
       />
 
-      <div className="flex flex-col md:flex-row items-center gap-4 border-b border-stone-100 pb-8">
-        <div className="flex items-center shadow-sm rounded-2xl bg-white border border-stone-200 overflow-hidden w-full lg:w-96 hover:border-stone-300 focus-within:ring-4 focus-within:ring-stone-900/5 focus-within:border-stone-900 transition-all">
-          <div className="pl-4 text-stone-400">
-            <Search className="w-4 h-4" />
-          </div>
-          <input
+      {/* Mode Switcher Tabs */}
+      <Tabs
+        activeId={activeTab}
+        onChange={setActiveTab}
+        items={[
+          {
+            id: "lineage",
+            label: "Lineage & Master Trace",
+            icon: <Database className="w-3.5 h-3.5 text-stone-600" />,
+            badge: results.length > 0 ? results.length : undefined,
+          },
+          {
+            id: "integrity",
+            label: "Integritas Akuntansi & Stok",
+            icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />,
+            badge: "AUDIT",
+          },
+          {
+            id: "backup",
+            label: "Cadangan PITR & Snapshot",
+            icon: <Cloud className="w-3.5 h-3.5 text-indigo-600" />,
+            badge: "LAYER-2",
+          },
+        ]}
+      />
+
+      {activeTab === "integrity" && (
+        <IntegrityReconciliationWidget onDataChanged={() => performSearch(query)} />
+      )}
+
+      {activeTab === "backup" && (
+        <DatabaseBackupPanel onDataChanged={() => performSearch(query)} />
+      )}
+
+      {activeTab === "lineage" && (
+        <>
+          <Card padding="none" className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="w-full sm:max-w-md">
+          <Input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search doc PR, PO, GRN..."
-            className="w-full bg-transparent border-none text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-0 px-3 py-3 text-sm font-bold"
+            placeholder="Search Project ID, PR, PO, GRN, SKU, or Client..."
+            icon={<Search className="w-3.5 h-3.5" />}
+            rightIcon={
+              query ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery("");
+                    navigate("/data-center");
+                  }}
+                  className="p-1 hover:bg-stone-100 rounded text-stone-400 hover:text-stone-700 transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : undefined
+            }
           />
-          {query && (
-            <button
-              onClick={() => {
-                setQuery("");
-                navigate("/data-center");
-              }}
-              className="p-1.5 hover:bg-stone-50 text-stone-400 hover:text-stone-600 transition-colors mr-1"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
-      </div>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <Button
+            variant="secondary"
+            size="xs"
+            onClick={() =>
+              setExpandedProjects(new Set(results.map((r) => r.id)))
+            }
+            disabled={results.length === 0}
+          >
+            Expand All
+          </Button>
+          <Button
+            variant="secondary"
+            size="xs"
+            onClick={() => setExpandedProjects(new Set())}
+            disabled={expandedProjects.size === 0}
+          >
+            Collapse All
+          </Button>
+          <Button
+            variant="secondary"
+            size="icon-xs"
+            onClick={() => performSearch(query)}
+            disabled={isSearching}
+            title="Refresh Data Center"
+            aria-label="Refresh Data Center"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", isSearching && "animate-spin")} />
+          </Button>
+        </div>
+      </Card>
 
       <div className="space-y-6">
         <AnimatePresence mode="wait">
@@ -189,9 +282,9 @@ export default function DataCenter() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex flex-col items-center justify-center py-20 bg-white/50 border border-stone-200/50 rounded-3xl"
+              className="flex flex-col items-center justify-center py-20 bg-white border border-stone-200/80 rounded-2xl"
             >
-              <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin mb-4" />
+              <RefreshCw className="w-7 h-7 text-stone-700 animate-spin mb-3" />
               <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
                 Tracing System Ledger...
               </span>
@@ -202,19 +295,14 @@ export default function DataCenter() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="bg-white border border-stone-200 rounded-3xl p-16 text-center shadow-sm"
             >
-              <div className="w-16 h-16 bg-stone-50 rounded-2xl border border-stone-100 flex items-center justify-center mx-auto mb-6">
-                <Database className="w-6 h-6 text-stone-300" />
-              </div>
-              <h4 className="text-sm font-bold text-stone-900 uppercase tracking-wider mb-2">
-                No trace records found
-              </h4>
-              <p className="text-xs text-stone-500 max-w-sm mx-auto leading-relaxed">
-                We couldn't find any supply chain lineage matching your query.
-                Try scanning a bar/QR code on materials or adjust search
-                filters.
-              </p>
+              <Card padding="none">
+                <EmptyState
+                  icon={<Database className="w-6 h-6" />}
+                  title="No trace records found"
+                  description="We couldn't find any supply chain lineage matching your query. Try scanning a barcode/QR code on materials or adjust search filters."
+                />
+              </Card>
             </motion.div>
           ) : (
             <motion.div
@@ -222,140 +310,120 @@ export default function DataCenter() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="card-elegant rounded-3xl overflow-hidden"
+              className="card-elegant rounded-2xl overflow-hidden"
             >
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-stone-50 border-b border-stone-200">
-                      <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-stone-500">
-                        Project / Identity
-                      </th>
-                      <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-stone-500">
-                        Trace Activity
-                      </th>
-                      <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-stone-500">
-                        Status
-                      </th>
-                      <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-stone-500">
-                        BOM Count
-                      </th>
-                      <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-stone-500 text-right">
-                        Details
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {results.map((proj) => {
-                      const isExpanded = expandedProjects.has(proj.id);
-                      const numPrs = proj.prs?.length || 0;
-                      const numPos = proj.pos?.length || 0;
-                      const numGrns = proj.grns?.length || 0;
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Project / Identity</TableHead>
+                    <TableHead>Trace Activity</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>BOM Count</TableHead>
+                    <TableHead className="text-right">Details</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {results.map((proj) => {
+                    const isExpanded = expandedProjects.has(proj.id);
+                    const numPrs = proj.prs?.length || 0;
+                    const numPos = proj.pos?.length || 0;
+                    const numGrns = proj.grns?.length || 0;
 
-                      return (
-                        <React.Fragment key={proj.id}>
-                          <tr
-                            onClick={() => toggleExpand(proj.id)}
-                            className="hover:bg-stone-50/40 transition-colors group cursor-pointer"
-                          >
-                            <td className="px-8 py-5 align-middle">
-                              <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-center shrink-0">
-                                  <Briefcase className="w-4 h-4 text-stone-500" />
+                    return (
+                      <React.Fragment key={proj.id}>
+                        <TableRow
+                          onClick={() => toggleExpand(proj.id)}
+                          className="group cursor-pointer"
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-center shrink-0">
+                                <Briefcase className="w-4 h-4 text-stone-500" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="font-bold font-mono tabular-nums text-stone-900 text-sm truncate block">
+                                  {proj.id}
+                                </span>
+                                <div className="text-[10px] text-stone-500 font-bold uppercase tracking-wider truncate max-w-[220px]">
+                                  {proj.name}
                                 </div>
-                                <div className="min-w-0">
-                                  <span className="font-bold text-stone-900 text-sm truncate block">
-                                    {proj.id}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {numPrs > 0 && (
+                                <Badge variant="info" size="sm" dot>
+                                  {numPrs} PR
+                                </Badge>
+                              )}
+                              {numPos > 0 && (
+                                <Badge variant="warning" size="sm" dot>
+                                  {numPos} PO
+                                </Badge>
+                              )}
+                              {numGrns > 0 && (
+                                <Badge variant="success" size="sm" dot>
+                                  {numGrns} GRN
+                                </Badge>
+                              )}
+                              {numPrs === 0 &&
+                                numPos === 0 &&
+                                numGrns === 0 && (
+                                  <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">
+                                    No activity logs
                                   </span>
-                                  <div className="text-[10px] text-stone-500 font-bold uppercase tracking-wider truncate max-w-[220px]">
-                                    {proj.name}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-8 py-5 align-middle">
-                              <div className="flex items-center gap-4">
-                                {numPrs > 0 && (
-                                  <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-lg">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                    <span className="text-[10px] font-bold text-blue-700 uppercase">
-                                      {numPrs} PR
-                                    </span>
-                                  </div>
                                 )}
-                                {numPos > 0 && (
-                                  <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                    <span className="text-[10px] font-bold text-amber-700 uppercase">
-                                      {numPos} PO
-                                    </span>
-                                  </div>
-                                )}
-                                {numGrns > 0 && (
-                                  <div className="flex items-center gap-1.5 bg-teal-50 border border-teal-100 px-2.5 py-1 rounded-lg">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
-                                    <span className="text-[10px] font-bold text-teal-700 uppercase">
-                                      {numGrns} GRN
-                                    </span>
-                                  </div>
-                                )}
-                                {numPrs === 0 &&
-                                  numPos === 0 &&
-                                  numGrns === 0 && (
-                                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">
-                                      No activity logs
-                                    </span>
-                                  )}
-                              </div>
-                            </td>
-                            <td className="px-8 py-5 align-middle">
-                              <span
-                                className={cn(
-                                  "inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border",
-                                  proj.status === "ACTIVE"
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                    : proj.status === "FINISHED"
-                                      ? "bg-blue-50 text-blue-700 border-blue-100"
-                                      : proj.status === "CANCELLED"
-                                        ? "bg-rose-50 text-rose-700 border-rose-100"
-                                        : "bg-stone-50 text-stone-700 border-stone-200",
-                                )}
-                              >
-                                {proj.status}
-                              </span>
-                            </td>
-                            <td className="px-8 py-5 align-middle">
-                              <span className="text-xs font-bold text-stone-700">
-                                {proj.bom_count || 0} Components
-                              </span>
-                            </td>
-                            <td className="px-8 py-5 align-middle text-right">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleExpand(proj.id);
-                                }}
-                                className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-stone-50 hover:bg-stone-100 text-stone-500 hover:text-stone-900 transition-colors border border-stone-200/50"
-                              >
-                                {isExpanded ? (
-                                  <ChevronDown className="w-4 h-4" />
-                                ) : (
-                                  <ChevronRight className="w-4 h-4" />
-                                )}
-                              </button>
-                            </td>
-                          </tr>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                proj.status === "ACTIVE"
+                                  ? "success"
+                                  : proj.status === "FINISHED"
+                                    ? "info"
+                                    : proj.status === "CANCELLED"
+                                      ? "danger"
+                                      : "neutral"
+                              }
+                              size="sm"
+                            >
+                              {proj.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs font-bold font-mono tabular-nums text-stone-700">
+                              {proj.bom_count || 0} Components
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleExpand(proj.id);
+                              }}
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-stone-50 hover:bg-stone-100 text-stone-500 hover:text-stone-900 transition-colors border border-stone-200/50"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4" />
+                              )}
+                            </button>
+                          </TableCell>
+                        </TableRow>
 
-                          {/* Expanded lineage panel with modern clean horizontal stepper layout */}
-                          {isExpanded && (
-                            <tr className="bg-stone-50/20">
-                              <td
-                                colSpan={5}
-                                className="px-8 py-8 border-b border-stone-100 bg-stone-50/10"
-                              >
-                                <div className="space-y-6">
-                                  {/* MASTER ERP LINEAGE METRICS */}
-                                  <div className="bg-white p-6 rounded-3xl border border-stone-200/90 shadow-3xs space-y-6">
+                        {/* Expanded lineage panel with modern clean horizontal stepper layout */}
+                        {isExpanded && (
+                          <TableRow className="bg-stone-50/20">
+                            <TableCell
+                              colSpan={5}
+                              className="px-6 py-6 border-b border-stone-100 bg-stone-50/10"
+                            >
+                              <div className="space-y-6">
+                                {/* MASTER ERP LINEAGE METRICS */}
+                                <div className="bg-white p-6 rounded-2xl border border-stone-200/90 shadow-3xs space-y-6">
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-stone-100">
                                       <div>
                                         <h4 className="text-xs font-bold text-stone-900 uppercase tracking-wider">
@@ -719,7 +787,7 @@ export default function DataCenter() {
                                   </div>
 
                                   <div className="flex justify-between border-b border-stone-200/55 pb-4 mt-8">
-                                    <span className="text-[10px] text-stone-500 font-bold bg-white border border-stone-200 px-4 py-2 rounded-full shadow-sm uppercase tracking-[0.2em]">
+                                    <span className="text-[10px] text-stone-500 font-bold bg-white border border-stone-200 px-4 py-2 rounded-xl shadow-xs uppercase tracking-[0.2em]">
                                       Manufacturing flow details: PR &rarr; PO
                                       &rarr; GRN
                                     </span>
@@ -1120,7 +1188,7 @@ export default function DataCenter() {
                                               <div className="bg-stone-50/50 rounded-2xl p-4 border border-stone-100 flex flex-col justify-between">
                                                 <div>
                                                   <div className="flex items-center gap-2 mb-3">
-                                                    <div className="w-5.5 h-5.5 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-600 shrink-0">
+                                                    <div className="w-5.5 h-5.5 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
                                                       <Package className="w-3.5 h-3.5" />
                                                     </div>
                                                     <h4 className="text-[9px] font-bold uppercase tracking-widest text-stone-400">
@@ -1155,7 +1223,7 @@ export default function DataCenter() {
                                                                 isDocExpanded
                                                                   ? isRejected
                                                                     ? "border-rose-450 ring-2 ring-rose-950/[0.01] bg-white text-stone-900"
-                                                                    : "border-teal-400 ring-2 ring-teal-900/[0.02] bg-white"
+                                                                    : "border-emerald-400 ring-2 ring-emerald-900/[0.02] bg-white"
                                                                   : "border-stone-200/80 bg-white hover:border-stone-300",
                                                                 isRejected
                                                                   ? "bg-rose-50/30 border-rose-200"
@@ -1184,7 +1252,7 @@ export default function DataCenter() {
                                                                       ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
                                                                       : grn.qc_status ===
                                                                           "REJECTED"
-                                                                        ? "bg-red-50 text-red-700 border border-red-155"
+                                                                        ? "bg-rose-50 text-rose-700 border border-rose-200"
                                                                         : "bg-stone-100 text-stone-600",
                                                                   )}
                                                                 >
@@ -1299,19 +1367,20 @@ export default function DataCenter() {
                                     );
                                   })()}
                                 </div>
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           )}
                         </React.Fragment>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </motion.div>
+                  </TableBody>
+                </Table>
+              </motion.div>
           )}
         </AnimatePresence>
       </div>
+      </>
+      )}
 
       <AnimatePresence>
         {isScannerOpen && (

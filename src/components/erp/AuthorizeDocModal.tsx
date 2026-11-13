@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { CheckCircle2, ShieldCheck, KeyRound, Loader2 } from "lucide-react";
+import { CheckCircle2, ShieldCheck, KeyRound, Loader2, Share2 } from "lucide-react";
 import { formatIDR, cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { getDailyAuthKey } from "@/utils/auth";
+import { useShare } from "@/contexts/ShareContext";
 
 export interface AuthorizeDocModalProps {
   isOpen: boolean;
   onClose: () => void;
   docType: string;
   docNumber: string;
+  docId?: string;
   subtitle?: string;
   status?: string;
   partnerLabel?: string;
@@ -34,6 +35,7 @@ export function AuthorizeDocModal({
   onClose,
   docType,
   docNumber,
+  docId,
   subtitle,
   status = "DRAFT",
   partnerLabel = "Partner / Client",
@@ -52,6 +54,7 @@ export function AuthorizeDocModal({
   themeVariant = "emerald",
 }: AuthorizeDocModalProps) {
   const { user } = useAuth();
+  const { shareToForum } = useShare();
   const [authPin, setAuthPin] = useState("");
   const pinInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,6 +74,28 @@ export function AuthorizeDocModal({
     e.preventDefault();
     if (!authPin.trim() || isSubmitting || submitDisabled) return;
     await onAuthorize(authPin);
+  };
+
+  const handleShareForAuth = () => {
+    const resolvedId = docId || docNumber;
+    const summaryTitle = projectName
+      ? `${docNumber} · ${projectName}`
+      : partnerName
+        ? `${docNumber} · ${partnerName}`
+        : docNumber;
+    shareToForum(
+      docType,
+      resolvedId,
+      summaryTitle,
+      `Please review and provide Manager authorization for ${docType} (${docNumber})${partnerName ? ` — ${partnerName}` : ""}${amount ? ` valued at ${formatIDR(amount)}` : ""}.`,
+      {
+        status,
+        amount,
+        partnerName: partnerName || projectName,
+        urgency: "URGENT",
+        requiresAuth: true,
+      },
+    );
   };
 
   const isAmber = themeVariant === "amber";
@@ -174,7 +199,7 @@ export function AuthorizeDocModal({
                 {approvalTitle}
               </h4>
               <p className="text-[10px] text-stone-500 leading-relaxed font-medium">
-                {approvalDescription || `Masukkan 6-digit Daily Auth Key akun Anda untuk menandatangani dan mengotorisasi ${docType} secara digital.`}
+                {approvalDescription || `Enter your account's 6-digit Daily Auth Key to digitally sign and authorize this ${docType}.`}
               </p>
             </div>
 
@@ -200,31 +225,45 @@ export function AuthorizeDocModal({
         </div>
 
         {/* Action Controls */}
-        <div className="pt-3 border-t border-stone-100 flex items-center justify-end gap-3">
-          <Button
-            variant="secondary"
+        <div className="pt-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-3">
+          <button
             type="button"
-            onClick={onClose}
+            onClick={handleShareForAuth}
             disabled={isSubmitting}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 text-xs font-bold transition-colors cursor-pointer"
+            title="Share this document with a Manager or another Department via Messages for authorization or discussion"
           >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            disabled={isSubmitting || !authPin.trim() || submitDisabled}
-            className={cn("flex items-center gap-2", submitVariant)}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Processing...</span>
-              </>
-            ) : (
-              submitLabel || "Authorize & Release"
-            )}
-          </Button>
+            <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Share / Request Auth via Message</span>
+          </button>
+
+          <div className="flex items-center gap-2.5 ml-auto">
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting || !authPin.trim() || submitDisabled}
+              className={cn("flex items-center gap-2", submitVariant)}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                submitLabel || "Authorize & Release"
+              )}
+            </Button>
+          </div>
         </div>
       </form>
     </Modal>
   );
 }
+

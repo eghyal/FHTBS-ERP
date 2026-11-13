@@ -1,101 +1,184 @@
-import path from "path";
-import fs from "fs";
-import { Pool } from "pg";
-import { PGlite } from "@electric-sql/pglite";
+import pg from "pg";
 
-let pgPool: Pool | null = null;
-let pgliteInstance: PGlite | null = null;
+const { Pool } = pg;
+
+export type PostgresEngineMode = "EXTERNAL_PG" | "SUPABASE_REST";
+
+let pgPool: pg.Pool | null = null;
+let currentMode: PostgresEngineMode = "SUPABASE_REST";
 let isInitialized = false;
-let postgresMode: "MANAGED_POSTGRES" | "PGLITE_EMBEDDED" = "PGLITE_EMBEDDED";
+let lastDirectPgError: string | null = null;
+let schemaAutoInitialized = false;
 
-export async function initPostgresDb(): Promise<void> {
-  if (isInitialized) return;
+const DEFAULT_SUPABASE_POOLER_URL =
+  "postgresql://postgres.wxyfgfqaiqrfeofxemgu:Se8b0308lk_@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres";
 
-  const sqlHost = process.env.SQL_HOST;
-  const sqlUser = process.env.SQL_USER;
-  const dbUrl = process.env.DATABASE_URL;
+export function getConfiguredPostgresUrl(): string {
+  return (
+    process.env.DATABASE_URL ||
+    process.env.SUPABASE_DB_URL ||
+    process.env.POSTGRES_URL ||
+    DEFAULT_SUPABASE_POOLER_URL
+  ).trim();
+}
 
-  if (dbUrl || (sqlHost && sqlUser)) {
+/**
+ * Initializes the PostgreSQL connection layer for the curated 2-Engine Architecture:
+ * - Engine 1: Local SQLite (better-sqlite3) for <1ms synchronous transactional queries
+ * - Engine 2: Supabase Cloud PostgreSQL (via @supabase/supabase-js REST SDK + optional direct pg.Pool)
+ *
+ * Legacy PGlite WebAssembly local emulator has been retired.
+ */
+export async function getPgDb(): Promise<{
+  mode: PostgresEngineMode;
+  pool: pg.Pool | null;
+}> {
+  if (isInitialized) {
+    return { mode: currentMode, pool: pgPool };
+  }
+
+  const externalUrl = getConfiguredPostgresUrl();
+
+  if (externalUrl) {
     try {
-      console.log("[PostgreSQL] Connecting to managed PostgreSQL database...");
-      pgPool = dbUrl
-        ? new Pool({ connectionString: dbUrl, connectionTimeoutMillis: 10000 })
-        : new Pool({
-            host: sqlHost,
-            user: sqlUser,
-            password: process.env.SQL_PASSWORD,
-            database: process.env.SQL_DB_NAME,
-            connectionTimeoutMillis: 10000,
-          });
-
-      // Test connection
-      await pgPool.query("SELECT 1");
-      postgresMode = "MANAGED_POSTGRES";
-      console.log("[PostgreSQL] Connected to managed PostgreSQL successfully.");
-      isInitialized = true;
-      return;
-    } catch (err: any) {
-      console.warn(
-        `[PostgreSQL] Failed to connect to managed PostgreSQL: ${err.message}. Falling back to persistent PGlite PostgreSQL v16 engine.`,
+      console.log(
+        "[PostgresEngine] Connecting to direct Supabase PostgreSQL via DATABASE_URL...",
       );
+      pgPool = new Pool({
+        connectionString: externalUrl,
+        ssl:
+          externalUrl.includes("localhost") || externalUrl.includes("127.0.0.1")
+            ? false
+            : { rejectUnauthorized: false },
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 3500,
+      });
+
+      pgPool.on("error", (poolErr: any) => {
+        lastDirectPgError = poolErr?.message || String(poolErr);
+        console.warn(
+          "[PostgresEngine] Background pool client notice:",
+          lastDirectPgError,
+        );
+      });
+
+      const client = await pgPool.connect();
+      await client.query("SELECT 1");
+      client.release();
+
+      currentMode = "EXTERNAL_PG";
+      lastDirectPgError = null;
+      isInitialized = true;
+      console.log(
+        "[PostgresEngine] Direct Supabase PostgreSQL Pool connected (EXTERNAL_PG).",
+      );
+      return { mode: currentMode, pool: pgPool };
+    } catch (err: any) {
+      lastDirectPgError = err?.message || String(err);
+      console.warn(
+        "[PostgresEngine] Direct PostgreSQL connection failed, operating via Supabase REST SDK:",
+        lastDirectPgError,
+      );
+      if (pgPool) {
+        try {
+          await pgPool.end();
+        } catch {
+          // ignore cleanup error
+        }
+      }
       pgPool = null;
     }
   }
 
-  // Fallback to high-performance persistent PGlite PostgreSQL engine
-  try {
-    const pgDataDir = path.join(process.cwd(), "data", "postgres");
-    if (!fs.existsSync(pgDataDir)) {
-      fs.mkdirSync(pgDataDir, { recursive: true });
-    }
+  currentMode = "SUPABASE_REST";
+  isInitialized = true;
+  console.log(
+    "[PostgresEngine] Operating in Curated 2-Engine Mode (Local SQLite + Supabase Cloud REST SDK).",
+  );
+  return { mode: currentMode, pool: null };
+}
 
-    console.log(`[PostgreSQL] Initializing persistent PGlite PostgreSQL engine at: ${pgDataDir}`);
-    pgliteInstance = new PGlite(pgDataDir);
-    const verRes = await pgliteInstance.query("SELECT version()");
-    postgresMode = "PGLITE_EMBEDDED";
-    console.log(`[PostgreSQL] Engine active: ${(verRes.rows[0] as any)?.version || "PostgreSQL v16"}`);
-    isInitialized = true;
+export function isDirectPgConnected(): boolean {
+  return currentMode === "EXTERNAL_PG" && pgPool !== null;
+}
+
+/**
+ * Automatically executes the idempotent Supabase SQL setup script (DDL + RLS policies)
+ * when a direct PostgreSQL connection string (DATABASE_URL / SUPABASE_DB_URL) is configured.
+ */
+export async function autoInitializeSupabaseSchemaViaPool(
+  sqlScript: string,
+): Promise<{
+  executed: boolean;
+  mode: PostgresEngineMode;
+  error?: string;
+}> {
+  const { mode, pool } = await getPgDb();
+  if (mode !== "EXTERNAL_PG" || !pool) {
+    return {
+      executed: false,
+      mode,
+      error:
+        lastDirectPgError ||
+        "DATABASE_URL / SUPABASE_DB_URL is not configured. Using Supabase REST SDK (run SQL Setup Script once in Supabase SQL Editor, or set DATABASE_URL for auto-DDL).",
+    };
+  }
+
+  try {
+    await pool.query(sqlScript);
+    schemaAutoInitialized = true;
+    console.log(
+      "[PostgresEngine] Auto-DDL completed: public.todos and public.erp_sync_records verified on Supabase PostgreSQL.",
+    );
+    return { executed: true, mode };
   } catch (err: any) {
-    console.error("[PostgreSQL] Critical error initializing PGlite:", err);
-    throw err;
+    const errMsg = err?.message || String(err);
+    lastDirectPgError = errMsg;
+    console.error("[PostgresEngine] Auto-DDL execution failed:", errMsg);
+    return { executed: false, mode, error: errMsg };
   }
 }
 
-export async function postgresQuery<T = any>(
+/**
+ * Execute parameterized SQL against direct PostgreSQL pool when connected
+ */
+export async function pgQuery<T = any>(
   sql: string,
   params: any[] = [],
 ): Promise<{ rows: T[]; rowCount: number }> {
-  if (!isInitialized) {
-    await initPostgresDb();
+  const { mode, pool } = await getPgDb();
+
+  if (mode === "EXTERNAL_PG" && pool) {
+    const res = await pool.query(sql, params);
+    return { rows: res.rows as T[], rowCount: res.rowCount || 0 };
   }
 
-  if (pgPool) {
-    const res = await pgPool.query(sql, params);
-    return { rows: res.rows, rowCount: res.rowCount || res.rows.length };
-  } else if (pgliteInstance) {
-    const res = await pgliteInstance.query(sql, params);
-    return { rows: res.rows as T[], rowCount: res.rows.length };
-  }
-
-  throw new Error("[PostgreSQL] No active PostgreSQL client instance.");
+  return { rows: [], rowCount: 0 };
 }
 
-export async function postgresExecute(sql: string): Promise<void> {
-  if (!isInitialized) {
-    await initPostgresDb();
-  }
+/**
+ * Execute raw multi-statement DDL / script when direct PostgreSQL pool is connected
+ */
+export async function pgExec(sql: string): Promise<void> {
+  const { mode, pool } = await getPgDb();
 
-  if (pgPool) {
-    await pgPool.query(sql);
-  } else if (pgliteInstance) {
-    await pgliteInstance.exec(sql);
+  if (mode === "EXTERNAL_PG" && pool) {
+    await pool.query(sql);
   }
 }
 
-export function isPostgresReady(): boolean {
-  return isInitialized;
-}
-
-export function getPostgresMode(): "MANAGED_POSTGRES" | "PGLITE_EMBEDDED" {
-  return postgresMode;
+export function getPgEngineInfo() {
+  return {
+    isInitialized,
+    mode: currentMode,
+    directPgConnected: isDirectPgConnected(),
+    schemaAutoInitialized,
+    lastDirectPgError,
+    engineName:
+      currentMode === "EXTERNAL_PG"
+        ? "Supabase Cloud PostgreSQL (Direct Pool + REST SDK)"
+        : "Supabase Cloud PostgreSQL (REST SDK + Local SQLite Engine)",
+    storagePath: "https://wxyfgfqaiqrfeofxemgu.supabase.co",
+  };
 }

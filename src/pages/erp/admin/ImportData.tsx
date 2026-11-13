@@ -6,9 +6,11 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowLeft,
-  RefreshCw,
   FileUp,
   Download,
+  Package,
+  Truck,
+  Users,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "@/utils/api";
@@ -18,6 +20,7 @@ import {
   Card,
   CardHeader,
   Badge,
+  Tabs,
   Table,
   TableHeader,
   TableBody,
@@ -54,6 +57,10 @@ export default function ImportData() {
       skipEmptyLines: true,
       complete: (results) => {
         setMappedData(results.data);
+        showToast(
+          `Staged ${results.data.length} records from ${file.name}`,
+          "info",
+        );
       },
       error: (error) => {
         showToast(`Failed to parse CSV: ${error.message}`, "error");
@@ -71,6 +78,7 @@ export default function ImportData() {
     a.href = url;
     a.download = `template_${activeTab.toLowerCase()}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   const submitImport = async () => {
@@ -86,12 +94,14 @@ export default function ImportData() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (res.data) {
+      if (res.ok && res.data) {
         showToast(
-          `Successfully imported ${mappedData.length} records.`,
+          `Successfully imported ${mappedData.length} ${activeTab.toLowerCase()} records.`,
           "success",
         );
         setMappedData([]);
+      } else {
+        showToast(res.error || "Import validation failed.", "error");
       }
     } catch (e: any) {
       showToast(e.message || "Import failed.", "error");
@@ -101,10 +111,10 @@ export default function ImportData() {
   };
 
   return (
-    <div className="space-y-8 pb-20 animate-in fade-in duration-500">
+    <div className="space-y-6 pb-20 animate-in fade-in duration-500">
       <PageHeader
         title="Master Data Import"
-        subtitle="Bulk CSV schema ingestion & validation"
+        subtitle="Bulk CSV import & validation"
         icon={<FileUp className="w-5 h-5" />}
         actions={
           <Button
@@ -117,37 +127,46 @@ export default function ImportData() {
         }
       />
 
-      <div className="flex items-center gap-1.5 p-1 bg-stone-100 rounded-xl w-fit border border-stone-200/60">
-        {(["ITEMS", "SUPPLIERS", "CUSTOMERS"] as const).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => {
-              setActiveTab(tab);
-              setMappedData([]);
-            }}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              activeTab === tab
-                ? "bg-white text-stone-900 shadow-xs"
-                : "text-stone-600 hover:text-stone-900"
-            }`}
-          >
-            {tab.charAt(0) + tab.slice(1).toLowerCase()}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        activeId={activeTab}
+        onChange={(id) => {
+          setActiveTab(id as any);
+          setMappedData([]);
+        }}
+        mobileColumns={3}
+        items={[
+          {
+            id: "ITEMS",
+            label: "Master Items & SKUs",
+            icon: <Package className="w-3.5 h-3.5" />,
+          },
+          {
+            id: "SUPPLIERS",
+            label: "Vendor & Suppliers",
+            icon: <Truck className="w-3.5 h-3.5" />,
+          },
+          {
+            id: "CUSTOMERS",
+            label: "Commercial Customers",
+            icon: <Users className="w-3.5 h-3.5" />,
+          },
+        ]}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
           <Card>
             <CardHeader
-              title="1. Download Template"
+              title="1. Download CSV Template"
               subtitle={`Official schema structure for ${activeTab.toLowerCase()}`}
               icon={<FileText className="w-4 h-4" />}
             />
-            <p className="text-xs text-stone-500 mb-5 leading-relaxed">
-              Ensure column headers match exactly to prevent import validation errors.
+            <p className="text-xs text-stone-500 mb-3 leading-relaxed">
+              Ensure column headers match the required schema exactly to prevent import validation errors:
             </p>
+            <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200/80 font-mono text-[10.5px] text-stone-700 break-all mb-4">
+              {CsvTemplates[activeTab]}
+            </div>
             <Button
               variant="secondary"
               size="sm"
@@ -172,7 +191,7 @@ export default function ImportData() {
               icon={<Upload className="w-4 h-4" />}
             />
             <p className="text-xs text-stone-500 mb-5 leading-relaxed">
-              Select your populated CSV file. The system validates all required fields automatically.
+              Select your populated CSV file. The system stages all rows for inspection before committing to the database.
             </p>
             <Button
               variant="primary"
@@ -180,26 +199,35 @@ export default function ImportData() {
               onClick={() => fileInputRef.current?.click()}
               className="w-full"
             >
-              <Upload className="w-3.5 h-3.5" /> Select File
+              <Upload className="w-3.5 h-3.5" /> Select CSV File
             </Button>
           </Card>
         </div>
 
         <div className="lg:col-span-2">
           <Card padding="none" className="min-h-[480px] flex flex-col">
-            <div className="p-4 sm:p-5 border-b border-stone-100 flex items-center justify-between">
+            <div className="p-4 sm:p-5 border-b border-stone-200/80 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-stone-900">
-                  Data Preview
+                  Staged Data Preview
                 </h3>
-                <p className="text-xs text-stone-500 font-medium">
+                <p className="text-xs text-stone-500 font-medium font-mono tabular-nums mt-0.5">
                   {mappedData.length} records ready for processing
                 </p>
               </div>
               {mappedData.length > 0 && (
-                <Badge variant="info" dot>
-                  {mappedData.length} Staged
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="info" dot>
+                    {mappedData.length} Staged
+                  </Badge>
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    onClick={() => setMappedData([])}
+                  >
+                    Clear
+                  </Button>
+                </div>
               )}
             </div>
 
@@ -219,7 +247,10 @@ export default function ImportData() {
                         {mappedData.slice(0, 50).map((row, i) => (
                           <TableRow key={i}>
                             {Object.values(row).map((val: any, j) => (
-                              <TableCell key={j} className="text-xs text-stone-700">
+                              <TableCell
+                                key={j}
+                                className="text-xs text-stone-700 font-mono tabular-nums"
+                              >
                                 {val}
                               </TableCell>
                             ))}
@@ -230,8 +261,8 @@ export default function ImportData() {
                   </div>
 
                   {mappedData.length > 50 && (
-                    <div className="text-[10px] text-stone-400 font-bold uppercase tracking-widest text-center">
-                      Showing preview of first 50 rows
+                    <div className="text-[10px] text-stone-400 font-bold uppercase tracking-widest text-center font-mono tabular-nums">
+                      Showing preview of first 50 rows out of {mappedData.length}
                     </div>
                   )}
 
@@ -242,7 +273,8 @@ export default function ImportData() {
                       isLoading={isProcessing}
                       disabled={isProcessing}
                     >
-                      <CheckCircle2 className="w-4 h-4" /> Finalize Import
+                      <CheckCircle2 className="w-4 h-4" /> Finalize Import (
+                      {mappedData.length})
                     </Button>
                   </div>
                 </div>

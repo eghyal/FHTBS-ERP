@@ -28,51 +28,51 @@ interface PresetItem {
 const DEFAULT_PRESETS: PresetItem[] = [
   {
     category: "Paving",
-    name: "Paving Block Truepave Bata 20x10x6 cm K-300",
+    name: "Truepave Brick Paving Block 20x10x6 cm K-300",
     url: "https://images.unsplash.com/photo-1528698827591-e19ccd7bc23d?w=800&auto=format&fit=crop&q=80",
-    description: "Paving bata presisi hidrolik mutu K-300",
+    description: "Hydraulic precision brick paving grade K-300",
   },
   {
     category: "Paving",
-    name: "Paving Block Hexagon Segi Enam Merah K-350",
+    name: "Red Hexagon Interlock Paving Block K-350",
     url: "https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800&auto=format&fit=crop&q=80",
-    description: "Paving segi enam interlock area parkir berat",
+    description: "Hexagonal interlock paving for heavy-duty parking areas",
   },
   {
-    category: "Drainase",
-    name: "Saluran Drainase U-Ditch Beton Precast 40x40x120",
+    category: "Drainage",
+    name: "Precast Concrete U-Ditch Drainage Channel 40x40x120",
     url: "https://images.unsplash.com/photo-1541888946425-d0fbb186f5f8?w=800&auto=format&fit=crop&q=80",
-    description: "Saluran gorong-gorong U-ditch pracetak bertulang",
+    description: "Reinforced precast U-ditch culvert channel",
   },
   {
-    category: "Kanstin",
-    name: "Kanstin Taman / Curbstone Beton 40x20x10 cm",
+    category: "Curbstone",
+    name: "Garden Curbstone Concrete 40x20x10 cm",
     url: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=800&auto=format&fit=crop&q=80",
-    description: "Pembatas trotoar dan jalan perumahan PU",
+    description: "Sidewalk and residential road boundary curbstone",
   },
   {
-    category: "Fabrikasi",
-    name: "Tangki Stainless Steel SS304 Industrial",
+    category: "Fabrication",
+    name: "Industrial Stainless Steel SS304 Tank",
     url: "https://images.unsplash.com/photo-1581092580497-e0d23cbdf1dc?w=800&auto=format&fit=crop&q=80",
-    description: "Tangki penyimpanan industri pengelasan TIG",
+    description: "TIG-welded industrial storage tank",
   },
   {
-    category: "Fabrikasi",
-    name: "CNC Laser Cutting & Profil Baja",
+    category: "Fabrication",
+    name: "CNC Laser Cutting & Steel Profile",
     url: "https://images.unsplash.com/photo-1504917599217-d4dc5ebe6122?w=800&auto=format&fit=crop&q=80",
-    description: "Fabrikasi lembaran plat dan komponen baja",
+    description: "Sheet metal and structural steel component fabrication",
   },
   {
     category: "Eco Paving",
-    name: "Grass Block 8 Lubang Resapan Air",
+    name: "8-Hole Water Permeable Grass Block",
     url: "https://images.unsplash.com/photo-1565008447742-97f6f38c985c?w=800&auto=format&fit=crop&q=80",
-    description: "Blok beton porus resapan air ramah lingkungan",
+    description: "Eco-friendly porous water absorption concrete block",
   },
   {
-    category: "Fasilitas",
-    name: "Mesin Pres Hidrolik Pabrik",
+    category: "Facilities",
+    name: "Factory Hydraulic Press Machine",
     url: "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80",
-    description: "Lini produksi cetak otomatis bertekanan tinggi",
+    description: "High-pressure automated molding production line",
   },
 ];
 
@@ -279,7 +279,7 @@ export function ProductImageUploader({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled || isProcessing || uploading}
-              className="text-[#b02524] hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+              className="text-stone-900 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add More Photos</span>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
@@ -21,15 +21,17 @@ import {
   MessageSquare,
   AlertOctagon,
   Calculator,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, getShortCode } from "@/lib/utils";
 import { apiFetch } from "@/utils/api";
 import { useToast } from "@/contexts/ToastContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loader } from "@/components/shared/Loader";
 import { Button } from "@/components/ui/Button";
 import { AuditTimeline } from "@/components/erp/AuditTimeline";
-import { ProjectHppModal } from "@/components/erp/ProjectHppModal";
+import { OrderLifecycleStepper } from "@/components/erp/OrderLifecycleStepper";
 
 const calculateCPM = (steps: any[], qty: number, ff: number) => {
   const nodes = steps.map(s => {
@@ -120,23 +122,22 @@ interface BopStep {
   transfer_mode?: string;
 }
 
-const getShortCode = (rawCode: string | null): string => {
-  if (!rawCode) return "";
-  const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-  const match = rawCode.match(uuidRegex);
-  if (match) {
-    const fullUuid = match[0];
-    const shortUuid = fullUuid.split("-")[0].toUpperCase();
-    return rawCode.replace(fullUuid, shortUuid).toUpperCase();
-  }
-  return rawCode.toUpperCase();
-};
-
 export default function ProjectDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { showToast } = useToast();
+
+  const handleBack = () => {
+    if (location.state?.from === "overview") {
+      navigate("/erp");
+    } else if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/erp");
+    }
+  };
 
   const [isLoading, setIsLoading] = useState(true);
   const [project, setProject] = useState<Project | null>(null);
@@ -149,7 +150,31 @@ export default function ProjectDetails() {
   const [activeNdps, setActiveNdps] = useState<any[]>([]);
   const [activeFloorRequests, setActiveFloorRequests] = useState<any[]>([]);
   const [ganttFilter, setGanttFilter] = useState<"ALL" | "PROCUREMENT" | "MANUFACTURING">("ALL");
-  const [isHppModalOpen, setIsHppModalOpen] = useState(false);
+
+  // Expand / Collapse state for sections (true = collapsed)
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  // Expand / Collapse state for long item lists inside open sections (true = show all items)
+  const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({});
+
+  const toggleSectionCollapse = (key: string) => {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleListExpand = (key: string) => {
+    setExpandedLists((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const setAllSectionsCollapsed = (collapsed: boolean) => {
+    setCollapsedSections({
+      wots: collapsed,
+      gantt: collapsed,
+      bop: collapsed,
+      bom: collapsed,
+      prs: collapsed,
+      logs: collapsed,
+      audit: collapsed,
+    });
+  };
 
   const fetchProjectData = async () => {
     if (!id) return;
@@ -178,7 +203,9 @@ export default function ProjectDetails() {
   };
 
   useEffect(() => {
-    fetchProjectData();
+    if (id) {
+      fetchProjectData();
+    }
   }, [id]);
 
   // Gantt Date Window Calculation
@@ -255,20 +282,20 @@ export default function ProjectDetails() {
       <div className="p-8 text-center space-y-4">
         <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
         <h2 className="text-lg font-bold text-stone-800">Project Not Found</h2>
-        <Button onClick={() => navigate("/production")} variant="secondary">
-          <ArrowLeft className="w-4 h-4 mr-2" /> Back to Production
+        <Button onClick={handleBack} variant="secondary">
+          <ArrowLeft className="w-4 h-4 mr-2" /> Back
         </Button>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-5 max-w-7xl mx-auto">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200 shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200/80 shadow-2xs">
         <div className="flex items-center gap-4">
           <Button
-            onClick={() => navigate("/production")}
+            onClick={handleBack}
             variant="ghost"
             size="sm"
             className="text-stone-600 hover:bg-stone-100 rounded-xl"
@@ -283,7 +310,7 @@ export default function ProjectDetails() {
               </span>
               <span
                 className={cn(
-                  "text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border",
+                  "text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md border",
                   project.status === "COMPLETED" || project.status === "FINISHED"
                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                     : project.status === "IN_PROGRESS" || project.status === "RUNNING"
@@ -294,10 +321,13 @@ export default function ProjectDetails() {
                 {project.status}
               </span>
               {project.urgency === "HIGH" || project.urgency === "CRITICAL" ? (
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
                   {project.urgency}
                 </span>
               ) : null}
+              <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 border border-stone-200">
+                Read-Only View
+              </span>
             </div>
             <h1 className="text-xl font-black text-stone-900 tracking-tight mt-1">
               {project.name}
@@ -310,17 +340,25 @@ export default function ProjectDetails() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={() => setIsHppModalOpen(true)}
-            variant="outline"
-            size="sm"
-            className="text-stone-700 hover:bg-stone-50 rounded-xl flex items-center gap-1.5 border-stone-200"
-            title="Kalkulasi HPP Proyek"
-          >
-            <Calculator className="w-4 h-4 text-[#b02524]" />
-            <span className="hidden sm:inline font-bold text-xs">Kalkulasi HPP</span>
-          </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex items-center rounded-xl border border-stone-200 bg-stone-50 p-0.5">
+            <button
+              type="button"
+              onClick={() => setAllSectionsCollapsed(false)}
+              className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-700 hover:text-stone-950 hover:bg-white rounded-lg transition-colors cursor-pointer"
+              title="Expand all sections on this page"
+            >
+              Expand All
+            </button>
+            <button
+              type="button"
+              onClick={() => setAllSectionsCollapsed(true)}
+              className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-950 hover:bg-white rounded-lg transition-colors cursor-pointer"
+              title="Collapse all sections into compact headers"
+            >
+              Collapse All
+            </button>
+          </div>
           <Button
             onClick={() => fetchProjectData()}
             variant="ghost"
@@ -371,6 +409,9 @@ export default function ProjectDetails() {
         </div>
       )}
 
+      {/* ISA-95 / APICS End-to-End Manufacturing Value Stream Stepper */}
+      {id && <OrderLifecycleStepper projectId={id} />}
+
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Schedule & BOP Mirror & WOT Flow */}
@@ -384,656 +425,990 @@ export default function ProjectDetails() {
                   PRODUCTION TARGET & SCHEDULE
                 </div>
                 {project.is_master_set ? (
-                  <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3" />
+                  <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
                     MASTER SET
                   </span>
                 ) : (
-                  <span className="text-[10px] font-bold bg-stone-100 text-stone-600 px-2.5 py-1 rounded-full border border-stone-200">
-                    UNLOCKED
+                  <span className="text-[10px] font-bold text-amber-700">
+                    PENDING SETUP &amp; MASTER
                   </span>
                 )}
               </div>
 
-              <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-                <div
-                  className={cn(
-                    "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border",
-                    materialFlowMetrics.isOverdue
-                      ? "bg-red-50 border-red-200 text-red-700"
-                      : materialFlowMetrics.isTight
-                      ? "bg-amber-50 border-amber-200 text-amber-700"
-                      : "bg-emerald-50 border-emerald-200 text-emerald-700"
-                  )}
-                >
-                  {materialFlowMetrics.isOverdue ? (
-                    <AlertTriangle className="w-6 h-6" />
-                  ) : (
-                    <Clock className="w-6 h-6" />
-                  )}
+              {!project.is_master_set ? (
+                <div className="px-3.5 py-2.5 rounded-xl bg-stone-50 border border-stone-200 flex items-center gap-2.5 text-xs text-stone-600">
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    Target finish date and daily capacity will be calculated once <strong>Setup &amp; Master</strong> is committed.
+                  </span>
                 </div>
+              ) : (
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+                  <div
+                    className={cn(
+                      "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border",
+                      materialFlowMetrics.isOverdue
+                        ? "bg-rose-50 border-rose-200 text-rose-700"
+                        : materialFlowMetrics.isTight
+                        ? "bg-amber-50 border-amber-200 text-amber-700"
+                        : "bg-emerald-50 border-emerald-200 text-emerald-700"
+                    )}
+                  >
+                    {materialFlowMetrics.isOverdue ? (
+                      <AlertTriangle className="w-6 h-6" />
+                    ) : (
+                      <Clock className="w-6 h-6" />
+                    )}
+                  </div>
 
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-bold text-stone-900">
-                      Est. Finish:{" "}
-                      <span className="font-mono">{materialFlowMetrics.estFinishDateStr}</span>
-                    </span>
-                    {materialFlowMetrics.hasDueDate && (
-                      <span
-                        className={cn(
-                          "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                          materialFlowMetrics.isOverdue
-                            ? "bg-red-100 text-red-800 border-red-200"
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-stone-900">
+                        Est. Finish:{" "}
+                        <span className="font-mono tabular-nums">{materialFlowMetrics.estFinishDateStr}</span>
+                      </span>
+                      {materialFlowMetrics.hasDueDate && (
+                        <span
+                          className={cn(
+                            "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border",
+                            materialFlowMetrics.isOverdue
+                              ? "bg-rose-100 text-rose-800 border-rose-200"
+                              : materialFlowMetrics.isTight
+                              ? "bg-amber-100 text-amber-800 border-amber-200"
+                              : "bg-emerald-100 text-emerald-800 border-emerald-200"
+                          )}
+                        >
+                          {materialFlowMetrics.isOverdue
+                            ? "OVERDUE"
                             : materialFlowMetrics.isTight
-                            ? "bg-amber-100 text-amber-800 border-amber-200"
-                            : "bg-emerald-100 text-emerald-800 border-emerald-200"
-                        )}
-                      >
-                        {materialFlowMetrics.isOverdue
-                          ? "OVERDUE"
-                          : materialFlowMetrics.isTight
-                          ? "TIGHT SCHEDULE"
-                          : "ON TRACK"}
-                      </span>
-                    )}
-                  </div>
+                            ? "TIGHT SCHEDULE"
+                            : "ON TRACK"}
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="text-xs text-stone-500 font-medium">
-                    Makespan:{" "}
-                    <strong className="text-stone-800">
-                      {materialFlowMetrics.estWorkingDays} Days
-                    </strong>{" "}
-                    • Capacity:{" "}
-                    <strong className="text-stone-800">
-                      {materialFlowMetrics.dailyCapacity.toFixed(1)} Pcs/Day
-                    </strong>
-                    {project.due_date && (
-                      <span className="ml-2 text-stone-400">
-                        (Due: {new Date(project.due_date).toLocaleDateString()})
-                      </span>
-                    )}
+                    <div className="text-xs text-stone-500 font-medium">
+                      Makespan:{" "}
+                      <strong className="text-stone-800">
+                        {materialFlowMetrics.estWorkingDays} Days
+                      </strong>{" "}
+                      • Capacity:{" "}
+                      <strong className="text-stone-800">
+                        {materialFlowMetrics.dailyCapacity.toFixed(1)} Pcs/Day
+                      </strong>
+                      {project.due_date && (
+                        <span className="ml-2 text-stone-400">
+                          (Due: {new Date(project.due_date).toLocaleDateString()})
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
           {/* Work Order Tickets (WOT Flow Mirror) */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => toggleSectionCollapse("wots")}
+                className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase hover:text-stone-900 transition-colors cursor-pointer"
+              >
                 <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
-                WORK ORDER TICKETS (WOT FLOW TOKENS)
-              </div>
-              <span className="text-[10px] font-mono font-bold bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200">
-                {wots.filter(w => w.status === 'COMPLETED' || w.status === 'DONE_ROOT').length} / {wots.length || 0} COMPLETED
-              </span>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
-              {wots.length === 0 ? (
-                <div className="p-8 text-center text-xs text-stone-400 space-y-1">
-                  <QrCode className="w-8 h-8 text-stone-300 mx-auto" />
-                  <p>No Work Order Tickets generated yet for this project.</p>
-                  <p className="text-[10px] text-stone-400">Generate tickets inside Production Hub Planning tab.</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-stone-100">
-                  {wots.map((wot) => (
-                    <div key={wot.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-stone-50/50 transition-all">
-                      <div className="flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-stone-100 border border-stone-200 flex items-center justify-center shrink-0 mt-0.5">
-                          <QrCode className="w-4 h-4 text-stone-600" />
-                        </div>
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono font-bold text-stone-900">{wot.lot_number}</span>
-                            <span className={cn(
-                              "text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border",
-                              wot.status === "COMPLETED" || wot.status === "DONE_ROOT"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : wot.status === "RUNNING"
-                                ? "bg-blue-50 text-blue-700 border-blue-200"
-                                : wot.status === "BLOCKED_NDP"
-                                ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
-                                : "bg-stone-100 text-stone-600 border-stone-200"
-                            )}>
-                              {wot.status}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-stone-500 font-medium">
-                            Qty: <strong className="text-stone-800">{wot.qty} units</strong> • Completed: <strong className="text-emerald-700">{wot.completed_units || 0}</strong> • Machine: <span className="text-stone-700 font-medium">{wot.machine_name}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="w-28 text-right space-y-1">
-                          <div className="text-[10px] font-mono font-bold text-stone-700">
-                            {wot.qty > 0 ? Math.round(((wot.completed_units || 0) / wot.qty) * 100) : 0}%
-                          </div>
-                          <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-blue-600 transition-all duration-300"
-                              style={{ width: `${wot.qty > 0 ? Math.min(100, ((wot.completed_units || 0) / wot.qty) * 100) : 0}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ERP Project Gantt Timeline */}
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase">
-                <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>
-                PROJECT GANTT TIMELINE (PROCUREMENT & BOP)
-              </div>
-              <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl border border-stone-200">
-                {(["ALL", "PROCUREMENT", "MANUFACTURING"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setGanttFilter(mode)}
-                    className={cn(
-                      "px-2.5 py-1 text-[10px] font-black uppercase rounded-lg transition-all",
-                      ganttFilter === mode
-                        ? "bg-white text-stone-900 shadow-2xs"
-                        : "text-stone-500 hover:text-stone-900"
-                    )}
-                  >
-                    {mode}
-                  </button>
-                ))}
+                <span>WORK ORDER TICKETS (WOT FLOW TOKENS)</span>
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-bold bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md border border-blue-200 tabular-nums">
+                  {wots.filter(w => w.status === 'COMPLETED' || w.status === 'DONE_ROOT').length} / {wots.length || 0} COMPLETED
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleSectionCollapse("wots")}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-200 transition-colors cursor-pointer"
+                >
+                  <span>{collapsedSections.wots ? "Expand" : "Collapse"}</span>
+                  {collapsedSections.wots ? (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  )}
+                </button>
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
-              <div className="overflow-x-auto">
-                <div className="min-w-[750px]">
-                  {/* Days Header */}
-                  <div className="flex border-b border-stone-200 bg-stone-50/70 text-[10px] font-bold text-stone-500">
-                    <div className="w-56 p-2.5 border-r border-stone-200 shrink-0 uppercase tracking-wider">
-                      Task / Stage
-                    </div>
-                    <div className="flex-1 flex">
-                      {ganttDays.map((d, i) => (
-                        <div
-                          key={i}
-                          className={cn(
-                            "flex-1 p-1.5 text-center border-r border-stone-100 font-mono text-[9px]",
-                            d.isToday && "bg-amber-100/60 text-amber-900 font-black border-amber-300"
-                          )}
-                        >
-                          {d.label}
-                        </div>
-                      ))}
-                    </div>
+            {!collapsedSections.wots && (
+              <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
+                {wots.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-stone-400 space-y-1">
+                    <QrCode className="w-8 h-8 text-stone-300 mx-auto" />
+                    <p>No Work Order Tickets generated yet for this project.</p>
+                    <p className="text-[10px] text-stone-400">Generate tickets inside Production Hub Planning tab.</p>
                   </div>
-
-                  {/* Task Rows */}
-                  <div className="divide-y divide-stone-100 text-xs">
-                    {tasks
-                      .filter((t) => {
-                        const isPr = Boolean(t.pr_id || (t.task_name && t.task_name.includes("[Procurement]")));
-                        if (ganttFilter === "PROCUREMENT") return isPr;
-                        if (ganttFilter === "MANUFACTURING") return !isPr;
-                        return true;
-                      })
-                      .map((task) => {
-                        const isPrTask = Boolean(task.pr_id || (task.task_name && task.task_name.includes("[Procurement]")));
-                        
-                        let leftPercent = 0;
-                        let widthPercent = 100;
-                        if (ganttDays.length > 0 && task.start_date && task.end_date) {
-                          const totalDays = ganttDays.length;
-                          const minDate = ganttDays[0].dateStr;
-                          const maxDate = ganttDays[totalDays - 1].dateStr;
-
-                          const start = task.start_date < minDate ? minDate : task.start_date;
-                          const end = task.end_date > maxDate ? maxDate : task.end_date;
-
-                          let startIdx = ganttDays.findIndex((d) => d.dateStr >= start);
-                          let endIdx = ganttDays.findIndex((d) => d.dateStr >= end);
-                          if (startIdx < 0) startIdx = 0;
-                          if (endIdx < 0) endIdx = totalDays - 1;
-
-                          const dur = Math.max(1, endIdx - startIdx + 1);
-                          leftPercent = (startIdx / totalDays) * 100;
-                          widthPercent = (dur / totalDays) * 100;
-                        }
-
-                        let barBg = "bg-stone-400";
-                        if (isPrTask) {
-                          if (task.status === "COMPLETED") barBg = "bg-indigo-600";
-                          else if (task.status === "REJECTED") barBg = "bg-rose-600";
-                          else if (task.status === "IN_PROGRESS" || task.status === "RUNNING") barBg = "bg-amber-500";
-                          else barBg = "bg-purple-400";
-                        } else {
-                          if (task.status === "COMPLETED") barBg = "bg-emerald-600";
-                          else if (task.status === "PAUSED") barBg = "bg-amber-500 animate-pulse";
-                          else if (task.status === "RUNNING") barBg = "bg-blue-600";
-                          else barBg = "bg-slate-400";
-                        }
-
-                        return (
-                          <div key={task.id} className="flex items-center h-9 border-b border-stone-50">
-                            <div className="w-56 px-3 text-[11px] font-semibold text-stone-800 truncate shrink-0 border-r border-stone-100 flex items-center justify-between gap-1">
-                              <span className="truncate">{task.task_name || "Task"}</span>
-                              {isPrTask && (
-                                <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 shrink-0">
-                                  PR
-                                </span>
-                              )}
+                ) : (
+                  <>
+                    <div
+                      className={cn(
+                        "divide-y divide-stone-100",
+                        expandedLists.wots && wots.length > 6 && "max-h-[420px] overflow-y-auto custom-scrollbar",
+                      )}
+                    >
+                      {(expandedLists.wots ? wots : wots.slice(0, 4)).map((wot) => (
+                        <div key={wot.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-stone-50/50 transition-all">
+                          <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-stone-100 border border-stone-200 flex items-center justify-center shrink-0 mt-0.5">
+                              <QrCode className="w-4 h-4 text-stone-600" />
                             </div>
-                            <div className="flex-1 h-full relative flex items-center px-1">
-                              <div
-                                style={{
-                                  left: `${leftPercent}%`,
-                                  width: `${Math.max(5, widthPercent)}%`,
-                                }}
-                                className={cn(
-                                  "absolute h-5 rounded-md px-2 flex items-center text-[9px] font-bold text-white shadow-2xs transition-all",
-                                  barBg
-                                )}
-                                title={`${task.task_name} | ${task.start_date || ""} -> ${task.end_date || ""} (${task.status})`}
-                              >
-                                <span className="truncate">
-                                  {isPrTask ? "PR Delivery: " : ""}{task.status} ({task.progress || 0}%)
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-mono font-bold text-stone-900">{wot.lot_number}</span>
+                                <span className={cn(
+                                  "text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md border",
+                                  wot.status === "COMPLETED" || wot.status === "DONE_ROOT"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : wot.status === "RUNNING"
+                                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                                    : wot.status === "BLOCKED_NDP"
+                                    ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
+                                    : "bg-stone-100 text-stone-600 border-stone-200"
+                                )}>
+                                  {wot.status}
                                 </span>
+                              </div>
+                              <div className="text-[11px] text-stone-500 font-medium">
+                                Qty: <strong className="text-stone-800">{wot.qty} units</strong> • Completed: <strong className="text-emerald-700">{wot.completed_units || 0}</strong> • Machine: <span className="text-stone-700 font-medium">{wot.machine_name}</span>
                               </div>
                             </div>
                           </div>
-                        );
-                      })}
+
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="w-28 text-right space-y-1">
+                              <div className="text-[10px] font-mono font-bold text-stone-700 tabular-nums">
+                                {wot.qty > 0 ? Math.round(((wot.completed_units || 0) / wot.qty) * 100) : 0}%
+                              </div>
+                              <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-blue-600 transition-all duration-300"
+                                  style={{ width: `${wot.qty > 0 ? Math.min(100, ((wot.completed_units || 0) / wot.qty) * 100) : 0}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {wots.length > 4 && (
+                      <div className="p-2.5 bg-stone-50/70 border-t border-stone-100 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleListExpand("wots")}
+                          className="w-full py-1.5 px-3 rounded-xl bg-white hover:bg-stone-100 border border-stone-200/80 text-[11px] font-bold text-stone-700 hover:text-stone-950 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          {expandedLists.wots ? (
+                            <>
+                              <span>Show Less (Top 4 Tickets)</span>
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </>
+                          ) : (
+                            <>
+                              <span>Show All {wots.length} Work Order Tickets (+{wots.length - 4} more)</span>
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ERP Project Gantt Timeline */}
+          {(() => {
+            const filteredGanttTasks = tasks.filter((t) => {
+              const isPr = Boolean(t.pr_id || (t.task_name && t.task_name.includes("[Procurement]")));
+              if (!project.is_master_set && !isPr) return false;
+              if (ganttFilter === "PROCUREMENT") return isPr;
+              if (ganttFilter === "MANUFACTURING") return !isPr;
+              return true;
+            });
+            const visibleGanttTasks = expandedLists.gantt
+              ? filteredGanttTasks
+              : filteredGanttTasks.slice(0, 6);
+
+            return (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse("gantt")}
+                    className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase hover:text-stone-900 transition-colors cursor-pointer"
+                  >
+                    <span className="w-2 h-2 bg-stone-900 rounded-full"></span>
+                    <span>PROJECT GANTT TIMELINE (PROCUREMENT &amp; BOP)</span>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-stone-100 text-stone-700 border border-stone-200 tabular-nums">
+                      {filteredGanttTasks.length}
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl border border-stone-200">
+                      {(["ALL", "PROCUREMENT", "MANUFACTURING"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => setGanttFilter(mode)}
+                          className={cn(
+                            "px-2.5 py-1 text-[10px] font-black uppercase rounded-lg transition-all cursor-pointer",
+                            ganttFilter === mode
+                              ? "bg-white text-stone-900 shadow-2xs"
+                              : "text-stone-500 hover:text-stone-900"
+                          )}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleSectionCollapse("gantt")}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-200 transition-colors cursor-pointer"
+                    >
+                      <span>{collapsedSections.gantt ? "Expand" : "Collapse"}</span>
+                      {collapsedSections.gantt ? (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      )}
+                    </button>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
 
-          {/* BOP Progress Mirror */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase">
-                <span className="w-2 h-2 bg-stone-800 rounded-full"></span>
-                BOP PROGRESS MIRROR
-              </div>
-              {bopSteps.length > 0 && (
-                <span className="text-[10px] font-mono font-bold bg-stone-100 text-stone-600 px-2.5 py-1 rounded-full border border-stone-200/50">
-                  {bopSteps.filter((t) => t.status === "COMPLETED").length} / {bopSteps.length}{" "}
-                  COMPLETED
-                </span>
-              )}
-            </div>
-
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
-              {bopSteps.length === 0 ? (
-                <div className="text-center py-16 text-stone-400 text-sm flex flex-col items-center justify-center space-y-2">
-                  <Layers className="w-8 h-8 text-stone-300" />
-                  <span>No Bill of Process steps defined for this project.</span>
-                </div>
-              ) : (
-                <div className="divide-y divide-stone-150">
-                  {bopSteps
-                    .filter((t) => !!t)
-                    .map((step) => (
-                      <div
-                        key={step.id}
-                        className={cn(
-                          "p-4 hover:bg-stone-50/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4",
-                          step.status === "CANCELLED" && "opacity-60 grayscale"
-                        )}
-                      >
-                        {/* Step Details */}
-                        <div className="flex-1 min-w-0 flex items-start gap-3">
-                          <div className="pt-0.5">
-                            {step.status === "COMPLETED" ? (
-                              <span className="w-6 h-6 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                              </span>
-                            ) : step.status === "RUNNING" ? (
-                              <span className="w-6 h-6 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-700 shrink-0">
-                                <Clock className="w-3.5 h-3.5 animate-spin" />
-                              </span>
-                            ) : step.status === "PAUSED" ? (
-                              <span className="w-6 h-6 rounded-full bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0">
-                                <AlertTriangle className="w-3.5 h-3.5" />
-                              </span>
-                            ) : step.status === "CANCELLED" ? (
-                              <span className="w-6 h-6 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 shrink-0">
-                                <X className="w-3.5 h-3.5" />
-                              </span>
-                            ) : (
-                              <span className="w-6 h-6 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-500 shrink-0">
-                                <div className="w-1.5 h-1.5 rounded-full bg-stone-400" />
-                              </span>
-                            )}
+                {!collapsedSections.gantt && (
+                  <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
+                    <div className="overflow-x-auto">
+                      <div className="min-w-[750px]">
+                        {/* Days Header */}
+                        <div className="flex border-b border-stone-200 bg-stone-50/70 text-[10px] font-bold text-stone-500">
+                          <div className="w-56 p-2.5 border-r border-stone-200 shrink-0 uppercase tracking-wider">
+                            Task / Stage
                           </div>
-
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h4
+                          <div className="flex-1 flex">
+                            {ganttDays.map((d, i) => (
+                              <div
+                                key={i}
                                 className={cn(
-                                  "text-sm font-bold text-stone-900 uppercase tracking-tight",
-                                  step.status === "CANCELLED" && "line-through text-stone-400",
-                                  materialFlowMetrics?.cpmNodes?.find(n => n.id === step.id)?.is_critical_path && "text-red-700"
+                                  "flex-1 p-1.5 text-center border-r border-stone-100 font-mono text-[9px]",
+                                  d.isToday && "bg-amber-100/60 text-amber-900 font-black border-amber-300"
                                 )}
                               >
-                                {step.step_name}
-                              </h4>
-                              {step.node_type && (
-                                <span className={cn(
-                                  "text-[9px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider border",
-                                  step.node_type === 'PRODUCT'
-                                    ? "bg-purple-50 text-purple-800 border-purple-200"
-                                    : "bg-stone-100 text-stone-600 border-stone-200/50"
-                                )}>
-                                  {step.node_type}
-                                </span>
-                              )}
-                              {step.node_type === 'PRODUCT' && (
-                                <span className={cn(
-                                  "inline-flex items-center gap-1 text-[9px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider border",
-                                  step.status === "COMPLETED" || step.lifecycle_status === "Available" || step.lifecycle_status === "Produced"
-                                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                    : step.lifecycle_status === "In Transit"
-                                    ? "bg-blue-50 text-blue-800 border-blue-200"
-                                    : step.lifecycle_status === "PO Issued"
-                                    ? "bg-indigo-50 text-indigo-800 border-indigo-200"
-                                    : step.lifecycle_status === "PR Approved"
-                                    ? "bg-amber-50 text-amber-800 border-amber-200"
-                                    : step.lifecycle_status === "PR Pending"
-                                    ? "bg-orange-50 text-orange-800 border-orange-200 shadow-2xs"
-                                    : "bg-stone-100 text-stone-600 border-stone-200"
-                                )}>
-                                  {step.lifecycle_status || (step.status === "COMPLETED" ? "Available" : "Planned")}
-                                </span>
-                              )}
-                              {step.status === "PAUSED" && (
-                                <span className="inline-flex items-center gap-1 text-[8px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                                  {step.is_manual_pause
-                                    ? "MANUAL PAUSE"
-                                    : `AUTO PAUSED: ${step.pause_type || "WIP"}`}
-                                </span>
-                              )}
-                              {materialFlowMetrics?.cpmNodes?.find(n => n.id === step.id)?.is_critical_path && (
-                                <span className="inline-flex items-center gap-1 text-[8px] font-bold text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                                  CRITICAL PATH
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-[10px] text-stone-400 font-semibold uppercase tracking-wider">
-                              <span>Target Qty: {step.target_qty}</span>
-                              <span className="text-stone-300">|</span>
-                              <span>Completed: {step.completed_qty}</span>
-                              {step.lot_size && (
-                                <>
-                                  <span className="text-stone-300">|</span>
-                                  <span className="text-blue-600 font-mono font-bold">Lot: {step.lot_size} pcs</span>
-                                </>
-                              )}
-                              {step.transfer_mode && (
-                                <>
-                                  <span className="text-stone-300">|</span>
-                                  <span className={step.transfer_mode === 'INTRA_STATION' ? 'text-emerald-600 font-bold' : 'text-stone-600 font-bold'}>
-                                    {step.transfer_mode === 'INTRA_STATION' ? '1-Piece Flow' : 'Lot-Based WOT'}
-                                  </span>
-                                </>
-                              )}
-                            </div>
+                                {d.label}
+                              </div>
+                            ))}
                           </div>
                         </div>
 
-                        {/* Progress Bar */}
-                        <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 w-full sm:w-auto">
-                          <div className="w-40 space-y-1.5">
-                            <div className="flex justify-between items-center text-[10px] font-extrabold uppercase tracking-widest">
-                              <span className="text-stone-400">Progress</span>
-                              <span className="text-stone-800">{step.progress || 0}%</span>
+                        {/* Task Rows */}
+                        {!project.is_master_set && ganttFilter !== "PROCUREMENT" && (
+                          <div className="bg-stone-50 border-b border-stone-200 px-3.5 py-2 flex items-center justify-between gap-3 text-xs text-stone-600">
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>
+                                Manufacturing schedule hidden until <strong>Setup &amp; Master</strong> is committed.
+                              </span>
                             </div>
-                            <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden border border-stone-200/20">
-                              <div
-                                className={cn(
-                                  "h-full transition-all duration-500",
-                                  step.status === "COMPLETED"
-                                    ? "bg-emerald-500"
-                                    : step.status === "RUNNING"
-                                    ? "bg-blue-500"
-                                    : step.status === "PAUSED"
-                                    ? "bg-amber-500"
-                                    : "bg-stone-400"
-                                )}
-                                style={{ width: `${step.progress || 0}%` }}
-                              />
-                            </div>
+                            <span className="text-[10px] font-mono font-bold uppercase text-amber-700 shrink-0">
+                              Pending Setup
+                            </span>
                           </div>
+                        )}
+                        <div
+                          className={cn(
+                            "divide-y divide-stone-100 text-xs",
+                            expandedLists.gantt && filteredGanttTasks.length > 10 && "max-h-[380px] overflow-y-auto custom-scrollbar",
+                          )}
+                        >
+                          {visibleGanttTasks.map((task) => {
+                            const isPrTask = Boolean(task.pr_id || (task.task_name && task.task_name.includes("[Procurement]")));
+                            
+                            let leftPercent = 0;
+                            let widthPercent = 100;
+                            if (ganttDays.length > 0 && task.start_date && task.end_date) {
+                              const totalDays = ganttDays.length;
+                              const minDate = ganttDays[0].dateStr;
+                              const maxDate = ganttDays[totalDays - 1].dateStr;
+
+                              const start = task.start_date < minDate ? minDate : task.start_date;
+                              const end = task.end_date > maxDate ? maxDate : task.end_date;
+
+                              let startIdx = ganttDays.findIndex((d) => d.dateStr >= start);
+                              let endIdx = ganttDays.findIndex((d) => d.dateStr >= end);
+                              if (startIdx < 0) startIdx = 0;
+                              if (endIdx < 0) endIdx = totalDays - 1;
+
+                              const dur = Math.max(1, endIdx - startIdx + 1);
+                              leftPercent = (startIdx / totalDays) * 100;
+                              widthPercent = (dur / totalDays) * 100;
+                            }
+
+                            let barBg = "bg-stone-400";
+                            if (isPrTask) {
+                              if (task.status === "COMPLETED") barBg = "bg-blue-600";
+                              else if (task.status === "REJECTED") barBg = "bg-rose-600";
+                              else if (task.status === "IN_PROGRESS" || task.status === "RUNNING") barBg = "bg-amber-500";
+                              else barBg = "bg-stone-500";
+                            } else {
+                              if (task.status === "COMPLETED") barBg = "bg-emerald-600";
+                              else if (task.status === "PAUSED") barBg = "bg-amber-500 animate-pulse";
+                              else if (task.status === "RUNNING") barBg = "bg-blue-600";
+                              else barBg = "bg-stone-400";
+                            }
+
+                            return (
+                              <div key={task.id} className="flex items-center h-9 border-b border-stone-50">
+                                <div className="w-56 px-3 text-[11px] font-semibold text-stone-800 truncate shrink-0 border-r border-stone-100 flex items-center justify-between gap-1">
+                                  <span className="truncate">{task.task_name || "Task"}</span>
+                                  {isPrTask && (
+                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-blue-50 text-blue-800 border border-blue-200 shrink-0">
+                                      PR
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex-1 h-full relative flex items-center px-1">
+                                  <div
+                                    style={{
+                                      left: `${leftPercent}%`,
+                                      width: `${Math.max(5, widthPercent)}%`,
+                                    }}
+                                    className={cn(
+                                      "absolute h-5 rounded-md px-2 flex items-center text-[9px] font-bold text-white shadow-2xs transition-all",
+                                      barBg
+                                    )}
+                                    title={`${task.task_name} | ${task.start_date || ""} -> ${task.end_date || ""} (${task.status})`}
+                                  >
+                                    <span className="truncate">
+                                      {isPrTask ? "PR Delivery: " : ""}{task.status} ({task.progress || 0}%)
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    ))}
+                    </div>
+                    {filteredGanttTasks.length > 6 && (
+                      <div className="p-2.5 bg-stone-50/70 border-t border-stone-100 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleListExpand("gantt")}
+                          className="w-full py-1.5 px-3 rounded-xl bg-white hover:bg-stone-100 border border-stone-200/80 text-[11px] font-bold text-stone-700 hover:text-stone-950 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          {expandedLists.gantt ? (
+                            <>
+                              <span>Show Less (Top 6 Gantt Tasks)</span>
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </>
+                          ) : (
+                            <>
+                              <span>Show All {filteredGanttTasks.length} Gantt Tasks (+{filteredGanttTasks.length - 6} more)</span>
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* BOP Progress Mirror */}
+          {(() => {
+            const validBopSteps = bopSteps.filter((t) => !!t);
+            const visibleBopSteps = expandedLists.bop ? validBopSteps : validBopSteps.slice(0, 5);
+
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse("bop")}
+                    className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase hover:text-stone-900 transition-colors cursor-pointer"
+                  >
+                    <span className="w-2 h-2 bg-stone-800 rounded-full"></span>
+                    <span>BOP PROGRESS MIRROR</span>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    {validBopSteps.length > 0 && (
+                      <span className="text-[10px] font-mono font-bold bg-stone-100 text-stone-600 px-2.5 py-1 rounded-md border border-stone-200/50 tabular-nums">
+                        {validBopSteps.filter((t) => t.status === "COMPLETED").length} / {validBopSteps.length}{" "}
+                        COMPLETED
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleSectionCollapse("bop")}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-200 transition-colors cursor-pointer"
+                    >
+                      <span>{collapsedSections.bop ? "Expand" : "Collapse"}</span>
+                      {collapsedSections.bop ? (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
+
+                {!collapsedSections.bop && (
+                  <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
+                    {validBopSteps.length === 0 ? (
+                      <div className="text-center py-16 text-stone-400 text-sm flex flex-col items-center justify-center space-y-2">
+                        <Layers className="w-8 h-8 text-stone-300" />
+                        <span>No Bill of Process steps defined for this project.</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div
+                          className={cn(
+                            "divide-y divide-stone-150",
+                            expandedLists.bop && validBopSteps.length > 7 && "max-h-[480px] overflow-y-auto custom-scrollbar",
+                          )}
+                        >
+                          {visibleBopSteps.map((step) => (
+                            <div
+                              key={step.id}
+                              className={cn(
+                                "p-4 hover:bg-stone-50/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4",
+                                step.status === "CANCELLED" && "opacity-60 grayscale"
+                              )}
+                            >
+                              {/* Step Details */}
+                              <div className="flex-1 min-w-0 flex items-start gap-3">
+                                <div className="pt-0.5">
+                                  {step.status === "COMPLETED" ? (
+                                    <span className="w-6 h-6 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0">
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                    </span>
+                                  ) : step.status === "RUNNING" ? (
+                                    <span className="w-6 h-6 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-700 shrink-0">
+                                      <Clock className="w-3.5 h-3.5 animate-spin" />
+                                    </span>
+                                  ) : step.status === "PAUSED" ? (
+                                    <span className="w-6 h-6 rounded-full bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0">
+                                      <AlertTriangle className="w-3.5 h-3.5" />
+                                    </span>
+                                  ) : step.status === "CANCELLED" ? (
+                                    <span className="w-6 h-6 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-400 shrink-0">
+                                      <X className="w-3.5 h-3.5" />
+                                    </span>
+                                  ) : (
+                                    <span className="w-6 h-6 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-500 shrink-0">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-stone-400" />
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4
+                                      className={cn(
+                                        "text-sm font-bold text-stone-900 uppercase tracking-tight",
+                                        step.status === "CANCELLED" && "line-through text-stone-400",
+                                        materialFlowMetrics?.cpmNodes?.find(n => n.id === step.id)?.is_critical_path && "text-rose-700"
+                                      )}
+                                    >
+                                      {step.step_name}
+                                    </h4>
+                                    {step.node_type && (
+                                      <span className={cn(
+                                        "text-[9px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider border",
+                                        step.node_type === 'PRODUCT'
+                                          ? "bg-blue-50 text-blue-800 border-blue-200"
+                                          : "bg-stone-100 text-stone-600 border-stone-200/50"
+                                      )}>
+                                        {step.node_type}
+                                      </span>
+                                    )}
+                                    {step.node_type === 'PRODUCT' && (
+                                      <span className={cn(
+                                        "inline-flex items-center gap-1 text-[9px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider border",
+                                        step.status === "COMPLETED" || step.lifecycle_status === "Available" || step.lifecycle_status === "Produced"
+                                          ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                          : step.lifecycle_status === "In Transit"
+                                          ? "bg-blue-50 text-blue-800 border-blue-200"
+                                          : step.lifecycle_status === "PO Issued"
+                                          ? "bg-blue-50 text-blue-800 border-blue-200"
+                                          : step.lifecycle_status === "PR Approved"
+                                          ? "bg-amber-50 text-amber-800 border-amber-200"
+                                          : step.lifecycle_status === "PR Pending"
+                                          ? "bg-amber-50 text-amber-800 border-amber-200 shadow-2xs"
+                                          : "bg-stone-100 text-stone-600 border-stone-200"
+                                      )}>
+                                        {step.lifecycle_status || (step.status === "COMPLETED" ? "Available" : "Planned")}
+                                      </span>
+                                    )}
+                                    {step.status === "PAUSED" && (
+                                      <span className="inline-flex items-center gap-1 text-[8px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                        {step.is_manual_pause
+                                          ? "MANUAL PAUSE"
+                                          : `AUTO PAUSED: ${step.pause_type || "WIP"}`}
+                                      </span>
+                                    )}
+                                    {materialFlowMetrics?.cpmNodes?.find(n => n.id === step.id)?.is_critical_path && (
+                                      <span className="inline-flex items-center gap-1 text-[8px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                        CRITICAL PATH
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-[10px] text-stone-400 font-semibold uppercase tracking-wider">
+                                    <span>Target Qty: {step.target_qty}</span>
+                                    <span className="text-stone-300">|</span>
+                                    <span>Completed: {step.completed_qty}</span>
+                                    {step.lot_size && (
+                                      <>
+                                        <span className="text-stone-300">|</span>
+                                        <span className="text-blue-600 font-mono font-bold">Lot: {step.lot_size} pcs</span>
+                                      </>
+                                    )}
+                                    {step.transfer_mode && (
+                                      <>
+                                        <span className="text-stone-300">|</span>
+                                        <span className={step.transfer_mode === 'INTRA_STATION' ? 'text-emerald-600 font-bold' : 'text-stone-600 font-bold'}>
+                                          {step.transfer_mode === 'INTRA_STATION' ? '1-Piece Flow' : 'Lot-Based WOT'}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Progress Bar */}
+                              <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 w-full sm:w-auto">
+                                <div className="w-40 space-y-1.5">
+                                  <div className="flex justify-between items-center text-[10px] font-extrabold uppercase tracking-widest">
+                                    <span className="text-stone-400">Progress</span>
+                                    <span className="text-stone-800 tabular-nums">{step.progress || 0}%</span>
+                                  </div>
+                                  <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden border border-stone-200/20">
+                                    <div
+                                      className={cn(
+                                        "h-full transition-all duration-500",
+                                        step.status === "COMPLETED"
+                                          ? "bg-emerald-500"
+                                          : step.status === "RUNNING"
+                                          ? "bg-blue-500"
+                                          : step.status === "PAUSED"
+                                          ? "bg-amber-500"
+                                          : "bg-stone-400"
+                                      )}
+                                      style={{ width: `${step.progress || 0}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {validBopSteps.length > 5 && (
+                          <div className="p-2.5 bg-stone-50/70 border-t border-stone-100 flex justify-center">
+                            <button
+                              type="button"
+                              onClick={() => toggleListExpand("bop")}
+                              className="w-full py-1.5 px-3 rounded-xl bg-white hover:bg-stone-100 border border-stone-200/80 text-[11px] font-bold text-stone-700 hover:text-stone-950 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              {expandedLists.bop ? (
+                                <>
+                                  <span>Show Less (Top 5 Process Steps)</span>
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </>
+                              ) : (
+                                <>
+                                  <span>Show All {validBopSteps.length} BOP Steps (+{validBopSteps.length - 5} more)</span>
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Right Column: Material & PRs & Audit */}
         <div className="space-y-6">
           {/* Material Progress */}
           <div className="space-y-3">
-            <div className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase">
-              <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
-              MATERIAL PROGRESS
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => toggleSectionCollapse("bom")}
+                className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase hover:text-stone-900 transition-colors cursor-pointer"
+              >
+                <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+                <span>MATERIAL PROGRESS</span>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-stone-100 text-stone-700 border border-stone-200 tabular-nums">
+                  {bom.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleSectionCollapse("bom")}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-200 transition-colors cursor-pointer"
+              >
+                <span>{collapsedSections.bom ? "Expand" : "Collapse"}</span>
+                {collapsedSections.bom ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                )}
+              </button>
             </div>
 
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
-              {bom.length === 0 ? (
-                <div className="p-6 text-center text-xs text-stone-400">
-                  No BOM materials specified for this project.
-                </div>
-              ) : (
-                <div className="divide-y divide-stone-100">
-                  {bom.map((item) => {
-                    const received = item.received_by_production || 0;
-                    const required = item.total_required_qty;
-                    
-                    let statusLabel = "WAITING MATERIAL";
-                    let statusColor = "text-amber-500 bg-amber-50";
-                    let statusIcon = <Clock className="w-3 h-3" />;
-                    let statusFill = "bg-amber-400";
-                    
-                    if (received >= required) {
-                      statusLabel = "MATERIAL READY";
-                      statusColor = "text-emerald-600 bg-emerald-50";
-                      statusIcon = <CheckCircle2 className="w-3 h-3" />;
-                      statusFill = "bg-emerald-500";
-                    }
-                    
-                    const progressPercent = Math.min(100, (received / required) * 100);
-                    const transitPercent = 0;
+            {!collapsedSections.bom && (
+              <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
+                {bom.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-stone-400">
+                    No BOM materials specified for this project.
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className={cn(
+                        "divide-y divide-stone-100",
+                        expandedLists.bom && bom.length > 6 && "max-h-[420px] overflow-y-auto custom-scrollbar",
+                      )}
+                    >
+                      {(expandedLists.bom ? bom : bom.slice(0, 4)).map((item) => {
+                        const received = item.received_by_production || 0;
+                        const required = item.total_required_qty;
+                        
+                        let statusLabel = "WAITING MATERIAL";
+                        let statusColor = "text-amber-500 bg-amber-50";
+                        let statusIcon = <Clock className="w-3 h-3" />;
+                        let statusFill = "bg-amber-400";
+                        
+                        if (received >= required) {
+                          statusLabel = "MATERIAL READY";
+                          statusColor = "text-emerald-600 bg-emerald-50";
+                          statusIcon = <CheckCircle2 className="w-3 h-3" />;
+                          statusFill = "bg-emerald-500";
+                        }
+                        
+                        const progressPercent = Math.min(100, (received / required) * 100);
 
-                    return (
-                      <div key={item.id} className="p-4 space-y-3">
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-7 h-7 rounded-lg bg-stone-100 flex items-center justify-center shrink-0">
-                              <Package className="w-3.5 h-3.5 text-stone-500" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-bold text-stone-900 truncate">
-                                {item.item_code}
+                        return (
+                          <div key={item.id} className="p-4 space-y-3">
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-7 h-7 rounded-lg bg-stone-100 flex items-center justify-center shrink-0">
+                                  <Package className="w-3.5 h-3.5 text-stone-500" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-stone-900 truncate">
+                                    {item.item_code}
+                                  </div>
+                                  <div className="text-[10px] text-stone-400 truncate">
+                                    {item.item_name}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-[10px] text-stone-400 truncate">
-                                {item.item_name}
+                              <div className="text-right shrink-0">
+                                <span className={cn("px-2 py-1 rounded-md text-[9px] font-black tracking-wider flex items-center gap-1", statusColor)}>
+                                  {statusIcon} {statusLabel}
+                                </span>
                               </div>
                             </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <span className={cn("px-2 py-1 rounded-md text-[9px] font-black tracking-wider flex items-center gap-1", statusColor)}>
-                              {statusIcon} {statusLabel}
-                            </span>
-                          </div>
-                        </div>
 
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between text-[10px] font-bold text-stone-500 uppercase tracking-wider">
-                            <span>Req: {required} {item.uom}</span>
-                            <span className="flex items-center gap-2">
-                              <span className="text-stone-700"><span className="text-stone-300">Recv:</span> {received}</span>
-                            </span>
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-[10px] font-bold text-stone-500 uppercase tracking-wider tabular-nums">
+                                <span>Req: {required} {item.uom}</span>
+                                <span className="flex items-center gap-2">
+                                  <span className="text-stone-700"><span className="text-stone-300">Recv:</span> {received}</span>
+                                </span>
+                              </div>
+                              <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden flex">
+                                <div className={cn("h-full transition-all duration-500", statusFill)} style={{ width: `${progressPercent}%` }} />
+                              </div>
+                            </div>
                           </div>
-                          <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden flex">
-                            <div className={cn("h-full transition-all duration-500", statusFill)} style={{ width: `${progressPercent}%` }} />
-                          </div>
-                        </div>
+                        );
+                      })}
+                    </div>
+                    {bom.length > 4 && (
+                      <div className="p-2.5 bg-stone-50/70 border-t border-stone-100 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleListExpand("bom")}
+                          className="w-full py-1.5 px-3 rounded-xl bg-white hover:bg-stone-100 border border-stone-200/80 text-[11px] font-bold text-stone-700 hover:text-stone-950 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          {expandedLists.bom ? (
+                            <>
+                              <span>Show Less (Top 4 Materials)</span>
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </>
+                          ) : (
+                            <>
+                              <span>Show All {bom.length} BOM Materials (+{bom.length - 4} more)</span>
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </>
+                          )}
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Purchase Requests */}
           <div className="space-y-3">
-            <div className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase">
-              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-              PURCHASE REQUESTS
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => toggleSectionCollapse("prs")}
+                className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase hover:text-stone-900 transition-colors cursor-pointer"
+              >
+                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                <span>PURCHASE REQUESTS</span>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-stone-100 text-stone-700 border border-stone-200 tabular-nums">
+                  {prs.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleSectionCollapse("prs")}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-200 transition-colors cursor-pointer"
+              >
+                <span>{collapsedSections.prs ? "Expand" : "Collapse"}</span>
+                {collapsedSections.prs ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                )}
+              </button>
             </div>
 
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
-              {prs.length === 0 ? (
-                <div className="p-6 text-center text-xs text-stone-400">
-                  No purchase requests issued yet.
-                </div>
-              ) : (
-                <div className="divide-y divide-stone-100">
-                  {prs.map((pr) => (
+            {!collapsedSections.prs && (
+              <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
+                {prs.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-stone-400">
+                    No purchase requests issued yet.
+                  </div>
+                ) : (
+                  <>
                     <div
-                      key={pr.pr_number}
-                      className="p-3.5 flex items-center justify-between gap-3"
+                      className={cn(
+                        "divide-y divide-stone-100",
+                        expandedLists.prs && prs.length > 6 && "max-h-[380px] overflow-y-auto custom-scrollbar",
+                      )}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                          <FileText className="w-3.5 h-3.5 text-blue-600" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-mono font-bold text-stone-900">
-                            {pr.pr_number}
-                          </div>
-                          <div className="text-[10px] text-stone-400">
-                            {pr.item_count} items •{" "}
-                            {new Date(pr.created_at).toLocaleDateString()}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span
-                          className={cn(
-                            "text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border",
-                            pr.status === "APPROVED"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : pr.status === "PENDING"
-                              ? "bg-amber-50 text-amber-700 border-amber-200"
-                              : "bg-stone-50 text-stone-600 border-stone-200"
-                          )}
+                      {(expandedLists.prs ? prs : prs.slice(0, 4)).map((pr) => (
+                        <div
+                          key={pr.pr_number}
+                          className="p-3.5 flex items-center justify-between gap-3"
                         >
-                          {pr.status}
-                        </span>
-                        {pr.has_po && (
-                          <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                            PO CREATED
-                          </span>
-                        )}
-                      </div>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                              <FileText className="w-3.5 h-3.5 text-blue-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-mono font-bold text-stone-900">
+                                {pr.pr_number}
+                              </div>
+                              <div className="text-[10px] text-stone-400 tabular-nums">
+                                {pr.item_count} items •{" "}
+                                {new Date(pr.created_at).toLocaleDateString()}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span
+                              className={cn(
+                                "text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md border",
+                                pr.status === "APPROVED"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : pr.status === "PENDING"
+                                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                                  : "bg-stone-50 text-stone-600 border-stone-200"
+                              )}
+                            >
+                              {pr.status}
+                            </span>
+                            {pr.has_po && (
+                              <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+                                PO CREATED
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    {prs.length > 4 && (
+                      <div className="p-2.5 bg-stone-50/70 border-t border-stone-100 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleListExpand("prs")}
+                          className="w-full py-1.5 px-3 rounded-xl bg-white hover:bg-stone-100 border border-stone-200/80 text-[11px] font-bold text-stone-700 hover:text-stone-950 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          {expandedLists.prs ? (
+                            <>
+                              <span>Show Less (Top 4 PRs)</span>
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </>
+                          ) : (
+                            <>
+                              <span>Show All {prs.length} Purchase Requests (+{prs.length - 4} more)</span>
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Recent Production Logger Events (Shop Floor Mirror) */}
           <div className="space-y-3">
-            <div className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase">
-              <span className="w-2 h-2 bg-emerald-600 rounded-full animate-ping"></span>
-              RECENT PRODUCTION LOGS
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => toggleSectionCollapse("logs")}
+                className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase hover:text-stone-900 transition-colors cursor-pointer"
+              >
+                <span className="w-2 h-2 bg-emerald-600 rounded-full animate-ping"></span>
+                <span>RECENT PRODUCTION LOGS</span>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-stone-100 text-stone-700 border border-stone-200 tabular-nums">
+                  {recentLogs.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleSectionCollapse("logs")}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-200 transition-colors cursor-pointer"
+              >
+                <span>{collapsedSections.logs ? "Expand" : "Collapse"}</span>
+                {collapsedSections.logs ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                )}
+              </button>
             </div>
 
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
-              {recentLogs.length === 0 ? (
-                <div className="p-6 text-center text-xs text-stone-400">
-                  No scan or event logs recorded yet for this project.
-                </div>
-              ) : (
-                <div className="divide-y divide-stone-100">
-                  {recentLogs.map((log) => {
-                    let badgeColor = "bg-stone-100 text-stone-700 border-stone-200";
-                    if (log.log_type === "QR_SCAN") badgeColor = "bg-blue-50 text-blue-700 border-blue-200";
-                    else if (log.log_type === "WOT_COMPLETE") badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200";
-                    else if (log.log_type?.includes("NDP")) badgeColor = "bg-rose-50 text-rose-700 border-rose-200";
-                    else if (log.log_type?.includes("FLOOR_REQUEST")) badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
+            {!collapsedSections.logs && (
+              <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
+                {recentLogs.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-stone-400">
+                    No scan or event logs recorded yet for this project.
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className={cn(
+                        "divide-y divide-stone-100",
+                        expandedLists.logs && recentLogs.length > 6 && "max-h-[380px] overflow-y-auto custom-scrollbar",
+                      )}
+                    >
+                      {(expandedLists.logs ? recentLogs : recentLogs.slice(0, 4)).map((log) => {
+                        let badgeColor = "bg-stone-100 text-stone-700 border-stone-200";
+                        if (log.log_type === "QR_SCAN") badgeColor = "bg-blue-50 text-blue-700 border-blue-200";
+                        else if (log.log_type === "WOT_COMPLETE") badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                        else if (log.log_type?.includes("NDP")) badgeColor = "bg-rose-50 text-rose-700 border-rose-200";
+                        else if (log.log_type?.includes("FLOOR_REQUEST")) badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
 
-                    return (
-                      <div key={log.id} className="p-3.5 space-y-1 hover:bg-stone-50/50 transition-all">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={cn("text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border", badgeColor)}>
-                            {log.log_type}
-                          </span>
-                          <span className="text-[10px] font-mono text-stone-400">
-                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <div className="text-xs text-stone-800 font-medium truncate">
-                          {log.machine_name && log.machine_name !== 'N/A' && (
-                            <span className="text-stone-500 font-normal">[{log.machine_name}] </span>
+                        return (
+                          <div key={log.id} className="p-3.5 space-y-1 hover:bg-stone-50/50 transition-all">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={cn("text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md border", badgeColor)}>
+                                {log.log_type}
+                              </span>
+                              <span className="text-[10px] font-mono text-stone-400 tabular-nums">
+                                {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <div className="text-xs text-stone-800 font-medium truncate">
+                              {log.machine_name && log.machine_name !== 'N/A' && (
+                                <span className="text-stone-500 font-normal">[{log.machine_name}] </span>
+                              )}
+                              {log.user_name && <span className="font-semibold">{log.user_name}: </span>}
+                              {(() => {
+                                try {
+                                  const d = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+                                  return d?.reason || d?.message || d?.action || (typeof log.details === 'string' ? log.details : "Event recorded");
+                                } catch (e) {
+                                  return typeof log.details === 'string' ? log.details : "Event logged";
+                                }
+                              })()}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {recentLogs.length > 4 && (
+                      <div className="p-2.5 bg-stone-50/70 border-t border-stone-100 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleListExpand("logs")}
+                          className="w-full py-1.5 px-3 rounded-xl bg-white hover:bg-stone-100 border border-stone-200/80 text-[11px] font-bold text-stone-700 hover:text-stone-950 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          {expandedLists.logs ? (
+                            <>
+                              <span>Show Less (Top 4 Production Logs)</span>
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </>
+                          ) : (
+                            <>
+                              <span>Show All {recentLogs.length} Production Logs (+{recentLogs.length - 4} more)</span>
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </>
                           )}
-                          {log.user_name && <span className="font-semibold">{log.user_name}: </span>}
-                          {(() => {
-                            try {
-                              const d = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
-                              return d?.reason || d?.message || d?.action || (typeof log.details === 'string' ? log.details : "Event recorded");
-                            } catch (e) {
-                              return typeof log.details === 'string' ? log.details : "Event logged";
-                            }
-                          })()}
-                        </div>
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Audit Timeline */}
+          {/* Audit Timeline / Activity Journal */}
           <div className="space-y-3">
-            <div className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase">
-              <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-              AUDIT TRAIL
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => toggleSectionCollapse("audit")}
+                className="text-xs text-stone-500 tracking-wider flex items-center gap-2 font-semibold uppercase hover:text-stone-900 transition-colors cursor-pointer"
+              >
+                <span className="w-2 h-2 bg-stone-800 rounded-full"></span>
+                <span>AUDIT TRAIL &amp; ACTIVITY JOURNAL</span>
+              </button>
             </div>
             <div className="bg-white rounded-2xl border border-stone-200 p-4 shadow-2xs">
-              <AuditTimeline resourceType="PROJECT" resourceId={id} />
+              <AuditTimeline
+                resourceType="PROJECT"
+                resourceId={id}
+                initialLimit={4}
+                defaultCollapsed={Boolean(collapsedSections.audit)}
+              />
             </div>
           </div>
         </div>
       </div>
-
-      {project && (
-        <ProjectHppModal
-          isOpen={isHppModalOpen}
-          onClose={() => setIsHppModalOpen(false)}
-          projectId={project.id}
-          projectName={project.name}
-        />
-      )}
     </div>
   );
 }

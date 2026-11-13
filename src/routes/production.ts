@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { ndpRouter } from "./production/ndp_routes.ts";
-import { manpowerRouter } from "./production/manpower_routes.ts";
-import { planningRouter } from "./production/planning_routes.ts";
-import { bopRouter } from "./production/bop_routes.ts";
-import { analyticsRouter } from "./production/analytics_routes.ts";
-import { executionRouter } from "./production/execution_routes.ts";
-import { commandCenterRouter } from "./production/command_center_routes.ts";
+import { ndpRouter } from "./production/ndp.ts";
+import { manpowerRouter } from "./production/manpower.ts";
+import { planningRouter } from "./production/planning.ts";
+import { bopRouter } from "./production/bop.ts";
+import { analyticsRouter } from "./production/analytics.ts";
+import { executionRouter } from "./production/execution.ts";
+import { commandCenterRouter } from "./production/commandCenter.ts";
 
 export const router = Router();
 

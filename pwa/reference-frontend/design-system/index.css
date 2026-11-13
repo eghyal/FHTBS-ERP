@@ -1,0 +1,2349 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:where(.tw-dark-disabled));
+
+@keyframes scan {
+  0%, 100% { top: 0%; opacity: 0; }
+  50% { top: 100%; opacity: 1; }
+}
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Fraunces", "Playfair Display", Georgia, serif;
+
+  /* Theme: Warm Stone Neutral + Brand Crimson + Semantic Status */
+  --color-stone-50: #fafaf9;
+  --color-stone-100: #f5f5f4;
+  --color-stone-200: #e7e5e4;
+  --color-stone-300: #d6d3d1;
+  --color-stone-400: #a8a29e;
+  --color-stone-500: #78716c;
+  --color-stone-600: #57534e;
+  --color-stone-700: #44403c;
+  --color-stone-800: #292524;
+  --color-stone-900: #1c1917;
+  --color-stone-950: #0c0a09;
+
+  /* Crisp Enterprise Semantic Scales for Indigo, Purple, Violet & Blue in Light Mode */
+  --color-indigo-50: #eef2ff;
+  --color-indigo-100: #e0e7ff;
+  --color-indigo-200: #c7d2fe;
+  --color-indigo-300: #a5b4fc;
+  --color-indigo-400: #818cf8;
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #4f46e5;
+  --color-indigo-700: #4338ca;
+  --color-indigo-800: #3730a3;
+  --color-indigo-900: #312e81;
+  --color-indigo-950: #1e1b4b;
+
+  --color-purple-50: #faf5ff;
+  --color-purple-100: #f3e8ff;
+  --color-purple-200: #e9d5ff;
+  --color-purple-300: #d8b4fe;
+  --color-purple-400: #c084fc;
+  --color-purple-500: #a855f7;
+  --color-purple-600: #9333ea;
+  --color-purple-700: #7e22ce;
+  --color-purple-800: #6b21a8;
+  --color-purple-900: #581c87;
+  --color-purple-950: #3b0764;
+
+  --color-violet-50: #f5f3ff;
+  --color-violet-100: #ede9fe;
+  --color-violet-200: #ddd6fe;
+  --color-violet-300: #c4b5fd;
+  --color-violet-400: #a78bfa;
+  --color-violet-500: #8b5cf6;
+  --color-violet-600: #7c3aed;
+  --color-violet-700: #6d28d9;
+  --color-violet-800: #5b21b6;
+  --color-violet-900: #4c1d95;
+  --color-violet-950: #2e1065;
+  
+  /* Semantic functional colors */
+  --color-red-500: #ef4444;
+  --color-amber-500: #f59e0b;
+  --color-emerald-500: #10b981;
+  --color-blue-500: #3b82f6;
+  
+  /* Warm Monochrome primary brand tokens (Red reserved strictly for official Kop Surat & destructive actions) */
+  --color-brand: #1c1917;
+  --color-brand-hover: #292524;
+  --color-brand-active: #0c0a09;
+  --color-brand-light: rgba(28, 25, 23, 0.06);
+  --color-letterhead-red: #b02524;
+  --color-paving-red: #1c1917;
+  --color-paving-yellow: #FFD700;
+}
+
+/* ==========================================================================
+   HRIS & HCM Airy Frosted Glass Theme (.hris-theme)
+   Inspired by Apple visionOS / macOS & Amie — Pure Geometric Sans-Serif,
+   Translucent Frosted Glass, Specular Borders & Multi-Layered Depth
+   ========================================================================== */
+.hris-theme {
+  font-family: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Map stone utilities inside HRIS to Clean Alabaster & Crisp Slate-Charcoal */
+  --color-stone-50: #F7F7F9;
+  --color-stone-100: #EFEFF3;
+  --color-stone-200: #E2E3EA;
+  --color-stone-300: #CBCdd6;
+  --color-stone-400: #8E929F;
+  --color-stone-500: #646876;
+  --color-stone-600: #484B57;
+  --color-stone-700: #32353E;
+  --color-stone-800: #1E2028;
+  --color-stone-900: #121318;
+  --color-stone-950: #0A0B0E;
+
+  /* Soft Coral & Vibrant Rose-Terracotta accents */
+  --color-violet-50: #FFF2EE;
+  --color-violet-100: #FFE3DA;
+  --color-violet-200: #FFC5B3;
+  --color-violet-300: #FF9E82;
+  --color-violet-400: #FF7852;
+  --color-violet-500: #F25730;
+  --color-violet-600: #E04620;
+  --color-violet-700: #BC3615;
+  --color-violet-800: #962B12;
+  --color-violet-900: #7A2411;
+  --color-violet-950: #431006;
+
+  /* Fresh Mint & Emerald accents */
+  --color-indigo-50: #ECFDF5;
+  --color-indigo-100: #D1FAE5;
+  --color-indigo-200: #A7F3D0;
+  --color-indigo-300: #6EE7B7;
+  --color-indigo-400: #34D399;
+  --color-indigo-500: #10B981;
+  --color-indigo-600: #059669;
+  --color-indigo-700: #047857;
+  --color-indigo-800: #065F46;
+  --color-indigo-900: #064E3B;
+  --color-indigo-950: #022C22;
+}
+
+/* Pure Sans-Serif Typographic Hierarchy inside HRIS child tabs */
+.hris-theme h1,
+.hris-theme h2,
+.hris-theme h3,
+.hris-theme h4 {
+  font-family: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.025em;
+}
+
+.hris-theme .text-2xl.font-black,
+.hris-theme .text-3xl.font-black {
+  font-family: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+
+/* Solid Crisp Card Surface for top-level HRIS cards */
+.hris-theme .bg-white {
+  background-color: #ffffff;
+  border-color: #e2e3ea;
+  box-shadow:
+    0 12px 32px -10px rgba(18, 19, 24, 0.06),
+    0 2px 6px -1px rgba(18, 19, 24, 0.03);
+}
+
+/* Prevent redundant shadows on nested white elements inside HRIS containers */
+.hris-theme :is(.bg-white, .hris-glass-panel, .hris-glass-card) .bg-white,
+.hris-theme td.bg-white,
+.hris-theme th.bg-white,
+.hris-theme span.bg-white,
+.hris-theme button.bg-white {
+  background-color: #ffffff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 2px 6px -1px rgba(18, 19, 24, 0.03);
+  transform: none;
+}
+
+.hris-theme button.bg-stone-900 {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+  border-color: rgba(4, 120, 87, 0.4) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 8px 20px -6px rgba(5, 150, 105, 0.28);
+  border-radius: 1rem;
+  font-weight: 700;
+}
+
+.hris-theme button.bg-stone-900:hover {
+  background: linear-gradient(135deg, #047857 0%, #065f46 100%) !important;
+  transform: translateY(-1px);
+}
+
+/* Solid Elevated Card Utility Classes */
+.hris-glass-panel {
+  background: #ffffff;
+  border: 1px solid #e2e3ea;
+  box-shadow:
+    0 18px 44px -14px rgba(18, 19, 24, 0.07),
+    0 4px 12px -2px rgba(18, 19, 24, 0.03);
+}
+
+.hris-glass-card {
+  background: #ffffff;
+  border: 1px solid #e2e3ea;
+  box-shadow:
+    0 14px 36px -12px rgba(18, 19, 24, 0.06),
+    0 2px 8px -2px rgba(18, 19, 24, 0.03);
+}
+
+.hris-glass-subtle {
+  background: #f7f7f9;
+  border: 1px solid #e2e3ea;
+}
+
+@keyframes hrisFloatSlow {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(20px, -20px, 0) scale(1.05); }
+}
+
+@keyframes hrisFloatReverse {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-20px, 16px, 0) scale(1.04); }
+}
+
+.hris-blob-1 {
+  animation: hrisFloatSlow 14s ease-in-out infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.hris-blob-2 {
+  animation: hrisFloatReverse 16s ease-in-out infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Viewport Off-Screen Render Optimization for Long Mobile Lists & Catalogs */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 360px;
+}
+
+/* Global visual refinements */
+body {
+  -webkit-user-select: auto;
+  user-select: auto;
+  cursor: default;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #fafaf9; /* stone-50 */
+  color: #1c1917; /* stone-900 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-x: hidden;
+}
+
+/* Comprehensive Viewport Density Architecture */
+html {
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+@media (max-width: 639px) {
+  html {
+    font-size: 14px; /* Sleek, compact ERP density for mobile screens */
+  }
+}
+
+/* Touch and Responsive Table Scroll Rules */
+@media (max-width: 768px) {
+  .table-container, .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    max-width: 100%;
+  }
+}
+
+input, textarea, select {
+  -webkit-user-select: auto;
+  user-select: auto;
+  cursor: text;
+}
+
+/* Globally hide native browser spin buttons on number inputs to prevent digit clipping */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+
+button, a {
+  cursor: pointer;
+}
+
+/* Standardized input & card base styles */
+@layer components {
+  .input-elegant,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.no-base-style):not(.border-0):not(.border-none),
+  textarea:not(.no-base-style):not(.border-0):not(.border-none),
+  select:not(.no-base-style):not(.border-0):not(.border-none) {
+    width: 100%;
+    min-height: 2.25rem;
+    padding: 0.375rem 0.75rem;
+    background-color: white;
+    border: 1px solid #e7e5e4;
+    border-radius: 0.75rem;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: #1c1917;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  }
+
+  .input-elegant:focus,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.no-base-style):not(.border-0):not(.border-none):focus,
+  textarea:not(.no-base-style):not(.border-0):not(.border-none):focus,
+  select:not(.no-base-style):not(.border-0):not(.border-none):focus {
+    border-color: #78716c;
+    box-shadow: 0 0 0 3px rgba(28, 25, 23, 0.06);
+  }
+
+  .card-elegant {
+    background: white;
+    border: 1px solid #e7e5e4;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+    transition: all 0.2s ease-in-out;
+  }
+
+  .card-elegant:hover {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+    border-color: #d6d3d1;
+  }
+}
+
+/* Base Table Reset & Standardized ERP Data Grid Density */
+table {
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 639px) {
+  /* Scale down oversized rounded corners on mobile */
+  .rounded-\[2\.5rem\], .rounded-\[2rem\], .rounded-3xl {
+    border-radius: 1rem !important;
+  }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem;
+  text-align: center;
+  background-color: #fafaf9;
+  border: 1px dashed #d6d3d1;
+  border-radius: 1rem;
+  opacity: 0;
+  animation: fadeIn 0.4s ease forwards;
+}
+
+@media (min-width: 640px) {
+  .empty-state {
+    padding: 3rem 2rem;
+    border-radius: 1.25rem;
+  }
+}
+
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
+
+.custom-scrollbar::-webkit-scrollbar,
+::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: transparent; 
+}
+.custom-scrollbar::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background: #e7e5e4; /* stone-200 */
+  border-radius: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background: #d6d3d1; /* stone-300 */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Print optimization */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0mm;
+  }
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background-color: white !important;
+  }
+  .print-header-group {
+    display: table-header-group;
+  }
+  .print-footer-group {
+    display: table-footer-group;
+  }
+  .break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .print-area {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Clock Wipe Animation Utilities */
+@keyframes clockWipeRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-clock-wipe-spin {
+  animation: clockWipeRotate 4s linear infinite;
+}
+
+.clock-wipe-ring {
+  transition: stroke-dashoffset 0.5s ease-in-out;
+}
+
+/* ==========================================================================
+   ENTERPRISE DARK MODE ENGINE V3 — STEALTH GUNMETAL & HARMONIZED ACCENTS
+   (Linear / Apple Pro Studio Grade with Deep Mid-Gray Mediator Layer)
+   Scoped strictly to .erp-dark and .hris-dark; Public routes & A4 Print
+   sheets (.a4-paper-sandbox, .studio-sheet, .print-area) remain Light Mode.
+   ========================================================================== */
+
+/* 1. ERP DARK MODE: Calibrated Stealth Gunmetal, Crimson Red & Semantic Tokens */
+html.erp-dark {
+  color-scheme: dark;
+
+  /* 5-Tier Calibrated Stealth Gunmetal -> Mid-Gray -> Soft Platinum Scale */
+  --color-stone-50: #0d0f12;   /* Level 0: Base App Canvas (Deep Obsidian-Graphite) */
+  --color-stone-100: #181c22;  /* Level 2: Mid-Gray Mediator (Sub-panels, Pill Tracks, Headers) */
+  --color-stone-200: #242934;  /* Structural Gunmetal Border & Divider */
+  --color-stone-300: #454d5e;  /* Specular Interactive Rim & Muted Icons */
+  --color-stone-400: #7c8596;  /* Muted Steel-Gray Metadata, Icons & Column Labels */
+  --color-stone-500: #949eb0;  /* Secondary Neutral Gray Text */
+  --color-stone-600: #aeb6c5;  /* Body Secondary Text */
+  --color-stone-700: #c6cdd9;  /* Body Primary Text */
+  --color-stone-800: #dce1eb;  /* Subheadings & Strong Labels */
+  --color-stone-900: #eaedf2;  /* Primary Headings & Metrics (Soft Platinum) */
+  --color-stone-950: #f5f7fa;  /* Peak Emphasis */
+
+  /* Slate, Gray, Zinc, Neutral parity for components using non-stone neutral scales */
+  --color-slate-50: #0d0f12;
+  --color-slate-100: #181c22;
+  --color-slate-200: #242934;
+  --color-slate-300: #454d5e;
+  --color-slate-400: #7c8596;
+  --color-slate-500: #949eb0;
+  --color-slate-600: #aeb6c5;
+  --color-slate-700: #c6cdd9;
+  --color-slate-800: #dce1eb;
+  --color-slate-900: #eaedf2;
+  --color-slate-950: #f5f7fa;
+
+  --color-gray-50: #0d0f12;
+  --color-gray-100: #181c22;
+  --color-gray-200: #242934;
+  --color-gray-300: #454d5e;
+  --color-gray-400: #7c8596;
+  --color-gray-500: #949eb0;
+  --color-gray-600: #aeb6c5;
+  --color-gray-700: #c6cdd9;
+  --color-gray-800: #dce1eb;
+  --color-gray-900: #eaedf2;
+  --color-gray-950: #f5f7fa;
+
+  --color-zinc-50: #0d0f12;
+  --color-zinc-100: #181c22;
+  --color-zinc-200: #242934;
+  --color-zinc-300: #454d5e;
+  --color-zinc-400: #7c8596;
+  --color-zinc-500: #949eb0;
+  --color-zinc-600: #aeb6c5;
+  --color-zinc-700: #c6cdd9;
+  --color-zinc-800: #dce1eb;
+  --color-zinc-900: #eaedf2;
+  --color-zinc-950: #f5f7fa;
+
+  --color-neutral-50: #0d0f12;
+  --color-neutral-100: #181c22;
+  --color-neutral-200: #242934;
+  --color-neutral-300: #454d5e;
+  --color-neutral-400: #7c8596;
+  --color-neutral-500: #949eb0;
+  --color-neutral-600: #aeb6c5;
+  --color-neutral-700: #c6cdd9;
+  --color-neutral-800: #dce1eb;
+  --color-neutral-900: #eaedf2;
+  --color-neutral-950: #f5f7fa;
+
+  /* Monochrome Gunmetal parity for indigo / purple / violet tokens in ERP */
+  --color-indigo-50: #13161b;
+  --color-indigo-100: #1b1f27;
+  --color-indigo-200: #252a34;
+  --color-indigo-300: #454d5e;
+  --color-indigo-400: #7c8596;
+  --color-indigo-500: #949eb0;
+  --color-indigo-600: #b0b8c8;
+  --color-indigo-700: #cbd2df;
+  --color-indigo-800: #dde2ec;
+  --color-indigo-900: #eaedf2;
+  --color-indigo-950: #f5f7fa;
+
+  --color-purple-50: #13161b;
+  --color-purple-100: #1b1f27;
+  --color-purple-200: #252a34;
+  --color-purple-300: #454d5e;
+  --color-purple-400: #7c8596;
+  --color-purple-500: #949eb0;
+  --color-purple-600: #b0b8c8;
+  --color-purple-700: #cbd2df;
+  --color-purple-800: #dde2ec;
+  --color-purple-900: #eaedf2;
+  --color-purple-950: #f5f7fa;
+
+  --color-violet-50: #13161b;
+  --color-violet-100: #1b1f27;
+  --color-violet-200: #252a34;
+  --color-violet-300: #454d5e;
+  --color-violet-400: #7c8596;
+  --color-violet-500: #949eb0;
+  --color-violet-600: #b0b8c8;
+  --color-violet-700: #cbd2df;
+  --color-violet-800: #dde2ec;
+  --color-violet-900: #eaedf2;
+  --color-violet-950: #f5f7fa;
+
+  /* Desaturated Dark Crimson / Garnet Scale for Red & Rose (Never Neon) */
+  --color-red-50: #1d1518;
+  --color-red-100: #26191d;
+  --color-red-200: #382228;
+  --color-red-300: #5c353f;
+  --color-red-400: #c2707c;
+  --color-red-500: #b54553;
+  --color-red-600: #c96572;
+  --color-red-700: #d6818c;
+  --color-red-800: #e29ca5;
+  --color-red-900: #ebb8bf;
+  --color-red-950: #f5d5d9;
+
+  --color-rose-50: #1d1518;
+  --color-rose-100: #26191d;
+  --color-rose-200: #382228;
+  --color-rose-300: #5c353f;
+  --color-rose-400: #c2707c;
+  --color-rose-500: #b54553;
+  --color-rose-600: #c96572;
+  --color-rose-700: #d6818c;
+  --color-rose-800: #e29ca5;
+  --color-rose-900: #ebb8bf;
+  --color-rose-950: #f5d5d9;
+
+  /* Calibrated Warm Amber / Gold Scale */
+  --color-amber-50: #1c1914;
+  --color-amber-100: #262118;
+  --color-amber-200: #383020;
+  --color-amber-300: #5e4f33;
+  --color-amber-400: #cfa54e;
+  --color-amber-500: #c79a42;
+  --color-amber-600: #d4ad5f;
+  --color-amber-700: #dfc07e;
+  --color-amber-800: #e8cf99;
+  --color-amber-900: #f0deb5;
+  --color-amber-950: #f7ecd2;
+
+  /* Calibrated Muted Sage / Emerald Scale */
+  --color-emerald-50: #131c19;
+  --color-emerald-100: #182621;
+  --color-emerald-200: #213830;
+  --color-emerald-300: #355e4f;
+  --color-emerald-400: #55b590;
+  --color-emerald-500: #4ca884;
+  --color-emerald-600: #64bd9a;
+  --color-emerald-700: #7ecbaa;
+  --color-emerald-800: #99d9be;
+  --color-emerald-900: #b8e7d3;
+  --color-emerald-950: #d6f3e6;
+
+  /* Calibrated Steel Blue / Sky Scale */
+  --color-blue-50: #131820;
+  --color-blue-100: #19212c;
+  --color-blue-200: #233042;
+  --color-blue-300: #384f6b;
+  --color-blue-400: #689cd0;
+  --color-blue-500: #5c90c4;
+  --color-blue-600: #75a5d6;
+  --color-blue-700: #8fb8e0;
+  --color-blue-800: #accceb;
+  --color-blue-900: #c8dff5;
+  --color-blue-950: #e1effb;
+
+  --color-sky-50: #131920;
+  --color-sky-100: #18222c;
+  --color-sky-200: #223242;
+  --color-sky-300: #36526b;
+  --color-sky-400: #62a4c9;
+  --color-sky-500: #5698bd;
+  --color-sky-600: #70add0;
+  --color-sky-700: #8bc0de;
+  --color-sky-800: #a8d2e9;
+  --color-sky-900: #c6e4f4;
+  --color-sky-950: #e0f1fa;
+}
+
+html.erp-dark body {
+  background-color: #0d0f12;
+  color: #eaedf2;
+}
+
+/* 2. HRIS & HCM DARK MODE: Dark Frosted Glass & Gunmetal Slate */
+html.hris-dark {
+  color-scheme: dark;
+}
+
+html.hris-dark body,
+html.hris-dark .hris-theme {
+  background-color: #0c0e13 !important;
+  color: #eaedf2 !important;
+
+  --color-stone-50: #11141b;
+  --color-stone-100: #191d27;
+  --color-stone-200: #262c3b;
+  --color-stone-300: #464f66;
+  --color-stone-400: #7e879e;
+  --color-stone-500: #96a0b8;
+  --color-stone-600: #aeb7cc;
+  --color-stone-700: #c6cede;
+  --color-stone-800: #dce2ef;
+  --color-stone-900: #eaedf5;
+  --color-stone-950: #f6f8fc;
+
+  --color-slate-50: #11141b;
+  --color-slate-100: #191d27;
+  --color-slate-200: #262c3b;
+  --color-slate-300: #464f66;
+  --color-slate-400: #7e879e;
+  --color-slate-500: #96a0b8;
+  --color-slate-600: #aeb7cc;
+  --color-slate-700: #c6cede;
+  --color-slate-800: #dce2ef;
+  --color-slate-900: #eaedf5;
+  --color-slate-950: #f6f8fc;
+
+  --color-red-50: #1d1518;
+  --color-red-100: #26191d;
+  --color-red-200: #382228;
+  --color-red-300: #5c353f;
+  --color-red-400: #c2707c;
+  --color-red-500: #b54553;
+  --color-red-600: #c96572;
+  --color-red-700: #d6818c;
+  --color-red-800: #e29ca5;
+  --color-red-900: #ebb8bf;
+  --color-red-950: #f5d5d9;
+
+  --color-rose-50: #1d1518;
+  --color-rose-100: #26191d;
+  --color-rose-200: #382228;
+  --color-rose-300: #5c353f;
+  --color-rose-400: #c2707c;
+  --color-rose-500: #b54553;
+  --color-rose-600: #c96572;
+  --color-rose-700: #d6818c;
+  --color-rose-800: #e29ca5;
+  --color-rose-900: #ebb8bf;
+  --color-rose-950: #f5d5d9;
+
+  --color-amber-50: #1c1914;
+  --color-amber-100: #262118;
+  --color-amber-200: #383020;
+  --color-amber-300: #5e4f33;
+  --color-amber-400: #cfa54e;
+  --color-amber-500: #c79a42;
+  --color-amber-600: #d4ad5f;
+  --color-amber-700: #dfc07e;
+  --color-amber-800: #e8cf99;
+  --color-amber-900: #f0deb5;
+  --color-amber-950: #f7ecd2;
+
+  --color-emerald-50: #131c19;
+  --color-emerald-100: #182621;
+  --color-emerald-200: #213830;
+  --color-emerald-300: #355e4f;
+  --color-emerald-400: #55b590;
+  --color-emerald-500: #4ca884;
+  --color-emerald-600: #64bd9a;
+  --color-emerald-700: #7ecbaa;
+  --color-emerald-800: #99d9be;
+  --color-emerald-900: #b8e7d3;
+  --color-emerald-950: #d6f3e6;
+}
+
+html.hris-dark .hris-blob-1,
+html.hris-dark .hris-blob-2 {
+  opacity: 0.25;
+}
+
+/* 3. A4/A5 LEGAL DOCUMENT & PRINT PREVIEW SANDBOX (Always Crisp White Paper) */
+.a4-paper-sandbox,
+.studio-sheet,
+.print-area,
+.print-area-a5,
+.print-page {
+  color-scheme: light !important;
+  --color-stone-50: #fafaf9;
+  --color-stone-100: #f5f5f4;
+  --color-stone-200: #e7e5e4;
+  --color-stone-300: #d6d3d1;
+  --color-stone-400: #a8a29e;
+  --color-stone-500: #78716c;
+  --color-stone-600: #57534e;
+  --color-stone-700: #44403c;
+  --color-stone-800: #292524;
+  --color-stone-900: #1c1917;
+  --color-stone-950: #0c0a09;
+
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+
+  --color-indigo-50: #fafaf9;
+  --color-indigo-100: #f5f5f4;
+  --color-indigo-200: #e7e5e4;
+  --color-indigo-300: #d6d3d1;
+  --color-indigo-400: #a8a29e;
+  --color-indigo-500: #78716c;
+  --color-indigo-600: #292524;
+  --color-indigo-700: #1c1917;
+  --color-indigo-800: #1c1917;
+  --color-indigo-900: #1c1917;
+  --color-indigo-950: #0c0a09;
+
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+
+  --color-rose-50: #fff1f2;
+  --color-rose-100: #ffe4e6;
+  --color-rose-200: #fecdd3;
+  --color-rose-500: #f43f5e;
+  --color-rose-600: #e11d48;
+  --color-rose-700: #be123c;
+  --color-rose-800: #9f1239;
+
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-100: #d1fae5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #047857;
+  --color-emerald-800: #065f46;
+}
+
+html.dark .studio-sheet,
+html.dark .print-area,
+html.dark .print-area-a5,
+html.dark .print-page,
+html.dark .a4-paper-sandbox > div {
+  background-color: #ffffff !important;
+  color: #1c1917 !important;
+}
+
+html.dark .pdf-preview-desk {
+  background-color: #0e1014 !important;
+  border-color: #22262f !important;
+}
+
+/* 4. MULTI-TIER SURFACE ELEVATION & MID-GRAY MEDIATOR ARCHITECTURE */
+
+/* Level 1: Primary Cards, Tables (tbody, tr, td), Containers & Modals (#13161B Deep Gunmetal)
+   Matches ALL non-interactive elements with bg-white or bg-white/* so NO white background ever collides with text */
+html.erp-dark :is(
+  div.bg-white,
+  section.bg-white,
+  article.bg-white,
+  aside.bg-white,
+  main.bg-white,
+  header.bg-white,
+  footer.bg-white,
+  nav.bg-white,
+  table.bg-white,
+  tbody.bg-white,
+  tfoot.bg-white,
+  tr.bg-white,
+  td.bg-white,
+  th.bg-white,
+  ul.bg-white,
+  li.bg-white,
+  dl.bg-white,
+  dt.bg-white,
+  dd.bg-white,
+  form.bg-white,
+  p.bg-white,
+  .bg-white\/95,
+  .bg-white\/90,
+  .bg-white\/88,
+  .bg-white\/85,
+  .bg-white\/82,
+  .bg-white\/80,
+  .bg-white\/75,
+  .bg-white\/70,
+  .bg-white\/65,
+  .bg-white\/60,
+  .bg-white\/55,
+  .bg-white\/50,
+  .bg-white\/40,
+  .bg-white\/30,
+  .bg-white\/20,
+  .bg-white\/10,
+  .card-elegant
+):not(button):not(a):not(.team-status-strip):not(.theme-toggle-thumb):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #13161b !important;
+  border-color: #22262f;
+}
+
+html.erp-dark .team-status-strip {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+html.erp-dark :is(
+  div.bg-white,
+  section.bg-white,
+  article.bg-white,
+  .card-elegant
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+/* Sticky Top Navigation Bar & Footer */
+html.erp-dark header.bg-white\/95,
+html.erp-dark header.bg-white {
+  background-color: rgba(16, 19, 24, 0.94) !important;
+  border-bottom-color: #22262f !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35) !important;
+}
+
+html.erp-dark footer.bg-white {
+  background-color: #101318 !important;
+  border-top-color: #1e222b !important;
+}
+
+/* Navigation Horizontal Scroll Edge Gradient Masks & White Gradients */
+html.erp-dark .from-white:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  --tw-gradient-from: #13161b !important;
+  --tw-gradient-via: rgba(19, 22, 27, 0.9) !important;
+}
+
+html.erp-dark .via-white:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  --tw-gradient-via: #13161b !important;
+}
+
+html.erp-dark .to-white:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  --tw-gradient-to: #13161b !important;
+}
+
+/* Level 2: MID-GRAY MEDIATOR ("Warna Penengah Abu-Abu" #181C22)
+   Applies to Table Headers (thead), Table Footers (tfoot), Card Sub-Headers, Filter Bars, KPI Sub-Boxes & Empty Wells */
+html.erp-dark :is(
+  thead,
+  thead tr,
+  thead th,
+  tfoot,
+  tfoot tr,
+  tfoot td,
+  tfoot th,
+  .gantt-timeline-header,
+  .bg-stone-100,
+  .bg-stone-100\/90,
+  .bg-stone-100\/80,
+  .bg-stone-100\/70,
+  .bg-stone-100\/60,
+  .bg-stone-100\/50,
+  .bg-stone-100\/40,
+  .bg-stone-100\/30,
+  .bg-slate-100,
+  .bg-slate-100\/80,
+  .bg-slate-100\/60
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #181c22 !important;
+  border-color: #252a34 !important;
+}
+
+/* Sub-panels & toolbars using bg-stone-50/* or bg-slate-50/* inside cards or standalone sections */
+html.erp-dark :is(
+  div.bg-stone-50:not(.h-screen):not(.min-h-screen),
+  section.bg-stone-50,
+  header.bg-stone-50,
+  thead.bg-stone-50,
+  tfoot.bg-stone-50,
+  tr.bg-stone-50,
+  td.bg-stone-50,
+  th.bg-stone-50,
+  .bg-stone-50\/95,
+  .bg-stone-50\/90,
+  .bg-stone-50\/80,
+  .bg-stone-50\/70,
+  .bg-stone-50\/60,
+  .bg-stone-50\/50,
+  .bg-stone-50\/40,
+  .bg-stone-50\/30,
+  .bg-stone-50\/20,
+  div.bg-slate-50:not(.h-screen):not(.min-h-screen),
+  .bg-slate-50\/80,
+  .bg-slate-50\/60,
+  .bg-slate-50\/50
+):not(.gantt-timeline-canvas):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #16191f !important;
+  border-color: #232832 !important;
+}
+
+/* Gantt Timeline Grid Canvas & Hardcoded Off-White Overrides */
+html.dark .gantt-timeline-canvas,
+html.dark .bg-\[\#FDFDFD\]:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)),
+html.dark .bg-\[\#FCFCFB\]:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)),
+html.dark .bg-\[\#FAFAFA\]:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)),
+html.dark .bg-\[\#F8F9FA\]:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)),
+html.dark .bg-\[\#F9F9F8\]:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)),
+html.dark .bg-\[\#F9F9F8\]\/30:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)),
+html.dark .bg-\[\#F5F5F4\]:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)),
+html.dark .bg-\[\#F5F5F8\]:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)),
+html.dark .bg-\[\#faf9f6\]:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: #0d0f12 !important;
+  color: #eaedf2 !important;
+}
+
+/* Level 3: Interactive Mid-Gray Controls (Secondary Buttons, Badges, Labels, Active Segmented Tabs) */
+html.erp-dark :is(
+  button.bg-white,
+  a.bg-white,
+  span.bg-white,
+  label.bg-white,
+  button.bg-white\/90,
+  button.bg-white\/80,
+  button.bg-white\/70,
+  a.bg-white\/90,
+  a.bg-white\/80,
+  span.bg-white\/90,
+  span.bg-white\/80,
+  span.bg-white\/70,
+  span.bg-white\/60
+):not(.theme-toggle-thumb):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #1c2027 !important;
+  border-color: #2c313d !important;
+  color: #d5dae3 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+html.erp-dark :is(
+  button.bg-white:hover,
+  a.bg-white:hover,
+  label.bg-white:hover,
+  .hover\:bg-white:hover,
+  .hover\:bg-white\/90:hover,
+  .hover\:bg-white\/80:hover,
+  .hover\:bg-white\/70:hover,
+  .hover\:bg-white\/60:hover,
+  .hover\:bg-white\/50:hover
+):not(:disabled):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #242933 !important;
+  border-color: #363d4c !important;
+  color: #f0f2f6 !important;
+}
+
+/* Active Segmented Tab & Active Control Inside Mid-Gray Track */
+html.erp-dark :is(.bg-stone-50, .bg-stone-100, .bg-stone-100\/80, .bg-stone-100\/70, .bg-stone-100\/60, .bg-stone-50\/80, .bg-stone-50\/70, .bg-stone-50\/50, .bg-stone-50\/40, .bg-stone-50\/30)
+  :is(button.bg-white, a.bg-white, div.bg-white, span.bg-white):not(.theme-toggle-thumb):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #232832 !important;
+  border-color: #333947 !important;
+  color: #eaedf2 !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Neutralize hardcoded ring-white & border-white outside A4 paper */
+html.dark .ring-white:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  --tw-ring-color: #252a34 !important;
+}
+html.dark .border-white:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  border-color: #252a34 !important;
+}
+
+/* Table Surfaces, Row Hovers & Dividers in Dark Mode */
+html.dark :is(table, tbody):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: #13161b;
+  color: #d5dae3;
+}
+
+html.dark :is(thead, thead tr, thead th, tfoot, tfoot tr, tfoot td, tfoot th):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: #181c22 !important;
+  border-color: #252a34 !important;
+  color: #9ba3b2;
+}
+
+html.dark :is(tbody tr, tbody td):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  border-color: #22262f;
+  color: #d5dae3;
+}
+
+html.erp-dark tbody tr:hover:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: rgba(30, 35, 44, 0.65) !important;
+}
+
+/* 5. FORM INPUTS, SELECTS, TEXTAREAS & FOCUS:BG-WHITE OVERRIDES (INCLUDING .no-base-style) */
+html.erp-dark :is(
+  .input-elegant,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.bg-transparent),
+  textarea:not(.bg-transparent),
+  select:not(.bg-transparent)
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #101216 !important;
+  border-color: #262b36 !important;
+  color: #eaedf2 !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+html.dark :is(
+  input.bg-transparent,
+  textarea.bg-transparent,
+  select.bg-transparent
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: transparent !important;
+  color: #eaedf2 !important;
+}
+
+html.dark :is(
+  input::placeholder,
+  textarea::placeholder
+):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  color: #7c8596 !important;
+  opacity: 1 !important;
+}
+
+html.dark :is(
+  select option,
+  select optgroup
+):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: #161920 !important;
+  color: #eaedf2 !important;
+}
+
+html.erp-dark :is(
+  .input-elegant:focus,
+  .focus\:bg-white:focus,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.bg-transparent):focus,
+  textarea:not(.bg-transparent):focus,
+  select:not(.bg-transparent):focus
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #161920 !important;
+  border-color: #464f61 !important;
+  color: #f5f7fa !important;
+  box-shadow: 0 0 0 3px rgba(125, 133, 148, 0.14) !important;
+}
+
+html.hris-dark :is(
+  .input-elegant,
+  .focus\:bg-white:focus,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.bg-transparent),
+  textarea:not(.bg-transparent),
+  select:not(.bg-transparent)
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #12151e !important;
+  border-color: #272d3d !important;
+  color: #eaedf5 !important;
+}
+
+/* 6. PRIMARY DARK BUTTONS, ELEVATED CONTAINERS & DARK SURFACES
+   Never invert bg-stone-900 / bg-stone-800 / bg-stone-700 / bg-indigo-600 to white!
+   Instead, render them as Sleek Elevated Graphite-Gunmetal (#242934) with crisp light text (#EEF0F4)
+   so text-white, child badges (bg-white/20 text-white), and icons always remain 100% legible and dark-mode harmonious. */
+html.dark :is(
+  .bg-stone-950,
+  .bg-stone-900,
+  .bg-stone-900\/95,
+  .bg-stone-900\/90,
+  .bg-stone-900\/85,
+  .bg-stone-900\/80,
+  .bg-stone-900\/75,
+  .bg-stone-800,
+  .bg-stone-800\/95,
+  .bg-stone-800\/90,
+  .bg-stone-800\/80,
+  .bg-stone-800\/75,
+  .bg-stone-700,
+  .bg-stone-700\/90,
+  .bg-stone-700\/80,
+  .bg-stone-600,
+  .bg-slate-900,
+  .bg-slate-800,
+  .bg-slate-700,
+  .bg-indigo-600,
+  .bg-indigo-700,
+  .bg-indigo-800,
+  .bg-indigo-900,
+  .bg-indigo-950,
+  .bg-purple-600,
+  .bg-purple-700,
+  .bg-purple-800,
+  .bg-purple-900,
+  .bg-violet-600,
+  .bg-violet-700,
+  .bg-violet-800,
+  .bg-violet-900
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #242934 !important;
+  border-color: #363d4c !important;
+  color: #eef0f4 !important;
+}
+
+/* Prevent dark stone gradient stops (from/via/to-stone-700..950) from inverting to white in dark mode */
+html.dark :is(.from-stone-700, .from-stone-800, .from-stone-900, .from-stone-950):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *)) {
+  --tw-gradient-from: #242a38 !important;
+}
+html.dark :is(.via-stone-700, .via-stone-800, .via-stone-900, .via-stone-950):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *)) {
+  --tw-gradient-via: #1c212d !important;
+}
+html.dark :is(.to-stone-700, .to-stone-800, .to-stone-900, .to-stone-950):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *)) {
+  --tw-gradient-to: #141822 !important;
+}
+
+html.dark :is(
+  button.bg-stone-950,
+  button.bg-stone-900,
+  a.bg-stone-900,
+  button.bg-stone-800,
+  a.bg-stone-800,
+  button.bg-stone-700,
+  a.bg-stone-700,
+  button.bg-indigo-600,
+  a.bg-indigo-600
+):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: #262c38 !important;
+  border-color: #394152 !important;
+  color: #f2f4f8 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+html.dark :is(
+  button.bg-stone-950:hover,
+  button.bg-stone-900:hover,
+  a.bg-stone-900:hover,
+  button.bg-stone-800:hover,
+  a.bg-stone-800:hover,
+  button.bg-stone-700:hover,
+  a.bg-stone-700:hover,
+  button.bg-indigo-600:hover,
+  a.bg-indigo-600:hover,
+  .hover\:bg-stone-950:hover,
+  .hover\:bg-stone-900:hover,
+  .hover\:bg-stone-800:hover,
+  .hover\:bg-stone-700:hover,
+  .hover\:bg-indigo-600:hover,
+  .hover\:bg-indigo-700:hover,
+  .group:hover .group-hover\:bg-stone-900,
+  .group:hover .group-hover\:bg-stone-800
+):not(:disabled):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: #2f3645 !important;
+  border-color: #465066 !important;
+  color: #ffffff !important;
+}
+
+html.dark :is(
+  button.bg-stone-900,
+  a.bg-stone-900,
+  button.bg-stone-800,
+  a.bg-stone-800,
+  button.bg-stone-700,
+  .bg-stone-900,
+  .bg-stone-800,
+  .bg-stone-700
+):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) :is(.text-white, .text-stone-100, .text-stone-200, .text-stone-300, svg) {
+  color: #eef0f4 !important;
+}
+
+/* Modal Backdrop Overlay in Dark Mode */
+html.dark .bg-stone-950\/60,
+html.dark .bg-stone-950\/50,
+html.dark .bg-stone-950\/40,
+html.dark .bg-stone-900\/70,
+html.dark .bg-stone-900\/60,
+html.dark .bg-stone-900\/50,
+html.dark .bg-stone-900\/40,
+html.dark .bg-stone-900\/30,
+html.dark .bg-stone-900\/20,
+html.dark .bg-black\/60,
+html.dark .bg-black\/50,
+html.dark .bg-black\/40 {
+  background-color: rgba(6, 7, 10, 0.76) !important;
+}
+
+/* 7. PAGE HEADER ICONS & SECTION ICON CONTAINERS ("Warna Icon Pada Halaman") */
+html.dark .page-header-icon-box:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *)) {
+  background-color: #1b1f27 !important;
+  border-color: #2c323f !important;
+  color: #cfd5e2 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+html.dark .page-header-icon-box svg {
+  color: #cfd5e2 !important;
+}
+
+/* 8. HRIS DARK FROSTED GLASS SURFACES & COMPREHENSIVE WHITE LEAK ERADICATION */
+
+/* Neutralize all border-white variants inside HRIS Dark Mode */
+html.hris-dark :is(
+  .border-white,
+  .border-white\/95,
+  .border-white\/90,
+  .border-white\/88,
+  .border-white\/85,
+  .border-white\/80,
+  .border-white\/75,
+  .border-white\/70,
+  .border-white\/65,
+  .border-white\/60,
+  .border-white\/50,
+  .border-white\/40,
+  .border-white\/30,
+  .border-white\/20,
+  .border-white\/10,
+  .border-stone-100,
+  .border-stone-200,
+  .border-stone-300
+):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Active Segmented Tab & Active Control Inside Stone Track in HRIS */
+html.hris-dark :is(.bg-stone-200, .bg-stone-200\/60, .bg-stone-100, .bg-stone-50) :is(button.bg-white, a.bg-white, span.bg-white) {
+  background-color: rgba(38, 46, 62, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Neutralize stark white inset box-shadow highlights in HRIS Dark Mode */
+html.hris-dark [class*="inset_0_1px_1px_rgba(255,255,255,1)"] {
+  box-shadow: 0 24px 60px -10px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* HRIS App Canvas & Background Utility Neutralization */
+html.hris-dark .bg-\[\#F5F5F8\],
+html.hris-dark .bg-\[\#FDFDFD\],
+html.hris-dark .bg-\[\#FAFAFA\],
+html.hris-dark .bg-\[\#F8F9FA\] {
+  background-color: #0c0e13 !important;
+}
+
+/* HRIS Top Navigation Header */
+html.hris-dark header.bg-white\/55,
+html.hris-dark header.bg-white {
+  background-color: rgba(14, 18, 26, 0.94) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* Floating Glass Dock (nav) & 3-Column Pop-up Menu Launcher */
+html.hris-dark nav.bg-white\/82,
+html.hris-dark div.bg-white\/82,
+html.hris-dark .hris-glass-panel,
+html.hris-dark .hris-glass-card {
+  background-color: rgba(18, 22, 30, 0.94) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 24px 60px -10px rgba(0, 0, 0, 0.65),
+    0 4px 16px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Primary HRIS Cards, Sections, Modals & Empty State Wells */
+html.hris-dark :is(
+  div.bg-white,
+  section.bg-white,
+  article.bg-white,
+  aside.bg-white,
+  footer.bg-white,
+  nav.bg-white,
+  table.bg-white,
+  tbody.bg-white,
+  tr.bg-white,
+  td.bg-white,
+  th.bg-white,
+  label.bg-white,
+  form.bg-white,
+  ul.bg-white,
+  li.bg-white,
+  .bg-white\/95,
+  .bg-white\/90,
+  .bg-white\/88,
+  .bg-white\/85,
+  .bg-white\/82,
+  .bg-white\/80,
+  .bg-white\/75,
+  .bg-white\/70,
+  .card-elegant
+):not(button):not(a):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: rgba(18, 22, 30, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 18px 44px -14px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Secondary Controls, Dock Buttons, Pop-up Items & Badges */
+html.hris-dark :is(
+  button.bg-white,
+  a.bg-white,
+  span.bg-white,
+  button.bg-white\/90,
+  button.bg-white\/80,
+  button.bg-white\/70,
+  a.bg-white\/90,
+  a.bg-white\/80,
+  a.bg-white\/75,
+  a.bg-white\/60,
+  span.bg-white\/90,
+  span.bg-white\/80,
+  span.bg-white\/75,
+  div.bg-white\/60,
+  div.bg-white\/55,
+  div.bg-white\/50,
+  div.bg-white\/40,
+  .bg-white\/65,
+  .bg-white\/60,
+  .bg-white\/55,
+  .bg-white\/50,
+  .bg-white\/40,
+  .hris-glass-subtle
+):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: rgba(26, 31, 42, 0.88) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #d6dceb !important;
+}
+
+/* Interactive Hover States on HRIS Buttons & Links */
+html.hris-dark :is(
+  button.bg-white:hover,
+  a.bg-white:hover,
+  button.bg-white\/90:hover,
+  button.bg-white\/80:hover,
+  a.bg-white\/90:hover,
+  a.bg-white\/75:hover,
+  a.bg-white\/60:hover,
+  .hover\:bg-white:hover,
+  .hover\:bg-white\/90:hover,
+  .hover\:bg-white\/80:hover,
+  .hover\:bg-white\/70:hover,
+  .hover\:bg-white\/60:hover
+):not(:disabled):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: rgba(36, 43, 58, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  color: #ffffff !important;
+}
+
+/* Table Headers, Sub-Headers & Filter Tracks */
+html.hris-dark :is(
+  thead,
+  thead tr,
+  thead th,
+  .bg-stone-100,
+  .bg-stone-50,
+  .bg-stone-50\/80,
+  .bg-stone-50\/60,
+  .bg-stone-50\/50,
+  .bg-stone-50\/40,
+  .bg-stone-50\/30
+):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: rgba(23, 28, 38, 0.94) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Table Row Hovers & Dividers */
+html.hris-dark tbody tr:hover:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: rgba(30, 36, 50, 0.6) !important;
+}
+
+/* HRIS Form Inputs, Textareas, Selects & Focus States */
+html.hris-dark :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.bg-transparent),
+  select:not(.bg-transparent),
+  textarea:not(.bg-transparent)
+):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: rgba(14, 18, 25, 0.94) !important;
+  border-color: rgba(255, 255, 255, 0.09) !important;
+  color: #eaedf5 !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
+}
+
+html.hris-dark :is(
+  input:not(.bg-transparent):focus,
+  select:not(.bg-transparent):focus,
+  textarea:not(.bg-transparent):focus,
+  .focus\:bg-white:focus
+):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: rgba(20, 26, 37, 0.96) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06) !important;
+}
+
+/* HRIS Typography Colors */
+html.hris-dark :is(.text-\[\#121318\], .text-\[\#1E2028\]):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *)) {
+  color: #eaedf5 !important;
+}
+
+html.hris-dark :is(.text-\[\#32353E\], .text-\[\#484B57\]):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *)) {
+  color: #bdc5d6 !important;
+}
+
+html.hris-dark :is(.text-\[\#646876\], .text-\[\#8E929F\]):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *)) {
+  color: #80899e !important;
+}
+
+/* HRIS Orange Glass Accent Pill */
+html.hris-dark .bg-\[\#FFF2EE\]:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *)) {
+  background-color: color-mix(in srgb, #1c202b 86%, #d95338 14%) !important;
+  border-color: rgba(217, 83, 56, 0.28) !important;
+}
+
+/* 9. HARMONIZED SEMANTIC ACCENTS BLENDED WITH GUNMETAL MID-GRAY */
+
+/* Rose / Red / Danger — Toned Down to Calm Dark Crimson & Dusty Rose (Never Neon) */
+html.dark :is(
+  .bg-rose-50,
+  .bg-rose-50\/90,
+  .bg-rose-50\/80,
+  .bg-rose-50\/70,
+  .bg-rose-50\/60,
+  .bg-rose-50\/50,
+  .bg-rose-50\/40,
+  .bg-rose-50\/30,
+  .bg-rose-100,
+  .bg-rose-100\/80,
+  .bg-rose-100\/60,
+  .bg-red-50,
+  .bg-red-50\/90,
+  .bg-red-50\/80,
+  .bg-red-50\/70,
+  .bg-red-50\/60,
+  .bg-red-50\/50,
+  .bg-red-50\/40,
+  .bg-red-50\/30,
+  .bg-red-100,
+  .bg-red-100\/80,
+  .hover\:bg-rose-50:hover,
+  .hover\:bg-red-50:hover,
+  .hover\:bg-rose-100:hover,
+  .hover\:bg-red-100:hover
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #1f1619 !important;
+}
+
+html.dark :is(
+  .border-rose-100,
+  .border-rose-200,
+  .border-rose-200\/80,
+  .border-rose-200\/70,
+  .border-rose-200\/60,
+  .border-rose-300,
+  .border-red-100,
+  .border-red-200,
+  .border-red-200\/80,
+  .border-red-200\/70,
+  .border-red-300
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  border-color: #382329 !important;
+}
+
+html.dark :is(
+  .text-rose-500,
+  .text-rose-600,
+  .text-rose-700,
+  .text-rose-800,
+  .text-rose-900,
+  .text-red-500,
+  .text-red-600,
+  .text-red-700,
+  .text-red-800,
+  .text-red-900,
+  .hover\:text-rose-600:hover,
+  .hover\:text-rose-700:hover,
+  .hover\:text-red-600:hover,
+  .hover\:text-red-700:hover
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  color: #cc7a85 !important;
+}
+
+/* Solid Red / Rose Buttons & Badges (.bg-red-500/600/700, .bg-rose-500/600/700) — Deep Garnet instead of glaring neon red */
+html.dark :is(
+  .bg-red-500,
+  .bg-red-600,
+  .bg-red-700,
+  .bg-rose-500,
+  .bg-rose-600,
+  .bg-rose-700
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #8f2c38 !important;
+  border-color: #a83846 !important;
+  color: #f5f7fa !important;
+}
+
+html.dark :is(
+  .bg-red-500:hover,
+  .bg-red-600:hover,
+  .bg-red-700:hover,
+  .bg-rose-500:hover,
+  .bg-rose-600:hover,
+  .bg-rose-700:hover,
+  .hover\:bg-red-600:hover,
+  .hover\:bg-red-700:hover,
+  .hover\:bg-rose-600:hover,
+  .hover\:bg-rose-700:hover
+):not(:disabled):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #a13340 !important;
+  border-color: #b84251 !important;
+  color: #ffffff !important;
+}
+
+/* Emerald / Teal / Cyan (Toned Down Muted Sage-Emerald + Gunmetal Mid-Gray) */
+html.dark :is(
+  .bg-emerald-50,
+  .bg-emerald-50\/90,
+  .bg-emerald-50\/80,
+  .bg-emerald-50\/70,
+  .bg-emerald-50\/60,
+  .bg-emerald-50\/55,
+  .bg-emerald-50\/50,
+  .bg-emerald-50\/45,
+  .bg-emerald-50\/40,
+  .bg-emerald-50\/30,
+  .bg-emerald-100,
+  .bg-emerald-100\/80,
+  .bg-teal-50,
+  .bg-teal-50\/80,
+  .bg-teal-100,
+  .bg-cyan-50,
+  .bg-cyan-50\/80,
+  .bg-cyan-100,
+  .bg-green-50,
+  .bg-green-100,
+  .hover\:bg-emerald-50:hover,
+  .hover\:bg-emerald-100:hover
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #141f1c !important;
+}
+
+html.dark :is(
+  .border-emerald-100,
+  .border-emerald-200,
+  .border-emerald-200\/80,
+  .border-emerald-200\/70,
+  .border-emerald-200\/60,
+  .border-emerald-300,
+  .border-teal-100,
+  .border-teal-200,
+  .border-teal-200\/80,
+  .border-teal-200\/70,
+  .border-cyan-100,
+  .border-cyan-200,
+  .border-cyan-200\/80,
+  .border-green-200
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  border-color: #262b36 !important;
+}
+
+html.dark :is(
+  .text-emerald-500,
+  .text-emerald-600,
+  .text-emerald-700,
+  .text-emerald-800,
+  .text-emerald-900,
+  .text-green-600,
+  .text-green-700,
+  .text-green-800
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  color: #5cb893 !important;
+}
+
+html.dark :is(
+  .bg-emerald-500,
+  .bg-emerald-600,
+  .bg-emerald-700,
+  .bg-green-600
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #266b52 !important;
+  border-color: #338567 !important;
+  color: #f5f7fa !important;
+}
+
+/* Amber / Warning / Orange (Toned Down Warm Gold + Gunmetal Mid-Gray) */
+html.dark :is(
+  .bg-amber-50,
+  .bg-amber-50\/90,
+  .bg-amber-50\/80,
+  .bg-amber-50\/70,
+  .bg-amber-50\/60,
+  .bg-amber-50\/50,
+  .bg-amber-50\/40,
+  .bg-amber-50\/30,
+  .bg-amber-100,
+  .bg-amber-100\/80,
+  .bg-yellow-50,
+  .bg-orange-50,
+  .bg-orange-50\/60,
+  .bg-orange-100,
+  .hover\:bg-amber-50:hover,
+  .hover\:bg-amber-100:hover
+):not(.page-header-icon-box):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #1e1a14 !important;
+}
+
+html.dark :is(
+  .border-amber-100,
+  .border-amber-200,
+  .border-amber-200\/80,
+  .border-amber-200\/70,
+  .border-amber-200\/60,
+  .border-amber-300,
+  .border-yellow-200,
+  .border-orange-200
+):not(.page-header-icon-box):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  border-color: #382f20 !important;
+}
+
+html.dark :is(
+  .text-amber-500,
+  .text-amber-600,
+  .text-amber-700,
+  .text-amber-800,
+  .text-amber-900,
+  .text-orange-500,
+  .text-orange-600,
+  .text-orange-700,
+  .text-orange-800
+):not(.page-header-icon-box):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  color: #cf9f44 !important;
+}
+
+html.dark :is(
+  .bg-amber-500,
+  .bg-amber-600,
+  .bg-amber-700,
+  .bg-orange-500,
+  .bg-orange-600
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #8c631b !important;
+  border-color: #a67724 !important;
+  color: #f5f7fa !important;
+}
+
+/* Sky / Blue / Teal / Info (Toned Down Steel Blue + Gunmetal Mid-Gray) */
+html.dark :is(
+  .bg-sky-50,
+  .bg-sky-50\/80,
+  .bg-sky-50\/60,
+  .bg-sky-50\/50,
+  .bg-sky-100,
+  .bg-blue-50,
+  .bg-blue-50\/80,
+  .bg-blue-50\/60,
+  .bg-blue-50\/50,
+  .bg-blue-100,
+  .bg-teal-50,
+  .bg-teal-100,
+  .hover\:bg-sky-50:hover,
+  .hover\:bg-blue-50:hover
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #141a22 !important;
+}
+
+html.dark :is(
+  .border-sky-100,
+  .border-sky-200,
+  .border-blue-100,
+  .border-blue-200,
+  .border-blue-200\/80,
+  .border-blue-300,
+  .border-teal-200
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  border-color: #243242 !important;
+}
+
+html.dark :is(
+  .text-sky-500,
+  .text-sky-600,
+  .text-sky-700,
+  .text-sky-800,
+  .text-blue-500,
+  .text-blue-600,
+  .text-blue-700,
+  .text-blue-800,
+  .text-teal-600,
+  .text-teal-700
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  color: #6ea3d4 !important;
+}
+
+/* Empty State & Scrollbar in Dark Mode */
+html.dark .empty-state:not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *)) {
+  background-color: #15181f;
+  border-color: #242934;
+}
+
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb,
+html.dark ::-webkit-scrollbar-thumb {
+  background: #262b36;
+}
+
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #363d4d;
+}
+
+/* ==========================================================================
+   ENLARGED & MINIMALIST DARK MODE TOGGLE SWITCH
+   ========================================================================== */
+.theme-toggle-switch {
+  width: 56px !important;
+  height: 32px !important;
+  padding: 3px !important;
+  border-radius: 9999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  cursor: pointer !important;
+  position: relative !important;
+  transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease !important;
+}
+
+html:not(.dark) .theme-toggle-switch {
+  background-color: #e5e7eb !important;
+  border: 1px solid #d1d5db !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+}
+
+html:not(.dark) .theme-toggle-switch:hover {
+  background-color: #dadfe6 !important;
+  border-color: #c4c9d2 !important;
+}
+
+html.dark .theme-toggle-switch {
+  background-color: #1a1e26 !important;
+  border: 1px solid #2e3544 !important;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45) !important;
+}
+
+html.dark .theme-toggle-switch:hover {
+  background-color: #212630 !important;
+  border-color: #3b4457 !important;
+}
+
+.theme-toggle-thumb {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 9999px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease !important;
+}
+
+html:not(.dark) .theme-toggle-thumb {
+  transform: translateX(0px) !important;
+  background-color: #ffffff !important;
+  color: #374151 !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+}
+
+html.dark .theme-toggle-thumb {
+  transform: translateX(24px) !important;
+  background-color: #0b0d11 !important;
+  color: #e2e6ee !important;
+  border: 1px solid #363d4e !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ==========================================================================
+   VIEW TRANSITIONS API — RADIAL ORIGIN RIPPLE CONFIGURATION
+   ========================================================================== */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none !important;
+  mix-blend-mode: normal !important;
+}
+
+::view-transition-old(root) {
+  z-index: 1 !important;
+}
+
+::view-transition-new(root) {
+  z-index: 99999 !important;
+}
+
+/* ==========================================================================
+   SPRING ROTATIONAL MICRO-INTERACTION FOR SUN & MOON ICONS
+   ========================================================================== */
+@keyframes themeSpringIconIn {
+  0% {
+    transform: rotate(-180deg) scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: rotate(20deg) scale(1.15);
+    opacity: 1;
+  }
+  85% {
+    transform: rotate(-8deg) scale(0.96);
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+.theme-toggle-icon-anim {
+  animation: themeSpringIconIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ==========================================================================
+   HRIS AMBIENT FROSTED GLASS AURORA BLOBS ANIMATION
+   ========================================================================== */
+@keyframes hrisBlobFloat1 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(24px, 18px, 0) scale(1.06);
+  }
+}
+
+@keyframes hrisBlobFloat2 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-20px, -16px, 0) scale(1.05);
+  }
+}
+
+.hris-blob-1 {
+  animation: hrisBlobFloat1 16s ease-in-out infinite;
+  will-change: transform;
+}
+
+.hris-blob-2 {
+  animation: hrisBlobFloat2 20s ease-in-out infinite;
+  will-change: transform;
+}
+/* ==========================================================================
+   MESSAGES / FORUM DARK MODE AVATAR, BUBBLES & TEXT REFINEMENT
+   ========================================================================== */
+html.dark .forum-avatar-badge {
+  background-color: #1e222b !important;
+  border-color: #2c323f !important;
+  color: #d4d9e3 !important;
+}
+
+html.dark .forum-bubble-mine {
+  background-color: #1e2433 !important;
+  border-color: #2e384c !important;
+  color: #eaedf5 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+html.dark .forum-bubble-peer {
+  background-color: #151922 !important;
+  border-color: #252c3a !important;
+  color: #e2e6ef !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Ensure message bubble prose / text / markdown is crisp light platinum in Dark Mode */
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) {
+  color: #eaedf2 !important;
+}
+
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) :is(p, span, div, strong, em, li) {
+  color: #eaedf2 !important;
+}
+
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) .prose {
+  color: #eaedf2 !important;
+  --tw-prose-body: #eaedf2 !important;
+  --tw-prose-headings: #f5f7fa !important;
+  --tw-prose-bold: #ffffff !important;
+}
+
+/* Quoted Reply Previews inside Message Bubbles */
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) button:has(.truncate) {
+  background-color: #10131a !important;
+  border-color: #384257 !important;
+}
+
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) button:has(.truncate) :is(.text-stone-900, div:first-child) {
+  color: #eaedf2 !important;
+}
+
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) button:has(.truncate) :is(.text-stone-500, div:last-child) {
+  color: #9ba3b2 !important;
+}
+
+/* Interactive Shared ERP Resource Cards inside Message Bubbles */
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) :is(div.bg-white, div.bg-stone-50\/90):has(a, button) {
+  background-color: #10131a !important;
+  border-color: #262d3b !important;
+  color: #eaedf2 !important;
+}
+
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) :is(div.bg-white, div.bg-stone-50\/90) .text-stone-900 {
+  color: #eaedf2 !important;
+}
+
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) :is(div.bg-white, div.bg-stone-50\/90) .text-stone-700 {
+  color: #c6cdd9 !important;
+}
+
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) :is(div.bg-white, div.bg-stone-50\/90) .text-stone-500 {
+  color: #9ba3b2 !important;
+}
+
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) :is(div.bg-white, div.bg-stone-50\/90) .bg-stone-100 {
+  background-color: #1b202c !important;
+  border-color: #2b3345 !important;
+  color: #cbd2df !important;
+}
+
+/* Internal ERP Link Pills inside Message Bubbles (e.g. PR-..., PO-..., PROJ-...) */
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) :is(a, button):has(.font-mono) {
+  background-color: #1c2230 !important;
+  border-color: #2d374c !important;
+  color: #eaedf2 !important;
+}
+
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) :is(a, button):has(.font-mono):hover {
+  background-color: #262e40 !important;
+  border-color: #3e4a64 !important;
+  color: #ffffff !important;
+}
+
+/* Pinned Message Banner & In-Chat Search Bar */
+html.dark .bg-amber-50\/80:has(button) {
+  background-color: #211c14 !important;
+  border-color: #3d3221 !important;
+}
+
+html.dark .bg-amber-50\/80:has(button) .text-stone-800 {
+  color: #eaedf2 !important;
+}
+
+html.dark .bg-amber-50\/80:has(button) .text-amber-800 {
+  color: #e2ba64 !important;
+}
+
+/* Non-Image File Attachment Cards */
+html.dark :is(.forum-bubble-mine, .forum-bubble-peer) a:has(.font-mono) {
+  background-color: #12151e !important;
+  border-color: #252b3a !important;
+  color: #eaedf2 !important;
+}
+
+/* ==========================================================================
+   PUBLIC PREMIUM GLASSMORPHISM BADGES & STAT CARDS
+   ========================================================================== */
+.public-glass-badge {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.74) 0%,
+    rgba(255, 255, 255, 0.44) 52%,
+    rgba(255, 255, 255, 0.65) 100%
+  ) !important;
+  backdrop-filter: blur(20px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(125%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.92) !important;
+  box-shadow:
+    0 6px 20px -6px rgba(28, 25, 23, 0.05),
+    0 2px 5px -1px rgba(28, 25, 23, 0.025),
+    0 0 0 1px rgba(28, 25, 23, 0.04),
+    inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 1px 0 rgba(255, 255, 255, 0.6) !important;
+}
+
+.public-glass-badge::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0.68) 0%,
+    rgba(255, 255, 255, 0.12) 44%,
+    rgba(255, 255, 255, 0) 64%
+  );
+  pointer-events: none;
+}
+
+.public-glass-badge-dark {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    rgba(28, 25, 23, 0.58) 0%,
+    rgba(28, 25, 23, 0.38) 52%,
+    rgba(28, 25, 23, 0.5) 100%
+  ) !important;
+  backdrop-filter: blur(20px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(125%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow:
+    0 8px 24px -6px rgba(0, 0, 0, 0.22),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 1px 0 rgba(255, 255, 255, 0.12) !important;
+}
+
+.public-glass-badge-dark::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.04) 45%,
+    rgba(255, 255, 255, 0) 65%
+  );
+  pointer-events: none;
+}
+
+.public-glass-stat-card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.74) 0%,
+    rgba(255, 255, 255, 0.42) 52%,
+    rgba(255, 255, 255, 0.64) 100%
+  ) !important;
+  backdrop-filter: blur(22px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(125%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.94) !important;
+  box-shadow:
+    0 8px 24px -8px rgba(28, 25, 23, 0.055),
+    0 2px 6px -1px rgba(28, 25, 23, 0.025),
+    0 0 0 1px rgba(28, 25, 23, 0.045),
+    inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 1.5px 0 rgba(255, 255, 255, 0.65) !important;
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.25s ease;
+}
+
+.public-glass-stat-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    125deg,
+    rgba(255, 255, 255, 0.7) 0%,
+    rgba(255, 255, 255, 0.12) 42%,
+    rgba(255, 255, 255, 0) 64%
+  );
+  pointer-events: none;
+}
+
+.public-glass-stat-card:hover {
+  transform: translateY(-1.5px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.52) 52%,
+    rgba(255, 255, 255, 0.72) 100%
+  ) !important;
+  box-shadow:
+    0 12px 28px -8px rgba(28, 25, 23, 0.08),
+    0 3px 8px -2px rgba(28, 25, 23, 0.035),
+    0 0 0 1px rgba(28, 25, 23, 0.06),
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 1.5px 0 rgba(255, 255, 255, 0.75) !important;
+}
+
+.public-glass-icon-well {
+  position: relative;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.48) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  box-shadow:
+    0 2px 5px -1px rgba(28, 25, 23, 0.04),
+    0 0 0 1px rgba(28, 25, 23, 0.03),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 1);
+}
+
+/* Faint (samar) Gaussian-blurred color accent inside glass badges */
+.public-glass-accent-blur {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 9999px;
+  filter: blur(20px);
+  -webkit-filter: blur(20px);
+  opacity: 0.07;
+  transform: translateZ(0);
+  transition: opacity 0.35s ease, filter 0.35s ease;
+}
+
+.group:hover .public-glass-accent-blur,
+.public-glass-stat-card:hover .public-glass-accent-blur,
+.public-glass-badge:hover .public-glass-accent-blur {
+  opacity: 0.11;
+}
+
+/* ============================================================================
+   STRICT THEME SURFACE & CONTRAST GUARDRAILS:
+   1. DARK MODE: Never allow white backgrounds or black text/icons on dark surfaces
+   2. LIGHT MODE: Restore black Login button while keeping non-interactive containers light
+   ============================================================================ */
+
+/* A. DARK MODE: Ensure text-black, muted stone-200/300 icons, and SVG icons are always visible */
+html.dark :is(
+  .text-black,
+  .text-stone-950,
+  .text-stone-900,
+  .text-slate-950,
+  .text-slate-900,
+  .text-gray-900,
+  .text-zinc-900,
+  .text-neutral-900
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  color: #eaedf2 !important;
+}
+
+html.dark :is(
+  .text-stone-300,
+  .text-slate-300,
+  .text-gray-300,
+  .text-stone-400,
+  .text-slate-400,
+  .text-gray-400,
+  svg.text-stone-300,
+  svg.text-slate-300,
+  svg.text-stone-200,
+  svg.text-slate-200
+):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  color: #7c8596 !important;
+}
+
+/* Catch-all for any remaining .bg-white in html.dark outside print sheets & toggle thumb */
+html.dark .bg-white:not(button):not(a):not(.theme-toggle-thumb):not(:where(.a4-paper-sandbox, .a4-paper-sandbox *, .studio-sheet, .studio-sheet *, .print-area, .print-area *, .print-area-a5, .print-area-a5 *, .print-page, .print-page *)) {
+  background-color: #13161b !important;
+  border-color: #22262f;
+}
+
+/* Action Required Cards in Dark Mode (High Contrast & Legible) */
+html.dark .action-required-card {
+  background-color: #161a22 !important;
+  border-color: #29303d !important;
+  color: #eaedf2 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+}
+
+html.dark .action-required-card:hover {
+  background-color: #1d222c !important;
+  border-color: #3b4455 !important;
+}
+
+html.dark .action-required-card.border-red-200\/80 {
+  background-color: #211619 !important;
+  border-color: #4a2830 !important;
+  box-shadow: 0 4px 16px rgba(181, 69, 83, 0.12) !important;
+}
+
+html.dark .action-required-card.border-red-200\/80:hover {
+  background-color: #2a1b1f !important;
+  border-color: #63333e !important;
+}
+
+html.dark .action-required-card :is(.text-stone-900, .text-stone-800, .text-stone-700) {
+  color: #eaedf2 !important;
+}
+
+html.dark .action-required-card :is(.text-stone-600, .text-stone-500) {
+  color: #9ba3b2 !important;
+}
+
+html.dark .action-required-card :is(.bg-stone-100, .bg-stone-50) {
+  background-color: #222733 !important;
+  border: 1px solid #333a4a !important;
+}
+
+html.dark .action-required-card :is(.bg-stone-100, .bg-stone-50) svg {
+  color: #c6cdd9 !important;
+}
+
+html.dark .action-required-card :is(.bg-red-100, .bg-red-50) {
+  background-color: #3d1c22 !important;
+  border: 1px solid #5a2831 !important;
+}
+
+html.dark .action-required-card :is(.bg-red-100, .bg-red-50) svg {
+  color: #e58793 !important;
+}
+
+/* B. LOGIN SUBMIT BUTTON: Explicitly Black in Light Mode & Sleek Dark Graphite in Dark Mode */
+html:not(.dark) button.login-submit-btn {
+  background-color: #1c1917 !important;
+  border-color: #1c1917 !important;
+  color: #ffffff !important;
+}
+
+html:not(.dark) button.login-submit-btn:hover:not(:disabled) {
+  background-color: #292524 !important;
+  border-color: #292524 !important;
+  color: #ffffff !important;
+}
+
+/* C. LIGHT MODE: Non-interactive containers, banners, headers, badges & icon wells:
+   Replace black/stone-900/stone-950/stone-800/slate-900 with elevated soft stone light surfaces */
+html:not(.dark) :is(
+  div.bg-stone-950,
+  div.bg-stone-900,
+  div.bg-stone-900\/95,
+  div.bg-stone-900\/90,
+  div.bg-stone-900\/80,
+  div.bg-stone-800,
+  div.bg-slate-950,
+  div.bg-slate-900,
+  div.bg-slate-800,
+  div.bg-black,
+  section.bg-stone-950,
+  section.bg-stone-900,
+  section.bg-stone-800,
+  section.bg-slate-900,
+  header.bg-stone-950,
+  header.bg-stone-900,
+  header.bg-stone-800,
+  aside.bg-stone-900,
+  footer.bg-stone-950,
+  footer.bg-stone-900,
+  span.bg-stone-950,
+  span.bg-stone-900,
+  span.bg-stone-800,
+  span.bg-slate-900
+):not(.fixed.inset-0):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  background-color: #f5f5f4 !important;
+  background-image: none !important;
+  border-color: #e7e5e4 !important;
+  color: #1c1917 !important;
+}
+
+html:not(.dark) :is(
+  div.from-stone-950,
+  div.from-stone-900,
+  div.from-stone-800,
+  div.from-slate-900,
+  section.from-stone-950,
+  section.from-stone-900,
+  section.from-stone-800
+):not(.fixed.inset-0):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *)) {
+  --tw-gradient-from: #f5f5f4 !important;
+  --tw-gradient-via: #fafaf9 !important;
+  --tw-gradient-to: #f5f5f4 !important;
+  background-color: #f5f5f4 !important;
+  border-color: #e7e5e4 !important;
+  color: #1c1917 !important;
+}
+
+/* Ensure white text/icons inside neutralized formerly-dark containers become readable dark text in Light Mode */
+html:not(.dark) :is(
+  div.bg-stone-950,
+  div.bg-stone-900,
+  div.bg-stone-900\/95,
+  div.bg-stone-900\/90,
+  div.bg-stone-900\/80,
+  div.bg-stone-800,
+  div.bg-slate-950,
+  div.bg-slate-900,
+  div.bg-slate-800,
+  div.bg-black,
+  section.bg-stone-950,
+  section.bg-stone-900,
+  section.bg-stone-800,
+  header.bg-stone-900,
+  footer.bg-stone-950,
+  footer.bg-stone-900,
+  span.bg-stone-900,
+  span.bg-stone-800,
+  div.from-stone-900,
+  div.from-stone-950,
+  div.from-stone-800,
+  section.from-stone-900
+):not(.fixed.inset-0):not(:where(.a4-paper-sandbox *, .studio-sheet *, .print-area *, .print-area-a5 *, .print-page *))
+  :is(.text-white, .text-stone-50, .text-stone-100, .text-stone-200, .text-stone-300, svg):not(button *):not(button):not(a):not(a *) {
+  color: #1c1917 !important;
+}

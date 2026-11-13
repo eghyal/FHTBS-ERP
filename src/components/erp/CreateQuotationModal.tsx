@@ -16,12 +16,16 @@ import {
   Package,
   Check,
   ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import {
   formatIDR,
   formatNumberWithDots,
   formatIDRWithDecimals,
   cn,
+  isFinishGoodItem,
 } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { calculateFinancialBreakdown, TaxScheme } from "@/lib/financialEngine";
@@ -75,6 +79,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
       item_id?: string;
       available_qty?: number;
       material_cost?: number;
+      ref_price?: number;
     }[]
   >([{ item_code: "", title: "", qty: "1", uom: "Unit", price: "", item_id: "" }]);
 
@@ -98,6 +103,42 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
   const ppnTaxAmount = breakdown.ppnAmount;
   const netEarnings = breakdown.grandTotal;
 
+  const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false);
+
+  // Query finished goods strictly for warehouse inventory linkage
+  const fetchWarehouseCatalog = React.useCallback(async (silent = false) => {
+    try {
+      if (!silent) setIsRefreshingCatalog(true);
+      const res = await apiFetch("/api/sales/retail-catalog?type=FINISHED", {}, user?.username);
+      if (res.ok && Array.isArray(res.data?.data)) {
+        setCatalogItems(res.data.data);
+      } else if (res.ok && Array.isArray(res.data)) {
+        setCatalogItems(res.data);
+      }
+    } catch (e) {
+      console.error("Failed to load finished goods catalog", e);
+    } finally {
+      if (!silent) setIsRefreshingCatalog(false);
+    }
+  }, [user?.username]);
+
+  // Auto-refresh Finished Goods catalog when user returns from Warehouse tab
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleFocus = () => {
+      fetchWarehouseCatalog(true);
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+    };
+  }, [isOpen, fetchWarehouseCatalog]);
+
   // Load Customers & Finished Goods Catalog on Open
   useEffect(() => {
     if (isOpen) {
@@ -112,22 +153,8 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
         }
       };
 
-      // Query finished goods strictly for warehouse inventory linkage
-      const fetchCatalog = async () => {
-        try {
-          const res = await apiFetch("/api/sales/retail-catalog?type=FINISHED", {}, user?.username);
-          if (res.ok && Array.isArray(res.data?.data)) {
-            setCatalogItems(res.data.data);
-          } else if (res.ok && Array.isArray(res.data)) {
-            setCatalogItems(res.data);
-          }
-        } catch (e) {
-          console.error("Failed to load finished goods catalog", e);
-        }
-      };
-
       fetchCustomers();
-      fetchCatalog();
+      fetchWarehouseCatalog();
 
       if (revisingData) {
         setCustomerId(revisingData.customer_id || "");
@@ -227,21 +254,26 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
 
     // Check if user input matches an exact registered finished good SKU
     const exactMatch = catalogItems.find(
-      (c) => c.item_code && c.item_code.trim().toUpperCase() === cleanInput
+      (c) => isFinishGoodItem(c) && c.item_code && c.item_code.trim().toUpperCase() === cleanInput
     );
 
     if (exactMatch) {
+      const refPrice = Number(
+        exactMatch.selling_price || exactMatch.unit_price || exactMatch.price || 0
+      );
       updated[idx] = {
         ...updated[idx],
         item_code: inputCode,
         item_id: exactMatch.id,
         title: exactMatch.name,
         uom: exactMatch.uom || "Unit",
+        price: refPrice > 0 ? String(refPrice) : updated[idx].price || "",
+        ref_price: refPrice,
         available_qty: exactMatch.available_qty,
         material_cost:
           exactMatch.material_cost !== undefined
             ? Number(exactMatch.material_cost)
-            : Math.round((exactMatch.unit_price || 0) * 0.65),
+            : Math.round((refPrice || 0) * 0.65),
       };
     } else {
       // If code changed without exact match, reset title & item_id
@@ -251,6 +283,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
         item_id: "",
         title: "",
         uom: "Unit",
+        ref_price: undefined,
       };
     }
 
@@ -260,6 +293,9 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
 
   // Handler for selecting an item from the live-filtered dropdown
   const handleSelectCatalogItem = (idx: number, catItem: any) => {
+    const refPrice = Number(
+      catItem.selling_price || catItem.unit_price || catItem.price || 0
+    );
     const updated = [...items];
     updated[idx] = {
       ...updated[idx],
@@ -267,11 +303,13 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
       item_code: catItem.item_code || "",
       title: catItem.name,
       uom: catItem.uom || "Unit",
+      price: refPrice > 0 ? String(refPrice) : updated[idx].price || "",
+      ref_price: refPrice,
       available_qty: catItem.available_qty,
       material_cost:
         catItem.material_cost !== undefined
           ? Number(catItem.material_cost)
-          : Math.round((catItem.unit_price || 0) * 0.65),
+          : Math.round((refPrice || 0) * 0.65),
     };
     setItems(updated);
     setActiveDropdownIndex(null);
@@ -302,7 +340,24 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
     const unselectedItem = validItems.some((i) => !i.item_id || !i.title.trim());
     if (unselectedItem) {
       showToast(
-        "All quotation items must be selected from registered Finished Goods in warehouse inventory.",
+        "All quotation items must be selected from the registered Finish Goods master in warehouse inventory.",
+        "error"
+      );
+      return;
+    }
+
+    // Strict validation: Reject Machine items and all non-Finish Goods items
+    const invalidNonFgItem = validItems.find((i) => {
+      const code = (i.item_code || "").trim().toUpperCase();
+      const cat = catalogItems.find((c) => c.id === i.item_id || c.item_code?.toUpperCase() === code);
+      if (cat && !isFinishGoodItem(cat)) return true;
+      if (code.startsWith("MC - ") || code.startsWith("MC-")) return true;
+      return false;
+    });
+
+    if (invalidNonFgItem) {
+      showToast(
+        `Item [${invalidNonFgItem.item_code || invalidNonFgItem.title}] cannot be included in Quotations. Quotations are exclusively reserved for Finish Goods (FG - ...). Machine items and other materials are not permitted.`,
         "error"
       );
       return;
@@ -461,11 +516,11 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                 {selectedCustomer.npwp ? (
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    NPWP: {selectedCustomer.npwp}
+                    Tax ID: {selectedCustomer.npwp}
                   </span>
                 ) : (
                   <span className="text-[10px] text-stone-400 italic">
-                    No registered Tax ID (NPWP)
+                    No registered Tax ID
                   </span>
                 )}
               </div>
@@ -554,25 +609,48 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
 
         {/* Finished Goods Line Items with Strict BOM-Style SKU Input & Dropdown Filtering */}
         <div className="space-y-3">
-          <div className="flex justify-between items-center px-1">
-            <h4 className="text-[11px] font-black text-stone-800 dark:text-stone-200 uppercase tracking-widest flex items-center gap-2">
-              <Package className="w-4 h-4 text-stone-500" />
-              <span>Finished Goods & Deliverables ({items.length} items)</span>
-            </h4>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+            <div className="flex items-center gap-2">
+              <h4 className="text-[11px] font-black text-stone-800 dark:text-stone-200 uppercase tracking-widest flex items-center gap-2">
+                <Package className="w-4 h-4 text-emerald-600" />
+                <span>Finished Goods & Deliverables ({items.length} items)</span>
+              </h4>
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                Exclusive Finish Goods (FG - ...)
+              </span>
+            </div>
 
-            <button
-              type="button"
-              onClick={() =>
-                setItems([
-                  ...items,
-                  { item_code: "", title: "", qty: "1", uom: "Unit", price: "", item_id: "" },
-                ])
-              }
-              className="flex items-center gap-1.5 text-xs font-bold text-stone-700 dark:text-stone-300 hover:text-stone-900 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 px-3.5 py-1.5 rounded-xl border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Item</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fetchWarehouseCatalog()}
+                disabled={isRefreshingCatalog}
+                className="inline-flex items-center gap-1 text-xs font-bold text-stone-600 dark:text-stone-300 hover:text-stone-900 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 px-2.5 py-1.5 rounded-xl border border-stone-200 dark:border-stone-700 transition-colors"
+                title="Refresh Finished Goods from Warehouse Catalog"
+              >
+                <RefreshCw
+                  className={cn(
+                    "w-3.5 h-3.5",
+                    isRefreshingCatalog && "animate-spin text-emerald-600"
+                  )}
+                />
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setItems([
+                    ...items,
+                    { item_code: "", title: "", qty: "1", uom: "Unit", price: "", item_id: "" },
+                  ])
+                }
+                className="flex items-center gap-1.5 text-xs font-bold text-stone-700 dark:text-stone-300 hover:text-stone-900 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 px-3.5 py-1.5 rounded-xl border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Item</span>
+              </button>
+            </div>
           </div>
 
           <div className="border border-stone-200 dark:border-stone-800 rounded-2xl bg-white dark:bg-stone-900 shadow-xs">
@@ -591,13 +669,16 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
             <div className="divide-y divide-stone-100 dark:divide-stone-800">
               {items.map((item, idx) => {
                 // Filter catalog items strictly based on what is typed in this row's Item Code
+                // STRICT RULE: Only Finish Goods items (FG - ...), eliminate all machines and other categories
                 const query = item.item_code.trim().toLowerCase();
-                const filteredMatches = catalogItems.filter((c) => {
-                  if (!query) return true;
-                  const cCode = (c.item_code || "").toLowerCase();
-                  const cName = (c.name || "").toLowerCase();
-                  return cCode.includes(query) || cName.includes(query);
-                });
+                const filteredMatches = catalogItems
+                  .filter((c) => isFinishGoodItem(c))
+                  .filter((c) => {
+                    if (!query) return true;
+                    const cCode = (c.item_code || "").toLowerCase();
+                    const cName = (c.name || "").toLowerCase();
+                    return cCode.includes(query) || cName.includes(query);
+                  });
 
                 const isDropdownOpen = activeDropdownIndex === idx;
 
@@ -643,10 +724,19 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                             className="fixed inset-0 z-40"
                             onClick={() => setActiveDropdownIndex(null)}
                           />
-                          <div className="absolute left-0 top-full mt-1.5 w-80 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-2xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto divide-y divide-stone-100 dark:divide-stone-800">
+                          <div className="absolute left-0 top-full mt-1.5 w-80 bg-white border border-stone-200 rounded-2xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto divide-y divide-stone-100">
                             {filteredMatches.length === 0 ? (
-                              <div className="p-3 text-center text-xs text-stone-400 font-medium">
-                                No registered Finished Good found
+                              <div className="p-3 text-center space-y-1.5">
+                                <div className="text-xs text-stone-600 font-bold">
+                                  No registered Finished Good matching &quot;{query}&quot;
+                                </div>
+                                <div className="text-[11px] text-stone-400 leading-relaxed">
+                                  Register new Finished Good SKUs via{" "}
+                                  <strong className="text-stone-700">
+                                    Warehouse &gt; Inventory Balances
+                                  </strong>
+                                  .
+                                </div>
                               </div>
                             ) : (
                               filteredMatches.map((cat) => {
@@ -669,16 +759,24 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                                       <div className="text-[11px] text-stone-600 dark:text-stone-400 truncate">
                                         {cat.name}
                                       </div>
-                                      <div className="text-[10px] text-stone-400 font-mono mt-0.5">
-                                        UOM: {cat.uom || "Unit"} | Stock:{" "}
-                                        <span
-                                          className={
-                                            cat.available_qty > 0
-                                              ? "text-emerald-600 font-bold"
-                                              : "text-stone-400"
-                                          }
-                                        >
-                                          {cat.available_qty || 0}
+                                      <div className="text-[10px] text-stone-400 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                        <span>UOM: {cat.uom || "Unit"}</span>
+                                        <span>·</span>
+                                        <span>
+                                          Stock:{" "}
+                                          <span
+                                            className={
+                                              cat.available_qty > 0
+                                                ? "text-emerald-600 font-bold"
+                                                : "text-stone-400"
+                                            }
+                                          >
+                                            {cat.available_qty || 0}
+                                          </span>
+                                        </span>
+                                        <span>·</span>
+                                        <span className="text-stone-700 dark:text-stone-300 font-bold">
+                                          SSOT: {formatIDR(cat.selling_price || cat.unit_price || 0)}
                                         </span>
                                       </div>
                                     </div>
@@ -745,23 +843,33 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                     </div>
 
                     {/* Unit Price (Quotation Commercial Negotiation Value) */}
-                    <div className="w-[150px] relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-stone-400 select-none">
-                        Rp
-                      </span>
-                      <input
-                        required
-                        type="text"
-                        value={item.price ? formatNumberWithDots(item.price) : ""}
-                        onChange={(e) => {
-                          const newItems = [...items];
-                          const val = e.target.value.replace(/[^\d]/g, "");
-                          newItems[idx].price = val;
-                          setItems(newItems);
-                        }}
-                        placeholder="0"
-                        className="w-full pl-7 pr-2.5 py-2 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl text-xs font-bold font-mono text-stone-900 dark:text-white text-right outline-none focus:border-stone-900 placeholder:text-stone-400"
-                      />
+                    <div className="w-[150px]">
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-stone-400 select-none">
+                          Rp
+                        </span>
+                        <input
+                          required
+                          type="text"
+                          value={item.price ? formatNumberWithDots(item.price) : ""}
+                          onChange={(e) => {
+                            const newItems = [...items];
+                            const val = e.target.value.replace(/[^\d]/g, "");
+                            newItems[idx].price = val;
+                            setItems(newItems);
+                          }}
+                          placeholder="0"
+                          className="w-full pl-7 pr-2.5 py-2 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl text-xs font-bold font-mono text-stone-900 dark:text-white text-right outline-none focus:border-stone-900 placeholder:text-stone-400"
+                        />
+                      </div>
+                      {typeof item.ref_price === "number" && item.ref_price > 0 && (
+                        <div
+                          className="text-[9px] font-mono text-right text-stone-400 dark:text-stone-500 mt-0.5 truncate"
+                          title="Reference selling price from Shop Management (SSOT)"
+                        >
+                          SSOT: {formatIDR(item.ref_price)}
+                        </div>
+                      )}
                     </div>
 
                     {/* Cumulative Subtotal */}
@@ -771,14 +879,16 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
 
                     {/* Action Delete */}
                     <div className="w-8 flex justify-center">
-                      <button
+                      <Button
                         type="button"
+                        variant="danger_soft"
+                        size="icon-xs"
                         onClick={() => setItems(items.filter((_, i) => i !== idx))}
                         disabled={items.length === 1}
-                        className="p-1.5 text-stone-400 hover:text-rose-600 disabled:opacity-20 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-all cursor-pointer"
+                        title="Remove Item"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      </Button>
                     </div>
                   </div>
                 );
@@ -842,7 +952,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                   <span className="font-semibold text-stone-600 dark:text-stone-400 uppercase tracking-wider text-[9px]">
                     Discount
                   </span>
-                  <div className="relative w-16">
+                  <div className="flex items-center h-7 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 shadow-2xs hover:border-stone-300 dark:hover:border-stone-600 focus-within:border-stone-800 dark:focus-within:border-stone-400 focus-within:ring-1 focus-within:ring-stone-800 dark:focus-within:ring-stone-400 transition-all overflow-hidden">
                     <input
                       type="number"
                       min="0"
@@ -851,11 +961,35 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                       placeholder="0"
                       value={discountRate}
                       onChange={(e) => setDiscountRate(e.target.value)}
-                      className="w-full bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded px-1.5 py-0.5 text-[11px] font-bold text-stone-800 dark:text-white text-center outline-none focus:ring-1 focus:ring-stone-400"
+                      className="no-base-style !w-11 !h-full !bg-transparent !border-0 !border-none !rounded-none !shadow-none !min-h-0 !p-0 !pl-2.5 !pr-0.5 text-right text-xs font-bold font-mono text-stone-900 dark:text-white !outline-none focus:!ring-0 focus:!border-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
-                    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-stone-400 pointer-events-none">
+                    <span className="text-[11px] font-bold text-stone-400 dark:text-stone-500 select-none pl-0.5 pr-2">
                       %
                     </span>
+                    <div className="flex flex-col h-full border-l border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800/60 w-5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curr = parseFloat(discountRate) || 0;
+                          setDiscountRate(String(Math.min(100, Math.round((curr + 1) * 10) / 10)));
+                        }}
+                        className="flex-1 flex items-center justify-center text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-700 transition-colors"
+                        title="Add 1%"
+                      >
+                        <ChevronUp className="w-2.5 h-2.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curr = parseFloat(discountRate) || 0;
+                          setDiscountRate(String(Math.max(0, Math.round((curr - 1) * 10) / 10)));
+                        }}
+                        className="flex-1 flex items-center justify-center text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-stone-700 border-t border-stone-200 dark:border-stone-700 transition-colors"
+                        title="Subtract 1%"
+                      >
+                        <ChevronDown className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <span className={cn("font-bold font-mono", parseFloat(discountRate) > 0 ? "text-rose-600" : "text-stone-400")}>
@@ -863,21 +997,21 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                 </span>
               </div>
 
-              {/* DPP (Dasar Pengenaan Pajak) */}
+              {/* Taxable Base */}
               <div className="flex justify-between items-center text-xs border-b border-stone-200/60 dark:border-stone-800 pb-2">
                 <span className="font-bold text-stone-800 dark:text-stone-200 uppercase tracking-wider text-[9px]">
-                  Tax Base (DPP)
+                  Taxable Base
                 </span>
                 <span className="font-black font-mono text-stone-900 dark:text-white">
                   {formatIDRWithDecimals(breakdown.dpp, 2)}
                 </span>
               </div>
 
-              {/* DPP Nilai Lain Basis (11/12) */}
+              {/* Deemed Tax Base (11/12) */}
               {breakdown.isDppNilaiLain && (
                 <div className="flex justify-between items-center text-xs border-b border-stone-200/60 dark:border-stone-800 pb-1.5 bg-stone-100/60 dark:bg-stone-800/40 px-2 py-1 rounded">
                   <span className="font-semibold text-stone-600 dark:text-stone-400 uppercase tracking-wider text-[8.5px]">
-                    Deemed Tax Base (11/12 PMK)
+                    Deemed Tax Base (11/12)
                   </span>
                   <span className="font-bold font-mono text-stone-800 dark:text-stone-200 text-[11px]">
                     {formatIDRWithDecimals(breakdown.dppNilaiLain, 2)}
@@ -885,11 +1019,11 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                 </div>
               )}
 
-              {/* PPN */}
+              {/* VAT */}
               {taxRate !== "0" && (
                 <div className="flex justify-between items-center text-xs border-b border-stone-200/60 dark:border-stone-800 pb-2">
                   <span className="font-semibold text-stone-600 dark:text-stone-400 uppercase tracking-wider text-[9px]">
-                    VAT {taxRate}% {breakdown.isDppNilaiLain ? "(PMK 11/12)" : ""}
+                    VAT {taxRate}% {breakdown.isDppNilaiLain ? "(Deemed 11/12)" : ""}
                   </span>
                   <span className="font-bold font-mono text-stone-800 dark:text-stone-200">
                     + {formatIDRWithDecimals(ppnTaxAmount, 2)}
@@ -907,11 +1041,11 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                 </span>
               </div>
 
-              {/* If PPh Withholding applies */}
+              {/* If Withholding Tax applies */}
               {breakdown.pphRate > 0 && (
                 <div className="p-2.5 bg-amber-50/70 dark:bg-stone-800/60 border border-amber-200/80 dark:border-stone-700 rounded-xl space-y-1 mt-2">
                   <div className="flex justify-between text-xs text-stone-600 dark:text-stone-400">
-                    <span>PPh 23 Withholding ({breakdown.pphRate}%):</span>
+                    <span>Withholding Tax ({breakdown.pphRate}%):</span>
                     <span className="font-mono font-bold text-rose-600">
                       - {formatIDRWithDecimals(breakdown.pphAmount, 2)}
                     </span>
@@ -949,9 +1083,10 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
             </Button>
             <Button
               type="button"
+              variant="primary"
               disabled={isSubmitting}
               onClick={() => submitAs("PENDING")}
-              className="bg-stone-900 text-white hover:bg-stone-800 font-bold shadow-md hover:shadow-lg"
+              className="font-bold shadow-xs"
             >
               {isSubmitting ? "Submitting..." : "Submit Official Quotation"}
             </Button>

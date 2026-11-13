@@ -209,39 +209,39 @@ export function CartDrawer({
         {/* Window Header */}
         <div className="p-4 sm:p-5 border-b border-stone-100 flex items-center justify-between bg-white shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-stone-100 flex items-center justify-center text-stone-700 shrink-0">
-              <ShoppingBag className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-xl bg-stone-100 flex items-center justify-center p-1 shrink-0 border border-stone-200/60">
+              <img src="/logo.png" alt="Paving Joss Logo" className="w-6 h-6 object-contain" />
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-bold text-stone-900 tracking-tight leading-none">
-                Keranjang Belanja
+                Shopping Cart
               </h2>
               <span className="text-[11px] text-stone-500 mt-1 inline-block">
                 Paving Joss &bull; CV Batu Emas Group
               </span>
             </div>
             <span className="ml-1 text-[11px] font-semibold bg-stone-100 text-stone-700 px-2.5 py-0.5 rounded-full">
-              {items.length} Barang
+              {items.length} Items
             </span>
           </div>
 
           <button
             onClick={onClose}
             className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer"
-            aria-label="Tutup keranjang"
+            aria-label="Close cart"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Papan Iklan Penawaran Spesial (Top Promotional Billboard) */}
+        {/* Top Promotional Billboard */}
         {currentPromo && (
           <div className="bg-gradient-to-r from-stone-50 via-rose-50/50 to-stone-50 border-b border-stone-200/90 p-3 sm:p-3.5 shrink-0">
             {/* Top Bar of Promo Billboard */}
             <div className="flex items-center justify-between gap-2 mb-2">
               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#b02524]">
                 <Tag className="w-3 h-3 text-[#b02524]" />
-                <span>Penawaran Spesial Pabrik</span>
+                <span>Factory Special Offer</span>
                 {currentPromo.badge && (
                   <span className="bg-white border border-rose-200 text-[#b02524] px-1.5 py-0.2 rounded font-semibold text-[9px] uppercase">
                     {currentPromo.badge}
@@ -285,7 +285,7 @@ export function CartDrawer({
                     {currentPromo.name}
                   </h4>
                   <p className="text-[10px] text-stone-500 truncate">
-                    {currentPromo.dimension || currentPromo.spec || "Kualitas SNI Presisi"}
+                    {currentPromo.dimension || currentPromo.spec || "Precision SNI Quality"}
                   </p>
                   <div className="flex items-baseline gap-2 mt-0.5">
                     {currentPromo.promo_price > 0 && currentPromo.promo_price < currentPromo.unit_price ? (
@@ -297,7 +297,7 @@ export function CartDrawer({
                           {formatIDR(currentPromo.unit_price)}
                         </span>
                         <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
-                          Hemat {Math.round(((currentPromo.unit_price - currentPromo.promo_price) / currentPromo.unit_price) * 100)}%
+                          Save {Math.round(((currentPromo.unit_price - currentPromo.promo_price) / currentPromo.unit_price) * 100)}%
                         </span>
                       </>
                     ) : (
@@ -314,7 +314,7 @@ export function CartDrawer({
                 className="px-3 py-1.5 rounded-lg bg-[#b02524] hover:bg-[#961f1e] text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1 shrink-0 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Tambah</span>
+                <span>Add</span>
               </button>
             </div>
           </div>
@@ -328,16 +328,16 @@ export function CartDrawer({
                 <ShoppingBag className="w-6 h-6" />
               </div>
               <p className="text-xs sm:text-sm font-bold text-stone-800 mb-1">
-                Keranjang Belanja Masih Kosong
+                Your Cart is Empty
               </p>
               <p className="text-xs text-stone-400 max-w-sm mb-4 leading-relaxed">
-                Pilih material paving block, kanstin, atau bata beton di katalog untuk memulai pemesanan.
+                Select paving blocks, curbstones, or concrete materials from the catalog to begin your order.
               </p>
               <button
                 onClick={onClose}
-                className="px-4 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
+                className="px-4 py-2 bg-[#b02524] hover:bg-[#8e1d1c] text-white text-xs font-bold rounded-lg transition-all cursor-pointer"
               >
-                Jelajahi Produk
+                Explore Products
               </button>
             </div>
           ) : (
@@ -393,8 +393,9 @@ export function CartDrawer({
 
                     {/* Remove Action */}
                     <button
+                      type="button"
                       onClick={() => onRemoveItem(product.id)}
-                      className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                      className="w-7 h-7 rounded-lg flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 border border-rose-200/70 transition-colors cursor-pointer shadow-2xs"
                       title="Hapus barang"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -413,10 +414,10 @@ export function CartDrawer({
             <div className="flex items-center justify-between text-xs text-stone-600 py-1 border-b border-stone-200/60">
               <span className="flex items-center gap-1.5 font-medium">
                 <Truck className="w-3.5 h-3.5 text-stone-500" />
-                <span>Total Estimasi Berat Muatan</span>
+                <span>Estimated Cargo Weight</span>
               </span>
               <span className="font-mono font-bold text-stone-800">
-                {totalWeightKg.toLocaleString()} kg ({Math.ceil(totalWeightKg / 1000)} Ton)
+                {totalWeightKg.toLocaleString()} kg ({Math.ceil(totalWeightKg / 1000)} Tons)
               </span>
             </div>
 
@@ -424,10 +425,10 @@ export function CartDrawer({
             <div className="flex items-baseline justify-between pt-1">
               <div>
                 <span className="text-xs font-bold text-stone-500 uppercase tracking-wider block">
-                  Total Nilai Barang
+                  Subtotal
                 </span>
                 <span className="text-[11px] text-stone-400">
-                  Belum termasuk biaya armada pengiriman ke lokasi
+                  Excludes delivery fleet charges
                 </span>
               </div>
               <span className="text-xl sm:text-2xl font-black text-stone-900 font-mono">
@@ -440,7 +441,7 @@ export function CartDrawer({
               onClick={onProceedCheckout}
               className="w-full py-3 px-4 rounded-xl bg-[#b02524] hover:bg-[#961f1e] active:bg-[#7e1a19] text-white font-bold text-xs sm:text-sm shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
-              <span>Lanjut ke Formulir Pemesanan</span>
+              <span>Proceed to Checkout</span>
               <ArrowRight className="w-4 h-4" />
             </button>
 
@@ -450,7 +451,7 @@ export function CartDrawer({
                 onClick={onClearCart}
                 className="text-[11px] font-semibold text-stone-400 hover:text-rose-600 transition-colors cursor-pointer"
               >
-                Kosongkan Keranjang
+                Clear Cart
               </button>
             </div>
           </div>

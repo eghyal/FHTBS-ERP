@@ -1,4 +1,12 @@
-import React, { useEffect, useState, useMemo, useRef, lazy, Suspense } from "react";
+import React, {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  lazy,
+  Suspense,
+} from "react";
 import { Button } from "@/components/ui/Button";
 import { apiFetch } from "@/utils/api";
 import {
@@ -6,57 +14,40 @@ import {
   Search,
   Filter,
   Plus,
-  ArrowUpRight,
-  AlertCircle,
-  ArrowDownRight,
   History,
   Settings2,
-  X,
   CheckCircle2,
   AlertTriangle,
-  Trash2,
-  Pencil,
-  Sliders,
-  Info,
-  QrCode,
-  Download,
-  ClipboardCheck,
-  Printer,
-  ScanLine,
-  ArrowRight,
-  Clock,
-  TrendingUp,
-  TrendingDown,
-  Camera,
   ChevronDown,
   ShieldCheck,
-  Truck,
-  Upload,
   Cpu,
   Boxes,
   Wrench,
   Check,
-  Tag,
-  Workflow,
+  Layers,
+  FileText,
 } from "lucide-react";
-import { MachineQrModal } from "@/components/erp/inventory/MachineQrModal";
+import { Link, useSearchParams } from "react-router-dom";
 import { MachineBopModal } from "@/components/erp/inventory/MachineBopModal";
-import { cn, formatCurrency, parseCurrency, formatIDR } from "@/lib/utils";
+import { cn, parseCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ConfirmModal } from "@/components/shared/ConfirmModal";
-import { Modal } from "@/components/ui/Modal";
-import { Select } from "@/components/ui/Select";
-import { Loader } from "@/components/shared/Loader";
+import { Input } from "@/components/ui/Input";
+import { StatCard } from "@/components/ui/StatCard";
 import { Action, hasPermission, hasGodMode } from "@/utils/pbac";
-import { WarehouseLabelModal } from "@/components/erp/inventory/WarehouseLabelModal";
-import { WarehouseIntakeLabelsModal } from "@/components/erp/inventory/WarehouseIntakeLabelsModal";
-import { WarehousePendingGrnTab } from "@/components/erp/inventory/WarehousePendingGrnTab";
-import { WarehouseReservationsTab } from "@/components/erp/inventory/WarehouseReservationsTab";
-import { WarehouseHistoryTab } from "@/components/erp/inventory/WarehouseHistoryTab";
-import { WarehouseTerminalTab } from "@/components/erp/inventory/WarehouseTerminalTab";
-import { getDailyAuthKey, isValidDailyAuthKey } from "@/utils/auth";
+import { WarehouseLabelModal } from "@/components/erp/inventory/LabelModal";
+import { WarehouseIntakeLabelsModal } from "@/components/erp/inventory/IntakeLabelsModal";
+import { WarehousePendingGrnTab } from "@/components/erp/inventory/PendingGrnTab";
+import { WarehouseReservationsTab } from "@/components/erp/inventory/ReservationsTab";
+import { WarehouseHistoryTab } from "@/components/erp/inventory/HistoryTab";
+import { WarehouseTerminalTab } from "@/components/erp/inventory/TerminalTab";
+import {
+  WarehouseStockTable,
+  type WarehouseInventoryItem,
+} from "@/components/erp/inventory/StockTable";
+import { isValidDailyAuthKey } from "@/utils/auth";
 import { AuthorizeDocModal } from "@/components/erp/AuthorizeDocModal";
 import { useInventoryLocal } from "@/hooks/useInventoryLocal";
 import { AddItemModal } from "@/components/erp/inventory/AddItemModal";
@@ -69,37 +60,18 @@ const ScannerModal = lazy(() =>
   }))
 );
 
-interface InventoryItem {
-  id: string;
-  item_code: string;
-  name: string;
-  dimension: string;
-  spec: string;
-  uom: string;
-  type: string;
-  unit_price: number;
-  free_stock: number;
-  allocated_stock: number;
-  reserved_stock?: number;
-  reserved_qty?: number;
-  physical_qty?: number;
-  available_qty?: number;
-  min_stock?: number;
-  max_stock?: number;
-  location?: string;
-  item_type?: string;
-  category?: string;
-  machine_category?: string;
-  capacity_per_hour?: number;
-  machine_status?: string;
-  operational_status?: string;
-  serial_number?: string;
-  manufacturer?: string;
-  machine_specifications?: any;
-  bypass_multi_station?: number | boolean;
-}
+const ASSET_FILTER_OPTIONS = [
+  { id: "ALL", label: "All Items / SKUs", icon: Package },
+  { id: "RAW", label: "Raw Materials", icon: Boxes },
+  { id: "FINISH_GOOD", label: "Finished Goods", icon: ShieldCheck },
+  { id: "MACHINE", label: "Machines", icon: Cpu },
+  { id: "TOOL", label: "Tools", icon: Wrench },
+  { id: "CONSUMABLE", label: "Consumables", icon: CheckCircle2 },
+  { id: "SPAREPART", label: "Spareparts", icon: Settings2 },
+];
 
 export default function Warehouse() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<
     "STOCK" | "HISTORY" | "TERMINAL" | "PENDING" | "RESERVATIONS"
   >("STOCK");
@@ -109,14 +81,36 @@ export default function Warehouse() {
   const [draftDeliveries, setDraftDeliveries] = useState<any[]>([]);
   const [showUploadDnModal, setShowUploadDnModal] = useState(false);
   const [selectedDn, setSelectedDn] = useState<any>(null);
-  const [dnUploadFile, setDnUploadFile] = useState<File | null>(null);
+
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const isWarehouseFullAccess =
+    user?.role === "WAREHOUSE" || hasGodMode(user);
+  const isQaQcUser = user?.role === "QA_QC" && !hasGodMode(user);
+  const isEngineeringRestricted =
+    user?.role === "ENGINEERING" && !hasGodMode(user);
+  const isSalesRestricted =
+    user?.role === "SALES" && !hasGodMode(user);
+  const isRestrictedStockOnly = !isWarehouseFullAccess && !isQaQcUser;
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (
+      tabParam === "PENDING" &&
+      (isWarehouseFullAccess || isQaQcUser)
+    ) {
+      setActiveTab("PENDING");
+    } else if (isRestrictedStockOnly && activeTab !== "STOCK") {
+      setActiveTab("STOCK");
+    }
+  }, [searchParams, isWarehouseFullAccess, isQaQcUser, isRestrictedStockOnly, activeTab]);
 
   const {
     inventory: localInventory,
     isLoading,
     refreshCloud,
-  } = useInventoryLocal(useAuth().user);
-  const inventory = (localInventory || []) as unknown as InventoryItem[];
+  } = useInventoryLocal(user);
+  const inventory = (localInventory || []) as unknown as WarehouseInventoryItem[];
 
   const [movements, setMovements] = useState<any[]>([]);
   const [movementPage, setMovementPage] = useState(0);
@@ -129,7 +123,8 @@ export default function Warehouse() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAdjustModal, setShowAdjustModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [selectedItem, setSelectedItem] =
+    useState<WarehouseInventoryItem | null>(null);
   const [itemToEdit, setItemToEdit] = useState<any>(null);
 
   // Confirm Modal States
@@ -145,7 +140,7 @@ export default function Warehouse() {
     action: () => {},
   });
 
-  // Consumption State (Merged from Operations)
+  // Consumption State
   const [consumeStep, setConsumeStep] = useState<
     "IDLE" | "SELECT_ITEM" | "CONSUME" | "SUCCESS"
   >("IDLE");
@@ -155,35 +150,22 @@ export default function Warehouse() {
   const [transactionDirection, setTransactionDirection] = useState<
     "WITHDRAW" | "RETURN"
   >("WITHDRAW");
-  const [scanInput, setScanInput] = useState("");
-  const [scannedInfo, setScannedInfo] = useState<any>(null);
   const [recordedBy, setRecordedBy] = useState("");
   const [activeProjectBOM, setActiveProjectBOM] = useState<any[]>([]);
 
-  // GRN State
-  const [pos, setPos] = useState<any[]>([]);
-  const [showGrnModal, setShowGrnModal] = useState(false);
-  const [selectedPoDetails, setSelectedPoDetails] = useState<any>(null);
-  const [grnItems, setGrnItems] = useState<any[]>([]);
-  const [grnForm, setGrnForm] = useState({
-    received_date: new Date().toISOString().split("T")[0],
-    engineering_user: "",
-    qc_user: "",
-    qc_status: "PASSED",
-    remarks: "",
-  });
-
   // Labels State
   const [showItemLabelsModal, setShowItemLabelsModal] = useState(false);
+  const [manpowerRoster, setManpowerRoster] = useState<any[]>([]);
   const [newItem, setNewItem] = useState({
-    item_code: "",
+    item_code: "FG - ",
     name: "",
     uom: "PCS",
-    type: "RAW",
+    type: "FINISH_GOOD",
     dimension: "",
     spec: "",
     item_type: "MATERIAL",
     machine_category: "",
+    assigned_operator: "",
     serial_number: "",
     manufacturer: "",
     bypass_multi_station: false,
@@ -193,16 +175,12 @@ export default function Warehouse() {
   const [adjustReason, setAdjustReason] = useState("STOCK_TAKE");
   const [adjustName, setAdjustName] = useState("");
   const [adjustUom, setAdjustUom] = useState("");
-  const { showToast } = useToast();
-  const { user } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [selectedLabelItem, setSelectedLabelItem] = useState<any>(null);
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [showMachineQrModal, setShowMachineQrModal] = useState(false);
-  const [selectedMachineForQr, setSelectedMachineForQr] = useState<any>(null);
   const [showMachineBopModal, setShowMachineBopModal] = useState(false);
   const [selectedMachineForBop, setSelectedMachineForBop] = useState<any>(null);
 
@@ -223,108 +201,206 @@ export default function Warehouse() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleScanSuccess = async (val: string) => {
-    try {
-      let parsed: any;
-      try {
-        parsed = JSON.parse(val);
-      } catch (e) {
-        const found = inventory.find(
-          (i) =>
-            i.item_code === val.trim().toUpperCase() || i.id === val.trim()
-        );
-        if (found) {
-          parsed = { id: found.id, code: found.item_code };
-        } else {
-          showToast(`Unknown code: ${val.trim()}`, "error");
-          return;
-        }
-      }
-
-      if (parsed && (parsed.id || parsed.code)) {
-        const item = inventory.find(
-          (i) => i.id === parsed.id || i.item_code === parsed.code
-        );
-        if (item) {
-          setSelectedItem(item);
-          setConsumeStep("CONSUME");
-          setConsumeQty(parsed.qty ? parsed.qty.toString() : "1");
-          setSearchQuery("");
-          setIsScannerOpen(false);
-          if (parsed.po) {
-            try {
-              const response = await apiFetch(
-                `/api/warehouse/item-allocation-info?po_number=${encodeURIComponent(
-                  parsed.po
-                )}&item_id=${item.id}`,
-                {},
-                user?.username
-              );
-              const data = response.data;
-              if (data?.projects?.length > 0)
-                setSelectedProject(data.projects[0]);
-            } catch (err) {
-              console.error(err);
-            }
-          }
-        } else {
-          showToast("Item not found in inventory.", "error");
-        }
-      }
-    } catch (err) {
-      showToast("Scan error.", "error");
+  // Strict Tab Guard: Engineering & Sales roles without God Mode can only access Inventory Master & Balances (STOCK)
+  useEffect(() => {
+    if (isRestrictedStockOnly && activeTab !== "STOCK") {
+      setActiveTab("STOCK");
     }
-  };
+  }, [isRestrictedStockOnly, activeTab]);
 
-  const fetchInventory = async () => {
+  // Handle deep-link from Engineering BOM or Sales Quotation to open Register SKU modal
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    const openRegisterParam = searchParams.get("openRegister");
+    const prefillNameParam = searchParams.get("prefillName");
+    const prefillTypeParam = searchParams.get("prefillType");
+
+    if (tabParam === "STOCK" && activeTab !== "STOCK") {
+      setActiveTab("STOCK");
+    }
+
+    if (openRegisterParam === "1") {
+      const targetType = isSalesRestricted
+        ? "FINISH_GOOD"
+        : prefillTypeParam
+          ? prefillTypeParam
+          : isEngineeringRestricted
+            ? "RAW"
+            : "FINISH_GOOD";
+
+      setNewItem((prev) => ({
+        ...prev,
+        type: targetType,
+        name: prefillNameParam ? prefillNameParam : prev.name,
+      }));
+      setShowAddModal(true);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("openRegister");
+      nextParams.delete("prefillName");
+      nextParams.delete("prefillType");
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, activeTab, isSalesRestricted, isEngineeringRestricted]);
+
+  const handleScanSuccess = useCallback(
+    async (val: string) => {
+      try {
+        let parsed: any;
+        try {
+          parsed = JSON.parse(val);
+        } catch {
+          const found = inventory.find(
+            (i) =>
+              i.item_code === val.trim().toUpperCase() || i.id === val.trim()
+          );
+          if (found) {
+            parsed = { id: found.id, code: found.item_code };
+          } else {
+            showToast(`Unknown code: ${val.trim()}`, "error");
+            return;
+          }
+        }
+
+        if (parsed && (parsed.id || parsed.code)) {
+          const item = inventory.find(
+            (i) => i.id === parsed.id || i.item_code === parsed.code
+          );
+          if (item) {
+            setSelectedItem(item);
+            setConsumeStep("CONSUME");
+            setConsumeQty(parsed.qty ? parsed.qty.toString() : "1");
+            setSearchQuery("");
+            setIsScannerOpen(false);
+            if (parsed.po) {
+              try {
+                const response = await apiFetch(
+                  `/api/warehouse/item-allocation-info?po_number=${encodeURIComponent(
+                    parsed.po
+                  )}&item_id=${item.id}`,
+                  {},
+                  user?.username
+                );
+                const data = response.data;
+                if (data?.projects?.length > 0)
+                  setSelectedProject(data.projects[0]);
+              } catch (err) {
+                console.error(err);
+              }
+            }
+          } else {
+            showToast("Item not found in inventory.", "error");
+          }
+        }
+      } catch {
+        showToast("Scan error.", "error");
+      }
+    },
+    [inventory, showToast, user?.username]
+  );
+
+  // Core badge & active tab data fetcher (on-demand per tab)
+  const fetchInventory = useCallback(async () => {
     try {
-      refreshCloud(); // Updates localInventory in background
+      refreshCloud();
 
-      const [movData, posData, projData, pendingData, draftDnData] =
-        await Promise.all([
+      const tasks: Promise<void>[] = [];
+
+      if (!isRestrictedStockOnly) {
+        tasks.push(
+          apiFetch("/api/warehouse/pending-incoming", {}, user?.username).then(
+            (pendingData) => {
+              if (pendingData.ok) {
+                setPendingGrns(
+                  Array.isArray(pendingData.data) ? pendingData.data : []
+                );
+              }
+            }
+          ),
+          apiFetch("/api/sales/deliveries", {}, user?.username).then(
+            (draftDnData) => {
+              if (draftDnData.ok) {
+                const allDns = Array.isArray(draftDnData.data)
+                  ? draftDnData.data
+                  : [];
+                setDraftDeliveries(
+                  allDns.filter((d: any) => d.status === "AUTHORIZED")
+                );
+              }
+            }
+          )
+        );
+      }
+
+      if (activeTab === "HISTORY" || activeTab === "TERMINAL") {
+        tasks.push(
           apiFetch(
             `/api/inventory/movements?limit=100&offset=${movementPage * 100}`,
             {},
             user?.username
-          ),
-          apiFetch("/api/purchasing/pos", {}, user?.username),
-          apiFetch("/api/projects", {}, user?.username),
-          apiFetch("/api/warehouse/pending-incoming", {}, user?.username),
-          apiFetch("/api/sales/deliveries", {}, user?.username),
-        ]);
+          ).then((movData) => {
+            if (movData.ok) {
+              if (movData.data?.movements) {
+                setMovements(movData.data.movements);
+                setTotalMovements(movData.data.total || 0);
+              } else if (Array.isArray(movData.data)) {
+                setMovements(movData.data);
+                setTotalMovements(movData.data.length);
+              }
+            }
+          })
+        );
+      }
 
-      if (movData.ok) {
-        if (movData.data?.movements) {
-          setMovements(movData.data.movements);
-          setTotalMovements(movData.data.total || 0);
-        } else if (Array.isArray(movData.data)) {
-          setMovements(movData.data);
-          setTotalMovements(movData.data.length);
-        }
-      }
-      if (posData.ok)
-        setPos(
-          Array.isArray(posData.data)
-            ? posData.data.filter(
-                (p: any) => p.status === "ISSUED" || p.status === "PARTIAL"
-              )
-            : []
+      if (activeTab === "TERMINAL") {
+        tasks.push(
+          apiFetch("/api/projects", {}, user?.username).then((projData) => {
+            if (projData.ok) {
+              setProjects(Array.isArray(projData.data) ? projData.data : []);
+            }
+          })
         );
-      if (projData.ok)
-        setProjects(Array.isArray(projData.data) ? projData.data : []);
-      if (pendingData.ok)
-        setPendingGrns(Array.isArray(pendingData.data) ? pendingData.data : []);
-      if (draftDnData.ok) {
-        const allDns = Array.isArray(draftDnData.data) ? draftDnData.data : [];
-        const activeDispatches = allDns.filter(
-          (d: any) => d.status === "AUTHORIZED"
-        );
-        setDraftDeliveries(activeDispatches);
       }
+
+      if (activeTab === "RESERVATIONS") {
+        tasks.push(
+          apiFetch("/api/inventory/reservations", {}, user?.username).then(
+            (resvData) => {
+              if (resvData.ok) {
+                const list = Array.isArray(resvData.data)
+                  ? resvData.data
+                  : Array.isArray(resvData.data?.data)
+                    ? resvData.data.data
+                    : [];
+                setReservations(list);
+              }
+            }
+          )
+        );
+      }
+
+      await Promise.all(tasks);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [activeTab, movementPage, refreshCloud, user?.username]);
+
+  // Lazy-fetch manpower roster only when Add/Edit item modal is opened
+  useEffect(() => {
+    if ((showAddModal || showEditModal) && manpowerRoster.length === 0) {
+      apiFetch("/api/production/manpower", {}, user?.username).then(
+        (mpData) => {
+          if (mpData.ok) {
+            const mpList = Array.isArray(mpData.data)
+              ? mpData.data
+              : Array.isArray((mpData.data as any)?.data)
+                ? (mpData.data as any).data
+                : [];
+            setManpowerRoster(mpList);
+          }
+        }
+      );
+    }
+  }, [showAddModal, showEditModal, manpowerRoster.length, user?.username]);
 
   useEffect(() => {
     if (selectedProject) {
@@ -336,7 +412,7 @@ export default function Warehouse() {
     } else {
       setActiveProjectBOM([]);
     }
-  }, [selectedProject]);
+  }, [selectedProject, user?.username]);
 
   const [intakeLabels, setIntakeLabels] = useState<any[]>([]);
   const [intakePoNumber, setIntakePoNumber] = useState("");
@@ -344,7 +420,7 @@ export default function Warehouse() {
   const [intakeGrnId, setIntakeGrnId] = useState("");
   const [intakeReceivedDate, setIntakeReceivedDate] = useState("");
 
-  const handleOpenPoLabelFromHistory = (mov: any) => {
+  const handleOpenPoLabelFromHistory = useCallback((mov: any) => {
     setIntakeLabels([
       {
         id: mov.id || `LBL-${Date.now().toString(36).toUpperCase()}`,
@@ -360,80 +436,151 @@ export default function Warehouse() {
       },
     ]);
     setIntakePoNumber(mov.po_number || "PO-REF");
-    setIntakeSupplierName(mov.supplier_name || "Supplier Mitra");
+    setIntakeSupplierName(mov.supplier_name || "Partner Supplier");
     setIntakeGrnId(mov.reference_id || "-");
     setIntakeReceivedDate(mov.created_at || new Date().toISOString());
     setShowItemLabelsModal(true);
-  };
+  }, []);
 
-  const handleReturnGrn = async (grnId: string) => {
-    setIsSubmitting(true);
-    try {
-      const res = await apiFetch(
-        "/api/warehouse/return-grn",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            grn_id: grnId,
-            recorded_by: user?.username || "SYSTEM",
-          }),
-        },
-        user?.username
-      );
-      if (res.ok) {
-        showToast("GRN items successfully marked as returned / rejected", "info");
-        fetchInventory();
-      } else {
-        showToast(res.error || "Failed to return GRN", "error");
-      }
-    } catch (err) {
-      console.error(err);
-      showToast("Error returning GRN items", "error");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleIntakeGrn = async (grnId: string) => {
-    setIsSubmitting(true);
-    try {
-      const res = await apiFetch(
-        "/api/warehouse/intake-grn",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            grn_id: grnId,
-            recorded_by: user?.username || "SYSTEM",
-          }),
-        },
-        user?.username
-      );
-      if (res.ok) {
-        const data = res.data;
-        showToast("GRN items successfully intaken into inventory!", "success");
-        fetchInventory();
-        if (data.labels && data.labels.length > 0) {
-          setIntakeLabels(data.labels);
-          setIntakePoNumber(data.po_number || "");
-          setIntakeSupplierName(data.supplier_name || "");
-          setIntakeGrnId(data.grn_id || grnId);
-          setIntakeReceivedDate(data.received_date || new Date().toISOString());
-          setShowItemLabelsModal(true);
+  const handleReturnGrn = useCallback(
+    async (grnId: string) => {
+      setIsSubmitting(true);
+      try {
+        const res = await apiFetch(
+          "/api/warehouse/return-grn",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              grn_id: grnId,
+              recorded_by: user?.username || "SYSTEM",
+            }),
+          },
+          user?.username
+        );
+        if (res.ok) {
+          showToast(
+            "GRN items successfully marked as returned / rejected",
+            "info"
+          );
+          fetchInventory();
+        } else {
+          showToast(res.error || "Failed to return GRN", "error");
         }
-      } else {
-        showToast(res.error || "Failed to intake GRN", "error");
+      } catch (err) {
+        console.error(err);
+        showToast("Error returning GRN items", "error");
+      } finally {
+        setIsSubmitting(false);
       }
-    } catch (err) {
-      console.error(err);
-      showToast("Error processing intake", "error");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    },
+    [fetchInventory, showToast, user?.username]
+  );
+
+  const handleUpdateGrnQcStatus = useCallback(
+    async (grnId: string, qcStatus: string) => {
+      try {
+        const res = await apiFetch(
+          `/api/purchasing/grn/${grnId}/qc-inspect`,
+          {
+            method: "POST",
+            body: JSON.stringify({ qc_status: qcStatus }),
+          },
+          user?.username
+        );
+        if (res.ok) {
+          showToast(`GRN QC status updated to ${qcStatus}`, "success");
+          fetchInventory();
+        } else {
+          showToast(res.error || "Failed to update GRN QC status", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showToast("Failed to update GRN QC status", "error");
+      }
+    },
+    [fetchInventory, showToast, user?.username]
+  );
+
+  const handleIntakeGrn = useCallback(
+    async (grnId: string) => {
+      setIsSubmitting(true);
+      try {
+        const res = await apiFetch(
+          "/api/warehouse/intake-grn",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              grn_id: grnId,
+              recorded_by: user?.username || "SYSTEM",
+            }),
+          },
+          user?.username
+        );
+        if (res.ok) {
+          const data = res.data;
+          showToast("GRN items successfully intaken into inventory!", "success");
+          fetchInventory();
+          if (data.labels && data.labels.length > 0) {
+            setIntakeLabels(data.labels);
+            setIntakePoNumber(data.po_number || "");
+            setIntakeSupplierName(data.supplier_name || "");
+            setIntakeGrnId(data.grn_id || grnId);
+            setIntakeReceivedDate(
+              data.received_date || new Date().toISOString()
+            );
+            setShowItemLabelsModal(true);
+          }
+        } else {
+          showToast(res.error || "Failed to intake GRN", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showToast("Error processing intake", "error");
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [fetchInventory, showToast, user?.username]
+  );
+
+  const handleAllocateReservation = useCallback(
+    async (reservationId: string) => {
+      setIsSubmitting(true);
+      try {
+        const res = await apiFetch(
+          `/api/warehouse/reservations/${reservationId}/allocate`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              recorded_by: user?.username || "WAREHOUSE_STAFF",
+            }),
+          },
+          user?.username
+        );
+        if (res.ok && res.data?.ok) {
+          showToast(
+            res.data.message || "Free stock allocated to project reservation!",
+            "success"
+          );
+          fetchInventory();
+        } else {
+          showToast(
+            res.error || res.data?.error || "Failed to allocate free stock",
+            "error"
+          );
+        }
+      } catch (err: any) {
+        showToast(err.message || "Error allocating reservation", "error");
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [fetchInventory, showToast, user?.username]
+  );
 
   useEffect(() => {
     fetchInventory();
-  }, [movementPage]);
+  }, [fetchInventory]);
 
   useEffect(() => {
     if (user?.username) setRecordedBy(user.username);
@@ -468,13 +615,12 @@ export default function Warehouse() {
           "success"
         );
         setShowUploadDnModal(false);
-        setDnUploadFile(null);
         setSelectedDn(null);
         fetchInventory();
       } else {
         showToast(res.error || "Failed", "error");
       }
-    } catch (err) {
+    } catch {
       showToast("Error processing digital authorization", "error");
     } finally {
       setIsUploadingDn(false);
@@ -545,7 +691,6 @@ export default function Warehouse() {
       if (e.key === "Enter" && consumeStep === "SUCCESS") {
         setConsumeStep("IDLE");
         setSelectedItem(null);
-        setScanInput("");
         setConsumeQty("1");
       }
     };
@@ -553,41 +698,63 @@ export default function Warehouse() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [consumeStep]);
 
-  const handleDeleteItem = (id: string, itemCode: string) => {
-    setConfirmModal({
-      isOpen: true,
-      title: `Delete SKU: ${itemCode}?`,
-      message: `Are you sure you want to permanently delete item ${itemCode} from the master inventory? This action cannot be undone.`,
-      action: async () => {
-        try {
-          const res = await apiFetch(
-            `/api/items/${id}`,
-            { method: "DELETE" },
-            user?.username
-          );
-          if (res.ok) {
-            showToast(`Item ${itemCode} deleted successfully`, "success");
-            fetchInventory();
-          } else {
-            showToast(res.error || "Failed to delete item", "error");
+  const handleDeleteItem = useCallback(
+    (id: string, itemCode: string) => {
+      setConfirmModal({
+        isOpen: true,
+        title: `Delete SKU: ${itemCode}?`,
+        message: `Are you sure you want to permanently delete item ${itemCode} from the master inventory? This action cannot be undone.`,
+        action: async () => {
+          try {
+            const res = await apiFetch(
+              `/api/items/${id}`,
+              { method: "DELETE" },
+              user?.username
+            );
+            if (res.ok) {
+              showToast(`Item ${itemCode} deleted successfully`, "success");
+              fetchInventory();
+            } else {
+              showToast(res.error || "Failed to delete item", "error");
+            }
+          } catch (err) {
+            console.error(err);
+            showToast("Error deleting item", "error");
           }
-        } catch (err) {
-          console.error(err);
-          showToast("Error deleting item", "error");
-        }
-        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-      },
-    });
-  };
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        },
+      });
+    },
+    [fetchInventory, showToast, user?.username]
+  );
 
-  const handleOpenEditItem = (item: InventoryItem) => {
+  const handleOpenEditItem = useCallback((item: WarehouseInventoryItem) => {
     setItemToEdit({
       ...item,
       bypass_multi_station:
         item.bypass_multi_station === 1 || item.bypass_multi_station === true,
     });
     setShowEditModal(true);
-  };
+  }, []);
+
+  const handleOpenBopModal = useCallback((item: WarehouseInventoryItem) => {
+    setSelectedMachineForBop(item);
+    setShowMachineBopModal(true);
+  }, []);
+
+  const handleOpenLabelModal = useCallback((item: WarehouseInventoryItem) => {
+    setSelectedLabelItem(item);
+    setShowLabelModal(true);
+  }, []);
+
+  const handleOpenAdjustModal = useCallback((item: WarehouseInventoryItem) => {
+    setSelectedItem(item);
+    setAdjustQty((item.free_stock ?? 0).toString());
+    setAdjustName(item.name || "");
+    setAdjustUom(item.uom || "");
+    setAdjustReason("STOCK_TAKE");
+    setShowAdjustModal(true);
+  }, []);
 
   const handleUpdateItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -637,10 +804,14 @@ export default function Warehouse() {
     if (e && typeof e.preventDefault === "function") {
       e.preventDefault();
     }
-    const itemToSubmit = (e && typeof e === "object" && e.item_code) ? e : newItem;
+    const itemToSubmit =
+      e && typeof e === "object" && e.item_code ? e : newItem;
 
     if (!itemToSubmit.item_code || !itemToSubmit.name || !itemToSubmit.uom) {
-      showToast("Kode SKU, Nama Barang, dan Satuan (UOM) wajib diisi", "error");
+      showToast(
+        "SKU Code, Item Name, and Unit of Measure (UOM) are required",
+        "error"
+      );
       return;
     }
 
@@ -670,17 +841,19 @@ export default function Warehouse() {
       );
 
       if (res.ok) {
-        showToast(`Item ${payload.item_code} added successfully`, "success");
+        const assignedCode = (res.data as any)?.item_code || payload.item_code;
+        showToast(`Item ${assignedCode} added successfully`, "success");
         setShowAddModal(false);
         setNewItem({
           item_code: "",
           name: "",
           uom: "PCS",
-          type: "RAW",
+          type: "FINISH_GOOD",
           dimension: "",
           spec: "",
           item_type: "MATERIAL",
           machine_category: "",
+          assigned_operator: "",
           serial_number: "",
           manufacturer: "",
           bypass_multi_station: false,
@@ -758,205 +931,212 @@ export default function Warehouse() {
     }
   };
 
-  const handleOpenAdjustModal = (item: InventoryItem) => {
-    setSelectedItem(item);
-    setAdjustQty((item.free_stock ?? 0).toString());
-    setAdjustName(item.name || "");
-    setAdjustUom(item.uom || "");
-    setAdjustReason("STOCK_TAKE");
-    setShowAdjustModal(true);
-  };
+  // Single-pass O(N) computation for all inventory category counts & stock alerts
+  const inventoryStats = useMemo(() => {
+    let fgCount = 0;
+    let mcCount = 0;
+    let rawCount = 0;
+    let consumableCount = 0;
+    let lowStockCount = 0;
+    let zeroStockCount = 0;
 
-  const ASSET_FILTER_OPTIONS = [
-    { id: "ALL", label: "All Items / SKUs", icon: Package },
-    { id: "RAW", label: "Raw Materials", icon: Boxes },
-    { id: "FINISH_GOOD", label: "Finished Goods", icon: ShieldCheck },
-    { id: "MACHINE", label: "Machines", icon: Cpu },
-    { id: "TOOL", label: "Tools", icon: Wrench },
-    { id: "CONSUMABLE", label: "Consumables", icon: CheckCircle2 },
-    { id: "SPAREPART", label: "Spareparts", icon: Settings2 },
-  ];
+    for (let idx = 0; idx < inventory.length; idx++) {
+      const i = inventory[idx];
+      const code = (i.item_code || "").toUpperCase();
+      const cat = (i.category || "").toUpperCase();
+      const isFg =
+        i.type === "FINISH_GOOD" ||
+        i.type === "FINISHED" ||
+        code.startsWith("FG - ") ||
+        code.startsWith("FG-");
+      const isMc =
+        i.type === "MACHINE" ||
+        i.item_type === "MACHINE" ||
+        Boolean(i.machine_category) ||
+        code.startsWith("MC - ") ||
+        code.startsWith("MC-") ||
+        cat.includes("MACHIN");
+      const isConsumable =
+        i.type === "CONSUMABLE" ||
+        cat === "CONSUMABLE" ||
+        code.startsWith("CS - ") ||
+        code.startsWith("CS-");
+      const isRaw =
+        !isFg &&
+        !isMc &&
+        !isConsumable &&
+        (i.type === "RAW" ||
+          cat === "RAW" ||
+          code.startsWith("RW - ") ||
+          code.startsWith("RW-") ||
+          code.startsWith("RM - ") ||
+          code.startsWith("RM-"));
 
-  const filteredInventory = useMemo(
-    () =>
-      inventory.filter((item) => {
-        const query = searchQuery.toLowerCase().trim();
-        const matchesQuery =
-          !query ||
-          (item.item_code && item.item_code.toLowerCase().includes(query)) ||
-          (item.name && item.name.toLowerCase().includes(query)) ||
-          (item.spec && item.spec.toLowerCase().includes(query)) ||
-          (item.dimension && item.dimension.toLowerCase().includes(query)) ||
-          (item.machine_category &&
-            item.machine_category.toLowerCase().includes(query));
+      if (isFg) fgCount++;
+      if (isMc) mcCount++;
+      if (isRaw) rawCount++;
+      if (isConsumable) consumableCount++;
 
-        const isMachine =
+      if (!isMc) {
+        const free = i.free_stock ?? 0;
+        if (free < 5) lowStockCount++;
+        if (free === 0) zeroStockCount++;
+      }
+    }
+
+    return {
+      fgCount,
+      mcCount,
+      rawCount,
+      consumableCount,
+      lowStockCount,
+      zeroStockCount,
+    };
+  }, [inventory]);
+
+  const filteredInventory = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+    return inventory.filter((item) => {
+      const matchesQuery =
+        !query ||
+        (item.item_code && item.item_code.toLowerCase().includes(query)) ||
+        (item.name && item.name.toLowerCase().includes(query)) ||
+        (item.spec && item.spec.toLowerCase().includes(query)) ||
+        (item.dimension && item.dimension.toLowerCase().includes(query)) ||
+        (item.machine_category &&
+          item.machine_category.toLowerCase().includes(query));
+
+      if (!matchesQuery) return false;
+      if (selectedTypeFilter === "ALL") return true;
+
+      const code = (item.item_code || "").toUpperCase();
+      const cat = (item.category || "").toUpperCase();
+      if (selectedTypeFilter === "MACHINE") {
+        return (
           item.type === "MACHINE" ||
           item.item_type === "MACHINE" ||
           Boolean(item.machine_category) ||
-          Boolean(item.category && item.category.toLowerCase().includes("machin"));
-        const matchesType =
-          selectedTypeFilter === "ALL"
-            ? true
-            : selectedTypeFilter === "MACHINE"
-            ? isMachine
-            : item.type === selectedTypeFilter;
-
-        return matchesQuery && matchesType;
-      }),
-    [inventory, searchQuery, selectedTypeFilter]
-  );
-
-  const lowStockCount = useMemo(
-    () => inventory.filter((i) => (i.free_stock ?? 0) < 5 && i.type !== "MACHINE").length,
-    [inventory]
-  );
-
-  const zeroStockCount = useMemo(
-    () => inventory.filter((i) => (i.free_stock ?? 0) === 0 && i.type !== "MACHINE").length,
-    [inventory]
-  );
+          code.startsWith("MC - ") ||
+          code.startsWith("MC-") ||
+          cat.includes("MACHIN")
+        );
+      }
+      if (selectedTypeFilter === "FINISH_GOOD") {
+        return (
+          item.type === "FINISH_GOOD" ||
+          item.type === "FINISHED" ||
+          code.startsWith("FG - ") ||
+          code.startsWith("FG-")
+        );
+      }
+      if (selectedTypeFilter === "CONSUMABLE") {
+        return (
+          item.type === "CONSUMABLE" ||
+          cat === "CONSUMABLE" ||
+          code.startsWith("CS - ") ||
+          code.startsWith("CS-")
+        );
+      }
+      if (selectedTypeFilter === "SPAREPART") {
+        return (
+          item.type === "SPAREPART" ||
+          cat === "SPAREPART" ||
+          code.startsWith("SP - ") ||
+          code.startsWith("SP-")
+        );
+      }
+      if (selectedTypeFilter === "TOOL") {
+        return (
+          item.type === "TOOL" ||
+          cat === "TOOL" ||
+          code.startsWith("TL - ") ||
+          code.startsWith("TL-")
+        );
+      }
+      if (selectedTypeFilter === "RAW") {
+        return (
+          (item.type === "RAW" ||
+            cat === "RAW" ||
+            code.startsWith("RW - ") ||
+            code.startsWith("RW-") ||
+            code.startsWith("RM - ") ||
+            code.startsWith("RM-")) &&
+          !code.startsWith("CS") &&
+          !code.startsWith("SP") &&
+          !code.startsWith("TL")
+        );
+      }
+      return item.type === selectedTypeFilter || cat === selectedTypeFilter;
+    });
+  }, [inventory, searchQuery, selectedTypeFilter]);
 
   return (
-    <div className="space-y-12 pb-20 animate-in fade-in duration-500">
+    <div className="space-y-5 pb-20 animate-in fade-in duration-300">
       <PageHeader
-        title="Warehouse & Inventory Ledger"
-        subtitle="Item inventory and stock balances"
-        icon={<Package className="w-6 h-6" />}
+        title={
+          isRestrictedStockOnly
+            ? "Inventory Balances"
+            : "Warehouse & Inventory"
+        }
+        subtitle="Stock balances & movement ledger"
+        icon={<Package className="w-5 h-5" />}
         actions={
-          <div className="flex gap-2">
-            <button
-              disabled={!hasPermission(user, Action.WAREHOUSE_ACTION)}
-              onClick={() => setShowAddModal(true)}
-              className="px-8 py-3 bg-stone-900 text-white text-sm font-bold rounded-2xl hover:bg-stone-800 transition-all active:scale-95 flex items-center gap-2 shadow-xs disabled:opacity-50"
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              disabled={!user}
+              onClick={() => {
+                if (isSalesRestricted) {
+                  setNewItem((prev) => ({ ...prev, type: "FINISH_GOOD" }));
+                } else if (isEngineeringRestricted) {
+                  setNewItem((prev) => ({ ...prev, type: "RAW" }));
+                }
+                setShowAddModal(true);
+              }}
+              leftIcon={<Plus className="w-4 h-4" />}
             >
-              <Plus className="w-5 h-5" /> Register Item / SKU
-            </button>
+              Register Item / SKU
+            </Button>
           </div>
         }
       />
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="card-elegant p-8 rounded-[2rem]">
-          <div className="flex items-start justify-between mb-6">
-            <div className="p-3 bg-stone-50 rounded-2xl flex items-center justify-center">
-              <Package className="w-5 h-5 text-stone-600" />
-            </div>
-            <span className="text-[10px] font-bold text-stone-400 tracking-[0.2em] font-mono">
-              01
-            </span>
-          </div>
-          <div className="text-[10px] text-stone-400 font-bold mb-1 uppercase tracking-[0.2em]">
-            Total Master SKUs
-          </div>
-          <div className="text-2xl font-light text-stone-900 tracking-tighter leading-none">
-            {inventory.length}
-            <span className="text-sm font-bold text-stone-400 ml-3 uppercase tracking-widest">
-              registered items
-            </span>
-          </div>
-        </div>
-
-        <div className="card-elegant p-8 rounded-[2rem]">
-          <div className="flex items-start justify-between mb-6">
-            <div
-              className={cn(
-                "p-3 rounded-2xl flex items-center justify-center",
-                lowStockCount > 0 ? "bg-rose-50" : "bg-stone-50"
-              )}
-            >
-              <AlertTriangle
-                className={cn(
-                  "w-5 h-5",
-                  lowStockCount > 0 ? "text-rose-600" : "text-stone-400"
-                )}
-              />
-            </div>
-            <span className="text-[10px] font-bold text-stone-400 tracking-[0.2em] font-mono">
-              02
-            </span>
-          </div>
-          <div className="text-[10px] text-stone-400 font-bold mb-1 uppercase tracking-[0.2em]">
-            Critical Stock Alerts
-          </div>
-          <div className="flex items-baseline gap-3">
-            <div
-              className={cn(
-                "text-2xl font-light tracking-tighter leading-none",
-                lowStockCount > 0 ? "text-rose-600" : "text-stone-900"
-              )}
-            >
-              {lowStockCount}
-            </div>
-            <span className="text-xs font-bold text-stone-400 uppercase tracking-widest leading-none mt-2">
-              items &lt; 5 units
-            </span>
-          </div>
-        </div>
-
-        <div className="card-elegant p-8 rounded-[2rem]">
-          <div className="flex items-start justify-between mb-6">
-            <div className="p-3 bg-stone-50 rounded-2xl flex items-center justify-center">
-              <Boxes className="w-5 h-5 text-stone-600" />
-            </div>
-            <span className="text-[10px] font-bold text-stone-400 tracking-[0.2em] font-mono">
-              03
-            </span>
-          </div>
-          <div className="text-[10px] text-stone-400 font-bold mb-1 uppercase tracking-[0.2em]">
-            Zero Stock / Out of Stock
-          </div>
-          <div className="flex items-baseline gap-3">
-            <div className="text-2xl font-light text-stone-900 tracking-tighter leading-none">
-              {zeroStockCount}
-            </div>
-            <span className="text-xs font-bold text-stone-400 uppercase tracking-widest leading-none mt-2">
-              awaiting intake / PO
-            </span>
-          </div>
-        </div>
-      </div>
-
       {/* Search & Tabs */}
-      <div className="card-elegant rounded-[2rem] overflow-hidden">
-        <div className="px-8 py-8 flex flex-col xl:flex-row xl:items-center justify-between gap-6 bg-white">
-          <div className="flex gap-2">
+      <div className="card-elegant rounded-xl sm:rounded-2xl overflow-hidden">
+        <div className="px-3 py-2.5 sm:px-4 sm:py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-2 bg-white border-b border-stone-200/80">
+          <div className="flex items-center flex-nowrap gap-1 bg-stone-100 p-1 rounded-lg sm:rounded-xl border border-stone-200/70 overflow-x-auto scrollbar-hide shrink-0">
             {[
               { id: "STOCK", label: "Inventory Master & Balances" },
-              { id: "PENDING", label: "QC & Intake" },
+              { id: "PENDING", label: "Material Intake" },
               { id: "TERMINAL", label: "Terminal OPS" },
               { id: "HISTORY", label: "Movement Logs" },
               { id: "RESERVATIONS", label: "Project Allocations" },
             ]
               .filter((tab) => {
-                if (
-                  !hasGodMode(user) &&
-                  !hasPermission(user, Action.WAREHOUSE_ACTION)
-                ) {
-                  return tab.id === "STOCK";
+                if (isWarehouseFullAccess) {
+                  return true;
                 }
-                return true;
+                return tab.id === "STOCK";
               })
               .map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
                   className={cn(
-                    "px-5 py-3 text-[10px] font-bold transition-all rounded-xl relative tracking-[0.2em] uppercase",
+                    "px-2.5 xl:px-3 py-1.5 text-[11px] font-bold transition-all rounded-lg relative tracking-wide uppercase whitespace-nowrap shrink-0",
                     activeTab === tab.id
-                      ? "bg-white shadow-sm border-stone-200 text-stone-900 ring-1 ring-stone-900/5"
-                      : "text-stone-500 hover:bg-stone-100 border-transparent"
+                      ? "bg-white shadow-2xs text-stone-900 border border-stone-200/80"
+                      : "text-stone-500 hover:text-stone-900 border border-transparent"
                   )}
                 >
                   {tab.label}
                   {tab.id === "PENDING" && pendingGrns.length > 0 && (
-                    <span className="ml-2 bg-stone-900 text-white rounded-lg px-2 py-0.5 text-[8px] font-bold">
+                    <span className="ml-1.5 bg-emerald-600 text-white rounded-md px-1.5 py-0.5 text-[9px] font-mono tabular-nums font-bold">
                       {pendingGrns.length}
                     </span>
                   )}
                   {tab.id === "TERMINAL" && draftDeliveries.length > 0 && (
-                    <span className="ml-2 bg-stone-900 text-white rounded-lg px-2 py-0.5 text-[8px] font-bold">
+                    <span className="ml-1.5 bg-amber-600 text-white rounded-md px-1.5 py-0.5 text-[9px] font-mono tabular-nums font-bold">
                       {draftDeliveries.length}
                     </span>
                   )}
@@ -964,21 +1144,21 @@ export default function Warehouse() {
               ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 relative max-w-lg w-full justify-end">
+          <div className="flex items-center gap-1.5 sm:gap-2 relative shrink-0 justify-between sm:justify-end w-full lg:w-auto">
             {activeTab === "STOCK" && (
-              <div className="relative" ref={filterDropdownRef}>
+              <div className="relative shrink-0" ref={filterDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
                   className={cn(
-                    "flex items-center gap-2.5 bg-white px-3.5 py-2.5 border rounded-xl shrink-0 shadow-xs transition-all text-xs font-bold uppercase tracking-wider cursor-pointer active:scale-95",
+                    "h-9 flex items-center gap-1.5 bg-white px-2.5 py-1.5 border rounded-lg shrink-0 shadow-2xs transition-all text-[10px] sm:text-[11px] font-bold uppercase tracking-wide cursor-pointer active:scale-95 whitespace-nowrap",
                     isFilterDropdownOpen
                       ? "border-stone-900 text-stone-900 ring-2 ring-stone-900/5"
                       : "border-stone-200 hover:border-stone-300 text-stone-700"
                   )}
                 >
                   <Filter className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                  <span className="font-bold tracking-wide">
+                  <span className="font-bold tracking-wide truncate max-w-[110px] sm:max-w-none">
                     {ASSET_FILTER_OPTIONS.find(
                       (o) => o.id === selectedTypeFilter
                     )?.label || "All Items"}
@@ -992,13 +1172,38 @@ export default function Warehouse() {
                 </button>
 
                 {isFilterDropdownOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-stone-200 rounded-xl shadow-xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-1.5 w-52 bg-white border border-stone-200 rounded-xl shadow-xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
                     <div className="px-3.5 py-1.5 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-100 mb-1">
                       Filter Category
                     </div>
                     {ASSET_FILTER_OPTIONS.map((opt) => {
                       const isSelected = selectedTypeFilter === opt.id;
                       const Icon = opt.icon;
+                      const count =
+                        opt.id === "ALL"
+                          ? inventory.length
+                          : opt.id === "FINISH_GOOD"
+                            ? inventoryStats.fgCount
+                            : opt.id === "MACHINE"
+                              ? inventoryStats.mcCount
+                              : opt.id === "RAW"
+                                ? inventoryStats.rawCount
+                                : opt.id === "CONSUMABLE"
+                                  ? inventoryStats.consumableCount
+                                  : opt.id === "SPAREPART"
+                                    ? inventory.filter((i) => {
+                                        const code = (i.item_code || "").toUpperCase();
+                                        const cat = (i.category || "").toUpperCase();
+                                        return i.type === "SPAREPART" || cat === "SPAREPART" || code.startsWith("SP - ") || code.startsWith("SP-");
+                                      }).length
+                                    : opt.id === "TOOL"
+                                      ? inventory.filter((i) => {
+                                          const code = (i.item_code || "").toUpperCase();
+                                          const cat = (i.category || "").toUpperCase();
+                                          return i.type === "TOOL" || cat === "TOOL" || code.startsWith("TL - ") || code.startsWith("TL-");
+                                        }).length
+                                      : inventory.filter((i) => i.type === opt.id)
+                                          .length;
                       return (
                         <button
                           key={opt.id}
@@ -1008,9 +1213,9 @@ export default function Warehouse() {
                             setIsFilterDropdownOpen(false);
                           }}
                           className={cn(
-                            "w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors",
+                            "w-full px-3.5 py-2 text-left text-xs flex items-center justify-between transition-colors cursor-pointer",
                             isSelected
-                              ? "bg-stone-900 text-white font-bold"
+                              ? "bg-emerald-50 text-emerald-900 font-bold"
                               : "text-stone-700 hover:bg-stone-100 font-medium"
                           )}
                         >
@@ -1018,14 +1223,26 @@ export default function Warehouse() {
                             <Icon
                               className={cn(
                                 "w-3.5 h-3.5",
-                                isSelected ? "text-white" : "text-stone-400"
+                                isSelected ? "text-emerald-700" : "text-stone-400"
                               )}
                             />
                             <span>{opt.label}</span>
                           </span>
-                          {isSelected && (
-                            <Check className="w-3.5 h-3.5 text-white shrink-0" />
-                          )}
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className={cn(
+                                "px-1.5 py-0.5 rounded text-[10px] font-mono tabular-nums",
+                                isSelected
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-stone-100 text-stone-600"
+                              )}
+                            >
+                              {count}
+                            </span>
+                            {isSelected && (
+                              <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                            )}
+                          </span>
                         </button>
                       );
                     })}
@@ -1033,307 +1250,39 @@ export default function Warehouse() {
                 )}
               </div>
             )}
-            <div className="relative flex-1 min-w-[180px] group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-              <input
+            <div className="flex-1 sm:flex-initial sm:w-44 xl:w-48 min-w-0">
+              <Input
                 type="text"
-                placeholder="Search code, name, spec..."
+                placeholder="Search SKU, item..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-2.5 bg-stone-50 border border-stone-100 rounded-xl text-[12px] font-bold text-stone-900 focus:bg-white focus:border-stone-900/20 outline-none transition-all"
+                leftIcon={<Search className="w-3.5 h-3.5" />}
+                className="h-9 text-xs py-1.5"
               />
             </div>
-            <button
+            <Button
+              variant="secondary"
+              size="icon"
               onClick={fetchInventory}
-              className="w-10 h-10 bg-stone-50 border border-stone-100 flex items-center justify-center rounded-xl text-stone-400 hover:text-stone-900 transition-all active:scale-95 shrink-0"
               title="Refresh"
             >
-              <History className="w-4 h-4" />
-            </button>
+              <History className="w-3.5 h-3.5" />
+            </Button>
           </div>
         </div>
 
         <div>
           {activeTab === "STOCK" ? (
-            <div className="px-10 pb-12 space-y-6">
-              <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-stone-100">
-                      <th className="py-6 pr-6 text-[9px] text-stone-400 font-bold uppercase tracking-[0.2em]">
-                        Item & SKU Details
-                      </th>
-                      <th className="py-6 px-6 text-[9px] text-stone-400 font-bold uppercase tracking-[0.2em]">
-                        Asset Class
-                      </th>
-                      <th className="py-6 px-6 text-[9px] text-stone-400 font-bold uppercase tracking-[0.2em] text-right">
-                        Unit Price
-                      </th>
-                      <th className="py-6 px-6 text-[9px] text-stone-400 font-bold uppercase tracking-[0.2em] text-right">
-                        Stock Balances
-                      </th>
-                      <th className="py-6 pl-6 text-[9px] text-stone-400 font-bold uppercase tracking-[0.2em] text-center">
-                        Action Protocol
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100/60">
-                    {isLoading ? (
-                      <tr>
-                        <td colSpan={5}>
-                          <Loader
-                            text="Syncing inventory ledger..."
-                            className="py-32"
-                          />
-                        </td>
-                      </tr>
-                    ) : filteredInventory.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="py-32 text-center text-stone-400 font-bold uppercase tracking-[0.2em]"
-                          style={{ fontSize: "10px" }}
-                        >
-                          No items or SKUs found. Click &quot;Register Item&quot; to add.
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredInventory.map((item) => {
-                        const isMachine =
-                          item.type === "MACHINE" ||
-                          item.item_type === "MACHINE" ||
-                          Boolean(item.machine_category) ||
-                          Boolean(item.category && item.category.toLowerCase().includes("machin"));
-                        const freeStock = item.free_stock ?? 0;
-                        const allocatedStock = item.allocated_stock ?? item.reserved_qty ?? 0;
-                        const physicalStock = item.physical_qty ?? (freeStock + allocatedStock);
-
-                        return (
-                          <tr
-                            key={item.id}
-                            className="hover:bg-stone-50/50 transition-colors group"
-                          >
-                            {/* Item & SKU Details */}
-                            <td className="py-6 pr-6">
-                              <div className="flex items-center gap-2 mb-1.5">
-                                <span className="px-2 py-0.5 rounded-md bg-stone-100 text-[10px] font-bold font-mono text-stone-800 tracking-[0.1em] border border-stone-200">
-                                  {item.item_code}
-                                </span>
-                                {isMachine && item.bypass_multi_station ? (
-                                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
-                                    Bypass Multi-Station
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div className="text-base font-bold text-stone-950 uppercase tracking-tight">
-                                {item.name}
-                              </div>
-                              <div className="text-[10px] text-stone-400 mt-1.5 tracking-wide font-medium flex flex-wrap items-center gap-2">
-                                {isMachine ? (
-                                  <>
-                                    <span className="text-blue-700 font-bold">
-                                      {item.machine_category || "GENERAL MACHINE"}
-                                    </span>
-                                    {item.manufacturer && (
-                                      <>
-                                        <div className="w-1 h-1 rounded-full bg-stone-300" />
-                                        <span>Mfr: {item.manufacturer}</span>
-                                      </>
-                                    )}
-                                    {item.serial_number && (
-                                      <>
-                                        <div className="w-1 h-1 rounded-full bg-stone-300" />
-                                        <span>SN: {item.serial_number}</span>
-                                      </>
-                                    )}
-                                    {item.spec && (
-                                      <>
-                                        <div className="w-1 h-1 rounded-full bg-stone-300" />
-                                        <span>{item.spec}</span>
-                                      </>
-                                    )}
-                                  </>
-                                ) : (
-                                  <>
-                                    {item.dimension && (
-                                      <>
-                                        <span>{item.dimension}</span>
-                                        <div className="w-1 h-1 rounded-full bg-stone-300" />
-                                      </>
-                                    )}
-                                    <span>{item.spec || "Standard Spec"}</span>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Asset Class & Status */}
-                            <td className="py-6 px-6">
-                              {isMachine ? (
-                                <div className="flex flex-col gap-1.5 items-start">
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[9px] font-black bg-blue-50 ring-1 ring-blue-200 text-blue-900 tracking-[0.1em] uppercase">
-                                    <Cpu className="w-3 h-3 text-blue-700" /> MACHINE
-                                  </span>
-                                  <span
-                                    className={cn(
-                                      "text-[8px] font-bold uppercase px-2 py-0.5 rounded-md tracking-wider",
-                                      item.machine_status === "ASSIGNED"
-                                        ? "bg-indigo-100 text-indigo-800"
-                                        : item.machine_status === "RUNNING"
-                                        ? "bg-purple-100 text-purple-800"
-                                        : item.machine_status === "MAINTENANCE"
-                                        ? "bg-amber-100 text-amber-800"
-                                        : item.machine_status === "BROKEN"
-                                        ? "bg-rose-100 text-rose-800"
-                                        : "bg-emerald-100 text-emerald-800"
-                                    )}
-                                  >
-                                    {item.machine_status || item.operational_status || "AVAILABLE"}
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="flex flex-col gap-1.5 items-start">
-                                  <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-[9px] font-bold bg-white ring-1 ring-stone-200 text-stone-700 tracking-[0.1em] uppercase">
-                                    {item.type || "RAW"}
-                                  </span>
-                                  <span
-                                    className={cn(
-                                      "text-[8px] font-bold uppercase px-2 py-0.5 rounded-md tracking-wider",
-                                      freeStock <= 0
-                                        ? "bg-stone-100 text-stone-600 border border-stone-200"
-                                        : freeStock < 5
-                                        ? "bg-amber-100 text-amber-800 border border-amber-200"
-                                        : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                    )}
-                                  >
-                                    {freeStock <= 0
-                                      ? "Out of Stock"
-                                      : freeStock < 5
-                                      ? "Low Stock"
-                                      : "In Stock"}
-                                  </span>
-                                </div>
-                              )}
-                            </td>
-
-                            {/* Unit Price */}
-                            <td className="py-6 px-6 text-right">
-                              <div className="font-mono text-sm font-bold text-stone-900">
-                                {formatIDR(item.unit_price || 0)}
-                              </div>
-                              <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider block mt-1">
-                                Per {item.uom || "UNIT"}
-                              </span>
-                            </td>
-
-                            {/* Stock Balances */}
-                            <td className="py-6 px-6 text-right">
-                              <div className="flex flex-col items-end">
-                                <div
-                                  className={cn(
-                                    "text-xl font-bold font-mono tabular-nums leading-none",
-                                    freeStock <= 0
-                                      ? "text-stone-400"
-                                      : freeStock < 5
-                                      ? "text-amber-600"
-                                      : "text-stone-950"
-                                  )}
-                                >
-                                  {freeStock.toLocaleString("id-ID")}
-                                </div>
-                                <span className="text-[9px] text-stone-400 font-bold uppercase tracking-[0.2em] mt-1.5 leading-none">
-                                  FREE {item.uom || (isMachine ? "UNIT" : "PCS")}
-                                </span>
-                                <div className="text-[9px] text-stone-400 mt-1 font-mono">
-                                  Total Phys: {physicalStock.toLocaleString("id-ID")} | Res: {allocatedStock.toLocaleString("id-ID")}
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Action Protocol */}
-                            <td className="py-6 pl-6 text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                {isMachine && (
-                                  <Button
-                                    size="icon"
-                                    variant="secondary"
-                                    onClick={() => {
-                                      setSelectedMachineForBop(item);
-                                      setShowMachineBopModal(true);
-                                    }}
-                                    title="Link Machine to BOP Process"
-                                    className="text-blue-700 hover:text-blue-900 hover:bg-blue-50 border-blue-200"
-                                  >
-                                    <Workflow className="w-4 h-4 text-blue-600" />
-                                  </Button>
-                                )}
-
-                                {/* Print Barcode / QR Label */}
-                                <Button
-                                  size="icon"
-                                  variant="secondary"
-                                  onClick={() => {
-                                    setSelectedLabelItem(item);
-                                    setShowLabelModal(true);
-                                  }}
-                                  title={isMachine ? "Print Machine QR Tag" : "Print Barcode / QR Label"}
-                                  className="text-stone-700 hover:text-stone-950"
-                                >
-                                  <QrCode className="w-4 h-4" />
-                                </Button>
-
-                                {/* Stock Adjustment Action */}
-                                <Button
-                                  size="icon"
-                                  variant="secondary"
-                                  disabled={
-                                    !hasPermission(user, Action.WAREHOUSE_ACTION)
-                                  }
-                                  onClick={() => handleOpenAdjustModal(item)}
-                                  title="Adjust Physical Stock Count"
-                                  className="text-stone-700 hover:text-stone-950"
-                                >
-                                  <Sliders className="w-4 h-4 text-stone-800" />
-                                </Button>
-
-                                {/* Edit Item Master Data */}
-                                <Button
-                                  size="icon"
-                                  variant="secondary"
-                                  disabled={
-                                    !hasPermission(user, Action.WAREHOUSE_ACTION)
-                                  }
-                                  onClick={() => handleOpenEditItem(item)}
-                                  title="Edit Item Master Specifications"
-                                  className="text-stone-700 hover:text-stone-950"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-
-                                {/* Delete Item / SKU Action */}
-                                <Button
-                                  size="icon"
-                                  variant="danger_soft"
-                                  disabled={
-                                    !hasPermission(user, Action.WAREHOUSE_ACTION)
-                                  }
-                                  onClick={() =>
-                                    handleDeleteItem(item.id, item.item_code)
-                                  }
-                                  title="Delete Item / SKU"
-                                >
-                                  <Trash2 className="w-4 h-4 text-rose-600" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <WarehouseStockTable
+              isLoading={isLoading}
+              items={filteredInventory}
+              user={user}
+              onOpenBopModal={handleOpenBopModal}
+              onOpenLabelModal={handleOpenLabelModal}
+              onOpenAdjustModal={handleOpenAdjustModal}
+              onOpenEditModal={handleOpenEditItem}
+              onDeleteItem={handleDeleteItem}
+            />
           ) : activeTab === "HISTORY" ? (
             <WarehouseHistoryTab
               movements={movements}
@@ -1376,18 +1325,30 @@ export default function Warehouse() {
               inventory={inventory}
             />
           ) : activeTab === "RESERVATIONS" ? (
-            <WarehouseReservationsTab reservations={reservations} />
+            <WarehouseReservationsTab
+              reservations={reservations}
+              onAllocateReservation={handleAllocateReservation}
+            />
           ) : activeTab === "PENDING" ? (
             <WarehousePendingGrnTab
               pendingGrns={pendingGrns}
               handleReturnGrn={handleReturnGrn}
               handleIntakeGrn={handleIntakeGrn}
+              canInspectQc={
+                hasGodMode(user) || hasPermission(user, Action.INSPECT_QC)
+              }
+              canCommitIntake={
+                hasGodMode(user) ||
+                hasPermission(user, Action.RECEIVE_PO) ||
+                hasPermission(user, Action.WAREHOUSE_ACTION)
+              }
+              onUpdateQcStatus={handleUpdateGrnQcStatus}
             />
           ) : null}
         </div>
       </div>
 
-      {/* PO Intake Labels Modal (Tanpa QR) */}
+      {/* PO Intake Labels Modal */}
       <WarehouseIntakeLabelsModal
         isOpen={showItemLabelsModal}
         onClose={() => setShowItemLabelsModal(false)}
@@ -1406,6 +1367,9 @@ export default function Warehouse() {
         setNewItem={setNewItem}
         onSubmit={handleAddItem}
         isSubmitting={isSubmitting}
+        existingItems={inventory}
+        manpowerRoster={manpowerRoster}
+        user={user}
       />
 
       {/* Edit Item Modal */}
@@ -1419,6 +1383,9 @@ export default function Warehouse() {
         setEditItem={setItemToEdit}
         onSubmit={handleUpdateItem}
         isSubmitting={isSubmitting}
+        existingItems={inventory}
+        manpowerRoster={manpowerRoster}
+        user={user}
       />
 
       {/* Stock Adjustment Modal */}
@@ -1446,13 +1413,6 @@ export default function Warehouse() {
         isOpen={showLabelModal}
         onClose={() => setShowLabelModal(false)}
         selectedLabelItem={selectedLabelItem}
-      />
-
-      {/* Machine QR Identity Tag Modal */}
-      <MachineQrModal
-        isOpen={showMachineQrModal}
-        onClose={() => setShowMachineQrModal(false)}
-        machine={selectedMachineForQr}
       />
 
       {/* Machine BOP Integration Modal */}
@@ -1497,9 +1457,7 @@ export default function Warehouse() {
         >
           <ScannerModal
             isOpen={isScannerOpen}
-            onScan={(text) => {
-              handleScanSuccess(text);
-            }}
+            onScan={handleScanSuccess}
             onClose={() => setIsScannerOpen(false)}
           />
         </Suspense>

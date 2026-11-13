@@ -55,38 +55,39 @@ export const ConfirmModal = React.memo(function ConfirmModal({
       btn: "primary" as const,
     },
     info: {
-      bg: "bg-blue-50 border-blue-100 text-blue-500",
+      bg: "bg-stone-100 border-stone-200 text-stone-700",
       btn: "primary" as const,
     },
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} maxWidth="sm" className="p-0">
-      <div className="text-center">
+    <Modal isOpen={isOpen} onClose={onCancel} maxWidth="sm" className="p-0" hideCloseButton>
+      <div className="text-center pt-1 pb-1">
         <div
           className={cn(
-            "w-16 h-16 rounded-[1.5rem] mx-auto flex items-center justify-center mb-6 border",
+            "w-11 h-11 sm:w-12 sm:h-12 rounded-xl mx-auto flex items-center justify-center mb-3.5 border",
             iconConfig[finalVariant].bg,
           )}
         >
-          <AlertTriangle className="w-8 h-8" />
+          <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6" />
         </div>
-        <h3 className="text-xl font-bold tracking-tight text-stone-900 mb-2">
+        <h3 className="text-base sm:text-lg font-bold tracking-tight text-stone-900 mb-1.5">
           {title}
         </h3>
         {typeof message === "string" ? (
-          <p className="text-sm font-medium leading-relaxed text-stone-500 mb-8">
+          <p className="text-xs sm:text-[13px] font-medium leading-relaxed text-stone-500 mb-5">
             {message}
           </p>
         ) : (
-          <div className="mb-8">{message}</div>
+          <div className="mb-5 text-xs sm:text-[13px]">{message}</div>
         )}
 
-        {children && <div className="mb-8">{children}</div>}
+        {children && <div className="mb-5 text-left">{children}</div>}
 
-        <div className="flex gap-3 w-full">
+        <div className="flex gap-2.5 w-full">
           <Button
             variant="secondary"
+            size="sm"
             onClick={onCancel}
             className="flex-1"
             disabled={isLoading}
@@ -95,13 +96,14 @@ export const ConfirmModal = React.memo(function ConfirmModal({
           </Button>
           <Button
             variant={iconConfig[finalVariant].btn}
+            size="sm"
             onClick={handleConfirm}
             className="flex-1"
             disabled={isLoading}
           >
             {isLoading ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                 Processing...
               </>
             ) : (

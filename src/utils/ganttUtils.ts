@@ -1,6 +1,6 @@
 import db from "../db/database.ts";
 import { parsePredecessorIds } from "./bopGraph.ts";
-import { autoResolveDownstreamProductNodes } from "../routes/production/production_utils.ts";
+import { autoResolveDownstreamProductNodes } from "../routes/production/utils.ts";
 
 export function syncProjectGanttTasks(projectId: string) {
   try {
@@ -72,7 +72,15 @@ export function syncProjectGanttTasks(projectId: string) {
       }
     }
 
-    // 2. Sync Manufacturing BOP Tasks using DAG Precedence Analysis
+    // 2. Sync Manufacturing BOP Tasks using DAG Precedence Analysis (Only after Setup & Master is committed)
+    if (!project.is_master_set) {
+      db.prepare(`
+        DELETE FROM project_tasks
+        WHERE project_id = ? AND pr_id IS NULL AND task_name NOT LIKE '[Procurement]%'
+      `).run(projectId);
+      return;
+    }
+
     const bopSteps = db.prepare(`
       SELECT * FROM bill_of_processes 
       WHERE project_id = ? AND node_type != 'PRODUCT' AND node_type != 'START' AND node_type != 'END'
@@ -108,7 +116,11 @@ export function syncProjectGanttTasks(projectId: string) {
       { startStr: string; endStr: string; startDateObj: Date; endDateObj: Date }
     >();
     const visitingSet = new Set<string>();
-    const baseDateObj = new Date(maxPrArrivalDate);
+    const effectiveStartAnchor =
+      project.start_date && String(project.start_date).trim() !== ""
+        ? String(project.start_date).split("T")[0]
+        : maxPrArrivalDate;
+    const baseDateObj = new Date(effectiveStartAnchor);
 
     function calculateStepSchedule(stepId: string): {
       startDateObj: Date;

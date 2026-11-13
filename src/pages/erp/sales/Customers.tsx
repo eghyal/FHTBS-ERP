@@ -28,11 +28,29 @@ import { Loader } from "@/components/shared/Loader";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
+import { Badge } from "@/components/ui/Badge";
+import { StatCard } from "@/components/ui/StatCard";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  TableEmpty,
+} from "@/components/ui/Table";
 import { ConfirmModal } from "@/components/shared/ConfirmModal";
 import { Action, hasPermission } from "@/utils/pbac";
 import { useCustomersLocal } from "@/hooks/useCustomersLocal";
 import { CreateQuotationModal } from "@/components/erp/CreateQuotationModal";
 import { QuotationPreviewModal } from "@/components/erp/QuotationPreviewModal";
+import {
+  formatSequence3,
+  getNextEntitySequence,
+  generateSmartCustomerCode,
+} from "@/utils/autoCoding";
 
 interface Customer {
   id: string;
@@ -43,6 +61,11 @@ interface Customer {
   phone: string;
   address: string;
   npwp?: string;
+  customer_segment?: "B2B" | "B2C" | "OMNICHANNEL";
+  credit_limit?: number;
+  payment_terms_days?: number;
+  active_ar_exposure?: number;
+  b2c_orders_count?: number;
   delivered_count?: number;
   pending_count?: number;
   total_deliveries?: number;
@@ -99,6 +122,8 @@ export default function Customers() {
 
   const [showCreateQuoModal, setShowCreateQuoModal] = useState(false);
   const [selectedQuoToPreview, setSelectedQuoToPreview] = useState<any | null>(null);
+  const [schemaAudit, setSchemaAudit] = useState<any | null>(null);
+  const [showAuditPanel, setShowAuditPanel] = useState(true);
 
   const fetchCustomerDetails = async (customerId: string) => {
     setLoadingDetails(true);
@@ -133,10 +158,15 @@ export default function Customers() {
       // Refresh cloud data
       refreshCloud();
 
-      // Still fetch leads from API directly for now
-      const resLeads = await apiFetch("/api/sales/leads", {}, user?.username);
+      // Fetch leads and business schema audit telemetry
+      const [resLeads, resAudit] = await Promise.all([
+        apiFetch("/api/sales/leads", {}, user?.username),
+        apiFetch("/api/sales/business-schema-audit", {}, user?.username),
+      ]);
       if (resLeads.ok)
         setLeads(Array.isArray(resLeads.data) ? resLeads.data : []);
+      if (resAudit.ok && resAudit.data)
+        setSchemaAudit(resAudit.data.data || resAudit.data);
     } catch (err) {
       console.error(err);
     }
@@ -257,21 +287,39 @@ export default function Customers() {
     phone: "",
     address: "",
     npwp: "",
+    customer_segment: "B2B" as "B2B" | "B2C" | "OMNICHANNEL",
+    credit_limit: 50000000,
+    payment_terms_days: 30,
   });
+
+  const nextCustomerSeq = React.useMemo(
+    () => getNextEntitySequence("CUS", customers),
+    [customers],
+  );
+
+  const computedCustomerCode = React.useMemo(
+    () => generateSmartCustomerCode(newCustomer.name, nextCustomerSeq),
+    [newCustomer.name, nextCustomerSeq],
+  );
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const payload = {
+        ...newCustomer,
+        code: generateSmartCustomerCode(newCustomer.name, nextCustomerSeq),
+      };
       const res = await apiFetch(
         "/api/sales/customers",
         {
           method: "POST",
-          body: JSON.stringify(newCustomer),
+          body: JSON.stringify(payload),
         },
         user?.username,
       );
       if (res.ok) {
+        const assignedCode = (res.data as any)?.code || payload.code;
         setShowAddModal(false);
         setNewCustomer({
           name: "",
@@ -281,9 +329,12 @@ export default function Customers() {
           phone: "",
           address: "",
           npwp: "",
+          customer_segment: "B2B",
+          credit_limit: 50000000,
+          payment_terms_days: 30,
         });
         fetchCustomersAndLeads();
-        showToast("Customer profile added successfully", "success");
+        showToast(`Customer profile ${assignedCode} added successfully`, "success");
       } else {
         showToast(res.error || "Failed to add customer", "error");
       }
@@ -342,496 +393,376 @@ export default function Customers() {
   );
 
   return (
-    <div className="space-y-10 pb-20 animate-in fade-in duration-500">
+    <div className="space-y-4 sm:space-y-5 pb-20 animate-in fade-in duration-500">
       <PageHeader
-        title="Customer Relations"
-        subtitle="Customer accounts and contact directory"
-        icon={<Building2 className="w-6 h-6" />}
+        title="Customer Directory"
+        subtitle="B2B & B2C customer accounts"
+        icon={<Building2 className="w-5 h-5" />}
         actions={
-          canModify && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-8 py-3 bg-stone-900 text-white text-xs font-bold uppercase tracking-widest rounded-2xl hover:bg-stone-800 transition-all active:scale-95 flex items-center gap-2 shadow-sm pointer-events-auto"
-            >
-              <Plus className="w-4 h-4" /> Add Corporate Client
-            </button>
-          )
+          <div className="flex items-center gap-2">
+            {canModify && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowAddModal(true)}
+                leftIcon={<Plus className="w-3.5 h-3.5" />}
+              >
+                Add Corporate Client
+              </Button>
+            )}
+          </div>
         }
       />
 
-      {/* CRM Dashboard Intelligence Panel */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="p-6 card-elegant rounded-3xl flex items-center gap-5">
-          <div className="w-12 h-12 rounded-2xl bg-stone-50 border border-stone-100 flex items-center justify-center text-stone-600 shrink-0">
-            <Building2 className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">
-              Active Directory
-            </div>
-            <div className="text-2xl font-black text-stone-900 mt-1">
-              {totalCust}
-            </div>
-            <div className="text-[10px] text-stone-500 font-semibold mt-0.5">
-              Corporate Client Accounts
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6 card-elegant rounded-3xl flex items-center gap-5">
-          <div className="w-12 h-12 rounded-2xl bg-stone-50 border border-stone-100 flex items-center justify-center text-stone-600 shrink-0">
-            <Award className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">
-              VIP Key Partners
-            </div>
-            <div className="text-2xl font-black text-stone-900 mt-1">
-              {tierACust}
-            </div>
-            <div className="text-[10px] text-stone-500 font-semibold mt-0.5">
-              &gt;95% Fulfillment Rating
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6 card-elegant rounded-3xl flex items-center gap-5">
-          <div className="w-12 h-12 rounded-2xl bg-stone-50 border border-stone-100 flex items-center justify-center text-stone-600 shrink-0">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">
-              Total Deliveries
-            </div>
-            <div className="text-2xl font-black text-stone-900 mt-1">
-              {totalCompletedDeliveries}
-            </div>
-            <div className="text-[10px] text-stone-500 font-semibold mt-0.5">
-              Dispatched Lots
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6 card-elegant rounded-3xl flex items-center gap-5">
-          <div className="w-12 h-12 rounded-2xl bg-stone-50 border border-stone-100 flex items-center justify-center text-stone-600 shrink-0">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">
-              Pipeline Lots
-            </div>
-            <div className="text-2xl font-black text-stone-900 mt-1">
-              {activePipelines}
-            </div>
-            <div className="text-[10px] text-stone-500 font-semibold mt-0.5">
-              Pending Deliveries Today
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Filter and Workspace Control */}
-      <div className="bg-white border border-stone-200 rounded-3xl p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative max-w-sm w-full">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-          <input
+      <div className="bg-white border border-stone-200/80 rounded-2xl p-3 sm:p-3.5 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <div className="max-w-sm w-full">
+          <Input
             type="text"
             placeholder="Filter by customer name or lot reference..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 bg-stone-50 border border-stone-200/60 rounded-2xl text-xs font-bold text-stone-900 focus:border-stone-400 focus:bg-white outline-none transition-all shadow-inner"
+            leftIcon={<Search className="w-3.5 h-3.5" />}
           />
         </div>
 
-        <div className="flex gap-2 bg-stone-50 border border-stone-200/60 p-1.5 rounded-2xl overflow-x-auto">
-          <button
+        <div className="flex gap-1.5 bg-stone-100 border border-stone-200/70 p-1 rounded-xl overflow-x-auto">
+          <Button
+            variant={selectedFilter === "LEADS" ? "primary" : "ghost"}
+            size="xs"
             onClick={() => setSelectedFilter("LEADS")}
-            className={cn(
-              "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-1.5",
-              selectedFilter === "LEADS"
-                ? "bg-stone-900 text-white shadow-sm"
-                : "text-stone-400 hover:text-stone-900",
-            )}
           >
             CRM Leads ({totalLeads})
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={selectedFilter === "ALL" ? "secondary" : "ghost"}
+            size="xs"
             onClick={() => setSelectedFilter("ALL")}
-            className={cn(
-              "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
-              selectedFilter === "ALL"
-                ? "bg-white text-stone-900 shadow-sm"
-                : "text-stone-400 hover:text-stone-900",
-            )}
           >
             Clients
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={selectedFilter === "VIP" ? "secondary" : "ghost"}
+            size="xs"
             onClick={() => setSelectedFilter("VIP")}
-            className={cn(
-              "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex items-center gap-1.5",
-              selectedFilter === "VIP"
-                ? "bg-white text-stone-900 shadow-sm"
-                : "text-stone-400 hover:text-stone-900",
-            )}
+            leftIcon={<Award className="w-3.5 h-3.5" />}
           >
-            <Award className="w-3.5 h-3.5" /> VIP ({tierACust})
-          </button>
-          <button
+            VIP ({tierACust})
+          </Button>
+          <Button
+            variant={selectedFilter === "ACTIVE" ? "secondary" : "ghost"}
+            size="xs"
             onClick={() => setSelectedFilter("ACTIVE")}
-            className={cn(
-              "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 whitespace-nowrap",
-              selectedFilter === "ACTIVE"
-                ? "bg-white text-stone-900 shadow-sm"
-                : "text-stone-400 hover:text-stone-900",
-            )}
           >
             Pending ({activePipelines})
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* CRM Customer List Layout (Table) */}
-      <div className="card-elegant rounded-3xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              {selectedFilter === "LEADS" ? (
-                <tr className="border-b border-stone-200 bg-stone-50/50">
-                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest whitespace-nowrap">
-                    Lead Info
-                  </th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest whitespace-nowrap">
-                    Intent / Status
-                  </th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest whitespace-nowrap">
-                    Generated At
-                  </th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest whitespace-nowrap">
-                    Contact
-                  </th>
-                  {canModify && (
-                    <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest text-right whitespace-nowrap">
-                      Actions
-                    </th>
-                  )}
-                </tr>
+      <div className="bg-white border border-stone-200/80 rounded-2xl shadow-2xs overflow-hidden">
+        <Table>
+          <TableHeader>
+            {selectedFilter === "LEADS" ? (
+              <TableRow>
+                <TableHead>Lead Info</TableHead>
+                <TableHead>Intent / Status</TableHead>
+                <TableHead>Generated At</TableHead>
+                <TableHead>Contact</TableHead>
+                {canModify && <TableHead className="text-right">Actions</TableHead>}
+              </TableRow>
+            ) : (
+              <TableRow>
+                <TableHead>Customer Info</TableHead>
+                <TableHead>Tier / Code</TableHead>
+                <TableHead>Quotations & Offers</TableHead>
+                <TableHead>Fulfillment Score</TableHead>
+                <TableHead>Contact & Logistics</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            )}
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableEmpty colSpan={canModify ? 6 : 5} message="Loading global registry..." />
+            ) : selectedFilter === "LEADS" ? (
+              displayedLeads.length === 0 ? (
+                <TableEmpty
+                  colSpan={canModify ? 5 : 4}
+                  icon={<Building2 className="w-8 h-8 text-stone-300" />}
+                  message="No matching leads records"
+                />
               ) : (
-                <tr className="border-b border-stone-200 bg-stone-50/50">
-                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest whitespace-nowrap">
-                    Customer Info
-                  </th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest whitespace-nowrap">
-                    Tier / Code
-                  </th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest whitespace-nowrap">
-                    Quotations & Offers
-                  </th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest whitespace-nowrap">
-                    Fulfillment Score
-                  </th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest whitespace-nowrap">
-                    Contact & Logistics
-                  </th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-stone-400 uppercase tracking-widest text-right whitespace-nowrap">
-                    Actions
-                  </th>
-                </tr>
-              )}
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={canModify ? 5 : 4} className="py-20 text-center">
-                    <Loader text="Loading global registry..." />
-                  </td>
-                </tr>
-              ) : selectedFilter === "LEADS" ? (
-                displayedLeads.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={canModify ? 5 : 4}
-                      className="py-20 text-center text-stone-400"
-                    >
-                      <Building2 className="w-8 h-8 text-stone-200 mx-auto mb-3" />
-                      <div className="text-[10px] font-bold uppercase tracking-widest">
-                        No matching leads records
+                displayedLeads.map((lead) => (
+                  <TableRow key={lead.id} className="group">
+                    <TableCell className="align-top">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600 shrink-0 mt-0.5 border border-stone-200">
+                          <Building2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-stone-900">
+                            {lead.name}
+                          </div>
+                          <div className="text-[10px] text-stone-400 uppercase tracking-widest mt-1 font-bold">
+                            Unconverted Lead
+                          </div>
+                        </div>
                       </div>
-                    </td>
-                  </tr>
-                ) : (
-                  displayedLeads.map((lead) => (
-                    <tr
-                      key={lead.id}
-                      className="hover:bg-stone-50/50 transition-colors group"
-                    >
-                      <td className="px-6 py-5 align-top">
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center text-orange-400 shrink-0 mt-0.5 border border-orange-100">
-                            <Building2 className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-stone-900">
-                              {lead.name}
-                            </div>
-                            <div className="text-[10px] text-stone-400 uppercase tracking-widest mt-1 font-bold">
-                              Unconverted Lead
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 align-top">
-                        <div className="text-xs font-semibold text-stone-800">
-                          {lead.intent}
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 align-top text-xs text-stone-500">
-                        {new Date(lead.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-5 align-top text-xs text-stone-600 space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                          <span className="truncate max-w-[200px] font-semibold text-stone-800">
-                            {lead.contact_info || "-"}
-                          </span>
-                        </div>
-                      </td>
-                      {canModify && (
-                        <td className="px-6 py-5 align-top text-right">
-                          <div className="flex flex-col items-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button
-                              size="xs"
-                              variant="primary"
-                              disabled={isSubmitting}
-                              onClick={() => handleConvertLead(lead.id)}
-                            >
-                              Convert to Customer
-                            </Button>
-                            <Button
-                              size="xs"
-                              variant="danger_soft"
-                              disabled={isSubmitting}
-                              onClick={() => handleDeleteLead(lead.id, lead.name)}
-                            >
-                              Delete
-                            </Button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))
-                )
-              ) : displayedCustomers.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={canModify ? 5 : 4}
-                    className="py-20 text-center text-stone-400"
-                  >
-                    <Building2 className="w-8 h-8 text-stone-200 mx-auto mb-3" />
-                    <div className="text-[10px] font-bold uppercase tracking-widest">
-                      No matching customer records
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                displayedCustomers.map((cus) => {
-                  const delivered = cus.delivered_count || 0;
-                  const pending = cus.pending_count || 0;
-                  const totalDeliveries = cus.total_deliveries || 0;
-
-                  let grade = "NEW";
-                  let gradeColor =
-                    "bg-stone-50 text-stone-600 border-stone-200";
-                  let rate = 0;
-
-                  if (totalDeliveries > 0) {
-                    rate = delivered / totalDeliveries;
-                    if (rate >= 0.95) {
-                      grade = "A";
-                      gradeColor =
-                        "bg-stone-800 text-stone-100 border-stone-700";
-                    } else if (rate >= 0.8) {
-                      grade = "B";
-                      gradeColor =
-                        "bg-stone-200 text-stone-800 border-stone-300";
-                    } else if (rate >= 0.6) {
-                      grade = "C";
-                      gradeColor =
-                        "bg-stone-100 text-stone-600 border-stone-200";
-                    } else {
-                      grade = "D";
-                      gradeColor = "bg-red-50 text-red-700 border-red-200";
-                    }
-                  }
-
-                  const percentFulfill =
-                    totalDeliveries > 0
-                      ? Math.round((delivered / totalDeliveries) * 100)
-                      : 0;
-
-                  return (
-                    <tr
-                      key={cus.id}
-                      className="hover:bg-stone-50/50 transition-colors group"
-                    >
-                      <td className="px-6 py-5 align-top">
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-stone-100 flex items-center justify-center text-stone-400 shrink-0 mt-0.5">
-                            <Building2 className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <button
-                              onClick={() => handleOpenCustomerProfile(cus)}
-                              className="text-sm font-bold text-stone-900 hover:text-stone-600 transition-colors text-left flex items-center gap-1 group/title"
-                            >
-                              <span>{cus.name}</span>
-                              <ExternalLink className="w-3 h-3 text-stone-400 opacity-0 group-hover/title:opacity-100 transition-opacity" />
-                            </button>
-                            {cus.contact_person && (
-                              <div className="text-xs text-stone-500 mt-1 flex items-center gap-1.5">
-                                <span className="w-1 h-1 rounded-full bg-stone-300"></span>{" "}
-                                {cus.contact_person} (Liaison)
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 align-top text-xs font-mono text-stone-500">
-                        <div className="flex flex-col items-start gap-1.5">
-                          <span className="font-bold">
-                            {cus.code || "NO-REF-GEN"}
-                          </span>
-                          <span
-                            className={cn(
-                              "px-2 py-0.5 text-[9px] tracking-widest font-black uppercase rounded border font-sans",
-                              gradeColor,
-                            )}
-                          >
-                            {grade === "NEW" ? "Lead" : `Tier ${grade}`}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 align-top">
-                        <div className="flex flex-col gap-1">
-                          <button
-                            onClick={() => handleOpenCustomerProfile(cus)}
-                            className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-900 hover:text-stone-600 transition-colors"
-                          >
-                            <FileText className="w-3.5 h-3.5 text-stone-500" />
-                            <span>{cus.total_quotations || 0} Quotes</span>
-                          </button>
-                          <span className="text-[10px] font-mono font-bold text-emerald-700">
-                            {formatIDR(cus.total_quotation_value || 0)}
-                          </span>
-                          {cus.pending_quotations_count ? (
-                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit">
-                              {cus.pending_quotations_count} Pending
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 align-top">
-                        <div className="w-40">
-                          <div className="flex justify-between items-center text-[10px] font-bold text-stone-500 mb-1.5">
-                            <span>{percentFulfill}% Achieved</span>
-                            <span>{totalDeliveries} Total</span>
-                          </div>
-                          <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
-                            <div
-                              className={cn(
-                                "h-full rounded-full transition-all duration-500",
-                                percentFulfill >= 95
-                                  ? "bg-stone-800"
-                                  : percentFulfill >= 80
-                                    ? "bg-stone-400"
-                                    : percentFulfill >= 60
-                                      ? "bg-stone-300"
-                                      : "bg-red-400",
-                              )}
-                              style={{
-                                width: `${totalDeliveries > 0 ? percentFulfill : 10}%`,
-                              }}
-                            ></div>
-                          </div>
-                          <div className="flex gap-3 text-[10px] font-bold mt-1.5">
-                            <span className="text-stone-700">
-                              {delivered} OK
-                            </span>
-                            <span className="text-stone-400">
-                              {pending} Pend
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 align-top text-xs text-stone-600 space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <Mail className="w-3.5 h-3.5 text-stone-400" />
-                          <span className="truncate max-w-[180px]">
-                            {cus.email || "-"}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Phone className="w-3.5 h-3.5 text-stone-400" />
-                          <span>{cus.phone || "-"}</span>
-                        </div>
-                        {cus.npwp ? (
-                          <div className="flex items-center gap-1.5 bg-stone-100/80 px-2 py-0.5 rounded text-[11px] font-mono text-stone-700 w-fit">
-                            <span className="font-sans font-bold text-[9px] uppercase text-stone-400">NPWP</span>
-                            <span className="font-bold">{cus.npwp}</span>
-                          </div>
-                        ) : (
-                          <div className="text-[10px] text-stone-400 italic">
-                            No NPWP recorded
-                          </div>
-                        )}
-                        <div className="flex items-start gap-2 max-w-[200px]">
-                          <MapPin className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
-                          <span className="truncate">{cus.address || "-"}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 align-top text-right">
-                        <div className="flex items-center justify-end gap-2">
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="text-xs font-semibold text-stone-800">
+                        {lead.intent}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top text-xs font-mono tabular-nums text-stone-500">
+                      {new Date(lead.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="align-top text-xs text-stone-600 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                        <span className="truncate max-w-[200px] font-semibold text-stone-800">
+                          {lead.contact_info || "-"}
+                        </span>
+                      </div>
+                    </TableCell>
+                    {canModify && (
+                      <TableCell className="align-top text-right">
+                        <div className="flex flex-col items-end gap-2">
                           <Button
                             size="xs"
                             variant="primary"
-                            onClick={() => handleOpenCustomerProfile(cus)}
-                            className="flex items-center gap-1.5 shadow-sm px-3"
+                            disabled={isSubmitting}
+                            onClick={() => handleConvertLead(lead.id)}
                           >
-                            <Eye className="w-3 h-3" />
-                            <span>Profile & Quotes</span>
+                            Convert to Customer
                           </Button>
-                          {canModify && (
-                            <div className="flex items-center gap-1 bg-stone-50 p-1 rounded-lg border border-stone-200/60">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingCustomer(cus);
-                                  setShowEditModal(true);
-                                }}
-                                title="Edit Customer"
-                                className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-white rounded-md transition-all hover:shadow-sm"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeleteConfirm(cus)}
-                                title="Archive Customer"
-                                className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-white rounded-md transition-all hover:shadow-sm"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                          <Button
+                            size="xs"
+                            variant="danger_soft"
+                            disabled={isSubmitting}
+                            onClick={() => handleDeleteLead(lead.id, lead.name)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))
+              )
+            ) : displayedCustomers.length === 0 ? (
+              <TableEmpty
+                colSpan={6}
+                icon={<Building2 className="w-8 h-8 text-stone-300" />}
+                message="No matching customer records"
+              />
+            ) : (
+              displayedCustomers.map((cus) => {
+                const delivered = cus.delivered_count || 0;
+                const pending = cus.pending_count || 0;
+                const totalDeliveries = cus.total_deliveries || 0;
+
+                let grade = "NEW";
+                let badgeVariant: "default" | "success" | "warning" | "danger" = "default";
+                let rate = 0;
+
+                if (totalDeliveries > 0) {
+                  rate = delivered / totalDeliveries;
+                  if (rate >= 0.95) {
+                    grade = "A";
+                    badgeVariant = "success";
+                  } else if (rate >= 0.8) {
+                    grade = "B";
+                    badgeVariant = "default";
+                  } else if (rate >= 0.6) {
+                    grade = "C";
+                    badgeVariant = "warning";
+                  } else {
+                    grade = "D";
+                    badgeVariant = "danger";
+                  }
+                }
+
+                const percentFulfill =
+                  totalDeliveries > 0
+                    ? Math.round((delivered / totalDeliveries) * 100)
+                    : 0;
+
+                return (
+                  <TableRow key={cus.id} className="group">
+                    <TableCell className="align-top">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-stone-100 flex items-center justify-center text-stone-400 shrink-0 mt-0.5">
+                          <Building2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <button
+                            onClick={() => handleOpenCustomerProfile(cus)}
+                            className="text-sm font-bold text-stone-900 hover:text-stone-600 transition-colors text-left flex items-center gap-1 group/title"
+                          >
+                            <span>{cus.name}</span>
+                            <ExternalLink className="w-3 h-3 text-stone-400 opacity-0 group-hover/title:opacity-100 transition-opacity" />
+                          </button>
+                          {cus.contact_person && (
+                            <div className="text-xs text-stone-500 mt-1 flex items-center gap-1.5">
+                              <span className="text-stone-300">·</span>{" "}
+                              {cus.contact_person} (Liaison)
                             </div>
                           )}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top text-xs font-mono tabular-nums text-stone-500">
+                      <div className="flex flex-col items-start gap-1.5">
+                        <span className="font-bold text-stone-800">
+                          {cus.code || "NO-REF-GEN"}
+                        </span>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border border-stone-200/90 bg-stone-50/70 text-stone-700 inline-flex items-center gap-1 font-mono">
+                            <span
+                              className={cn(
+                                "w-1.5 h-1.5 rounded-full shrink-0",
+                                grade === "A"
+                                  ? "bg-amber-500"
+                                  : grade === "B"
+                                    ? "bg-stone-600"
+                                    : grade === "C"
+                                      ? "bg-stone-400"
+                                      : "bg-stone-300"
+                              )}
+                            />
+                            {grade === "NEW" ? "Lead" : `Tier ${grade}`}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase border border-stone-200/80 bg-white text-stone-700">
+                            {cus.customer_segment || "B2B"}
+                          </span>
+                        </div>
+                        {(cus.credit_limit || 0) > 0 && (
+                          <span className="text-[10px] text-stone-500 font-mono tabular-nums">
+                            Limit: {formatIDR(cus.credit_limit || 0)}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => handleOpenCustomerProfile(cus)}
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-900 hover:text-stone-600 transition-colors font-mono tabular-nums"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-stone-500" />
+                          <span>{cus.total_quotations || 0} Quotes</span>
+                        </button>
+                        <span className="text-[10px] font-mono tabular-nums font-bold text-stone-900">
+                          {formatIDR(cus.total_quotation_value || 0)}
+                        </span>
+                        {(cus.active_ar_exposure || 0) > 0 && (
+                          <span className="text-[10px] font-mono tabular-nums text-amber-800">
+                            AR Exposure: {formatIDR(cus.active_ar_exposure || 0)}
+                          </span>
+                        )}
+                        {(cus.b2c_orders_count || 0) > 0 && (
+                          <span className="text-[10px] font-mono tabular-nums text-stone-500">
+                            {cus.b2c_orders_count} B2C Retail Orders
+                          </span>
+                        )}
+                        {cus.pending_quotations_count ? (
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border border-stone-200/90 bg-stone-50/70 text-stone-700 inline-flex items-center gap-1 font-mono w-fit">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                            {cus.pending_quotations_count} Pending
+                          </span>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="w-40">
+                        <div className="flex justify-between items-center text-[10px] font-mono tabular-nums font-bold text-stone-500 mb-1.5">
+                          <span>{percentFulfill}% Achieved</span>
+                          <span>{totalDeliveries} Total</span>
+                        </div>
+                        <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all duration-500",
+                              percentFulfill >= 95
+                                ? "bg-stone-800"
+                                : percentFulfill >= 80
+                                  ? "bg-stone-500"
+                                  : percentFulfill >= 60
+                                    ? "bg-stone-400"
+                                    : "bg-stone-300",
+                            )}
+                            style={{
+                              width: `${totalDeliveries > 0 ? percentFulfill : 10}%`,
+                            }}
+                          ></div>
+                        </div>
+                        <div className="flex gap-3 text-[10px] font-mono tabular-nums font-bold mt-1.5">
+                          <span className="text-stone-700">
+                            {delivered} OK
+                          </span>
+                          <span className="text-stone-400">
+                            {pending} Pend
+                          </span>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top text-xs text-stone-600 space-y-1">
+                      <div className="flex items-center gap-2 font-mono tabular-nums">
+                        <Phone className="w-3.5 h-3.5 text-stone-400" />
+                        <span>{cus.phone || "-"}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-3.5 h-3.5 text-stone-400" />
+                        <span className="truncate max-w-[180px]">
+                          {cus.email || "-"}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="xs"
+                          variant="primary"
+                          onClick={() => handleOpenCustomerProfile(cus)}
+                          leftIcon={<Eye className="w-3 h-3" />}
+                        >
+                          Profile & Quotes
+                        </Button>
+                        {canModify && (
+                          <div className="flex items-center gap-1 bg-stone-50 p-1 rounded-lg border border-stone-200/60">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => {
+                                setEditingCustomer(cus);
+                                setShowEditModal(true);
+                              }}
+                              title="Edit Customer"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="danger_soft"
+                              size="icon-sm"
+                              onClick={() => setDeleteConfirm(cus)}
+                              title="Delete Customer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
       </div>
 
       {/* Edit Customer Modal */}
@@ -856,16 +787,12 @@ export default function Customers() {
                 }
               />
               <Input
-                label="Customer Code"
+                label="Customer Code · System Locked"
                 required
+                readOnly
+                tabIndex={-1}
                 value={editingCustomer.code || ""}
-                onChange={(e) =>
-                  setEditingCustomer({
-                    ...editingCustomer,
-                    code: e.target.value.toUpperCase(),
-                  })
-                }
-                className="font-mono font-bold"
+                className="font-mono tabular-nums font-bold bg-stone-100/80 text-stone-800 border-stone-200 cursor-not-allowed select-all"
               />
             </div>
             <Input
@@ -901,8 +828,48 @@ export default function Customers() {
                 }
               />
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Select
+                label="Customer Segment"
+                value={editingCustomer.customer_segment || "B2B"}
+                onChange={(e) =>
+                  setEditingCustomer({
+                    ...editingCustomer,
+                    customer_segment: e.target.value as any,
+                  })
+                }
+              >
+                <option value="B2B">B2B Corporate</option>
+                <option value="B2C">B2C Retail</option>
+                <option value="OMNICHANNEL">Omnichannel (B2B + B2C)</option>
+              </Select>
+              <Input
+                label="Credit Limit (IDR)"
+                type="number"
+                value={editingCustomer.credit_limit ?? 0}
+                onChange={(e) =>
+                  setEditingCustomer({
+                    ...editingCustomer,
+                    credit_limit: Number(e.target.value) || 0,
+                  })
+                }
+                className="font-mono tabular-nums"
+              />
+              <Input
+                label="Payment Terms (Days)"
+                type="number"
+                value={editingCustomer.payment_terms_days ?? 30}
+                onChange={(e) =>
+                  setEditingCustomer({
+                    ...editingCustomer,
+                    payment_terms_days: Number(e.target.value) || 0,
+                  })
+                }
+                className="font-mono tabular-nums"
+              />
+            </div>
             <Input
-              label="NPWP / Tax ID (Nomor Pokok Wajib Pajak)"
+              label="Tax ID"
               value={editingCustomer.npwp || ""}
               onChange={(e) =>
                 setEditingCustomer({
@@ -910,24 +877,19 @@ export default function Customers() {
                   npwp: e.target.value,
                 })
               }
-              placeholder="e.g. 01.234.567.8-901.000 / 16-digit NIK-NPWP"
+              placeholder="e.g. 01.234.567.8-901.000"
               className="font-mono"
             />
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest">
-                Address
-              </label>
-              <textarea
-                value={editingCustomer.address || ""}
-                onChange={(e) =>
-                  setEditingCustomer({
-                    ...editingCustomer,
-                    address: e.target.value,
-                  })
-                }
-                className="input-elegant min-h-[80px]"
-              />
-            </div>
+            <Textarea
+              label="Address"
+              value={editingCustomer.address || ""}
+              onChange={(e) =>
+                setEditingCustomer({
+                  ...editingCustomer,
+                  address: e.target.value,
+                })
+              }
+            />
             <div className="flex justify-end gap-3 pt-4 border-t border-stone-100 font-sans">
               <Button
                 type="button"
@@ -982,23 +944,32 @@ export default function Customers() {
               label="Customer Name"
               required
               value={newCustomer.name}
-              onChange={(e) =>
-                setNewCustomer({ ...newCustomer, name: e.target.value })
-              }
-              placeholder="e.g. PT. Paving Nusantara"
-            />
-            <Input
-              label="Customer Code"
-              value={newCustomer.code}
-              onChange={(e) =>
+              onChange={(e) => {
+                const nameVal = e.target.value;
                 setNewCustomer({
                   ...newCustomer,
-                  code: e.target.value.toUpperCase(),
-                })
-              }
-              className="font-mono"
-              placeholder="e.g. CUS-001"
+                  name: nameVal,
+                  code: generateSmartCustomerCode(nameVal, nextCustomerSeq),
+                });
+              }}
+              placeholder="e.g. Amtra Electric"
             />
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest">
+                  Customer Code · Auto
+                </label>
+                <span className="text-[10px] font-mono tabular-nums text-stone-500">
+                  Seq #{formatSequence3(nextCustomerSeq)}
+                </span>
+              </div>
+              <Input
+                readOnly
+                tabIndex={-1}
+                value={computedCustomerCode}
+                className="font-mono tabular-nums font-bold bg-stone-100/80 text-stone-800 border-stone-200 cursor-not-allowed select-all"
+              />
+            </div>
           </div>
           <Input
             label="Contact Person"
@@ -1009,7 +980,7 @@ export default function Customers() {
                 contact_person: e.target.value,
               })
             }
-            placeholder="e.g. Bpk. Ahmad"
+            placeholder="e.g. Mr. Ahmad"
           />
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -1030,28 +1001,63 @@ export default function Customers() {
               placeholder="0812-xxxx-xxxx"
             />
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Select
+              label="Customer Segment"
+              value={newCustomer.customer_segment}
+              onChange={(e) =>
+                setNewCustomer({
+                  ...newCustomer,
+                  customer_segment: e.target.value as any,
+                })
+              }
+            >
+              <option value="B2B">B2B Corporate</option>
+              <option value="B2C">B2C Retail</option>
+              <option value="OMNICHANNEL">Omnichannel (B2B + B2C)</option>
+            </Select>
+            <Input
+              label="Credit Limit (IDR)"
+              type="number"
+              value={newCustomer.credit_limit}
+              onChange={(e) =>
+                setNewCustomer({
+                  ...newCustomer,
+                  credit_limit: Number(e.target.value) || 0,
+                })
+              }
+              className="font-mono tabular-nums"
+            />
+            <Input
+              label="Payment Terms (Days)"
+              type="number"
+              value={newCustomer.payment_terms_days}
+              onChange={(e) =>
+                setNewCustomer({
+                  ...newCustomer,
+                  payment_terms_days: Number(e.target.value) || 0,
+                })
+              }
+              className="font-mono tabular-nums"
+            />
+          </div>
           <Input
-            label="NPWP / Tax ID (Nomor Pokok Wajib Pajak)"
+            label="Tax ID"
             value={newCustomer.npwp}
             onChange={(e) =>
               setNewCustomer({ ...newCustomer, npwp: e.target.value })
             }
             className="font-mono"
-            placeholder="e.g. 01.234.567.8-901.000 / 16-digit NIK-NPWP"
+            placeholder="e.g. 01.234.567.8-901.000"
           />
-          <div className="space-y-1.5">
-            <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest">
-              Address
-            </label>
-            <textarea
-              value={newCustomer.address}
-              onChange={(e) =>
-                setNewCustomer({ ...newCustomer, address: e.target.value })
-              }
-              className="input-elegant min-h-[80px]"
-              placeholder="Jl. Pahlawan Karya No. 456..."
-            />
-          </div>
+          <Textarea
+            label="Address"
+            value={newCustomer.address}
+            onChange={(e) =>
+              setNewCustomer({ ...newCustomer, address: e.target.value })
+            }
+            placeholder="Jl. Pahlawan Karya No. 456..."
+          />
           <div className="flex justify-end gap-3 pt-4 border-t border-stone-100 font-sans">
             <Button
               type="button"
@@ -1076,7 +1082,7 @@ export default function Customers() {
         }}
         title={
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-stone-900 text-white flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold">
               <Building2 className="w-5 h-5" />
             </div>
             <div>
@@ -1118,7 +1124,7 @@ export default function Customers() {
                   )}
                   {selectedProfileCustomer?.npwp && (
                     <span className="flex items-center gap-1 bg-stone-200/80 px-2 py-0.5 rounded font-mono text-stone-800 text-[11px]">
-                      <span className="font-sans font-bold text-[9px] uppercase text-stone-500">NPWP:</span>
+                      <span className="font-sans font-bold text-[9px] uppercase text-stone-500">Tax ID:</span>
                       <strong>{selectedProfileCustomer.npwp}</strong>
                     </span>
                   )}
@@ -1276,7 +1282,7 @@ export default function Customers() {
                         <div className="text-[11px] text-stone-500 flex items-center gap-3">
                           <span>Items: {q.items?.length || 0} lines</span>
                           <span>•</span>
-                          <span>Created: {new Date(q.created_at).toLocaleDateString("id-ID", { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                          <span>Created: {new Date(q.created_at).toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                         </div>
                       </div>
 
@@ -1316,7 +1322,7 @@ export default function Customers() {
                       <div>
                         <div className="text-xs font-mono font-bold text-stone-900">{dn.dn_number}</div>
                         <div className="text-[11px] text-stone-500 mt-0.5">
-                          Date: {new Date(dn.created_at).toLocaleDateString("id-ID")}
+                          Date: {new Date(dn.created_at).toLocaleDateString("en-GB")}
                         </div>
                       </div>
                       <span

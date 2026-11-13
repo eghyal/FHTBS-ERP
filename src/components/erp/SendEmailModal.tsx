@@ -126,10 +126,11 @@ export function SendEmailModal({
         <div className="flex items-stretch gap-3">
           <Button
             type="button"
+            variant="ghost"
             onClick={handleEmailClick}
             disabled={isSubmittingEmail || isSubmittingWa || isDownloadingPdf}
             className={cn(
-              "flex-1 flex items-center justify-center gap-2.5 py-3 h-auto rounded-xl shadow-xs transition-all",
+              "flex-1 flex items-center justify-center gap-2.5 py-3 h-auto rounded-xl shadow-xs transition-all !border-0 !border-transparent",
               hasEmail ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-blue-300 text-white cursor-not-allowed"
             )}
           >
@@ -150,11 +151,12 @@ export function SendEmailModal({
 
           <Button
             type="button"
+            variant="ghost"
             onClick={handleWaClick}
             disabled={isSubmittingEmail || isSubmittingWa || isDownloadingPdf}
             title={hasPhone ? `Send via WhatsApp (${defaultRecipientPhone})` : 'Send via WhatsApp'}
             className={cn(
-              "w-16 flex-shrink-0 flex items-center justify-center rounded-xl shadow-xs transition-all",
+              "w-16 flex-shrink-0 flex items-center justify-center self-stretch h-auto py-3 rounded-xl shadow-xs transition-all !border-0 !border-transparent",
               hasPhone ? "bg-emerald-500 hover:bg-emerald-600 text-white" : "bg-emerald-300 text-white cursor-not-allowed"
             )}
           >

@@ -157,24 +157,35 @@ export const PrintTemplate = forwardRef<HTMLDivElement, PrintTemplateProps>(
               <span className="font-bold text-stone-900">Phone:</span> 0811-1111-3993 &nbsp;|&nbsp; <span className="font-bold text-stone-900">Email:</span> pavingjoss@gmail.com
             </div>
           </div>
-          {/* Top Right: QR Code for Verification */}
+          {/* Top Right: QR Code for Verification (Strictly gated on !isDraft) */}
           <div className="flex items-center gap-3 text-right">
             <div className="flex flex-col items-end">
               <div className="font-bold tracking-widest uppercase mb-0.5" style={{ fontSize: '9px', color: '#6b7280' }}>
-                Valid Doc ID:
+                {isDraft ? "Doc Ref ID:" : "Valid Doc ID:"}
               </div>
               <div className="font-mono font-bold text-black border border-stone-300 px-2 py-0.5 bg-stone-50 rounded-xs" style={{ fontSize: '10px' }}>
                 {documentId || referenceNumber}
               </div>
             </div>
-            <div className="w-11 h-11 bg-white border border-stone-300 p-0.5 flex items-center justify-center shrink-0 rounded-xs shadow-2xs">
-              <QRCodeSVG
-                value={`https://fhtbs-erp.shared/doc/${documentId || referenceNumber}`}
-                size={38}
-                level="M"
-                fgColor="#000000"
-              />
-            </div>
+            {!isDraft ? (
+              <div className="w-11 h-11 bg-white border border-stone-300 p-0.5 flex items-center justify-center shrink-0 rounded-xs shadow-2xs">
+                <QRCodeSVG
+                  value={`https://fhtbs-erp.shared/doc/${documentId || referenceNumber}`}
+                  size={38}
+                  level="M"
+                  fgColor="#000000"
+                />
+              </div>
+            ) : (
+              <div className="h-11 px-2.5 bg-stone-50 border border-dashed border-stone-300 flex flex-col items-center justify-center shrink-0 rounded-xs">
+                <span className="font-black uppercase tracking-wider text-stone-500" style={{ fontSize: '7.5px', lineHeight: '10px' }}>
+                  PENDING
+                </span>
+                <span className="font-bold uppercase tracking-wider text-stone-400" style={{ fontSize: '7px', lineHeight: '9px' }}>
+                  AUTHORIZATION
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -192,13 +203,13 @@ export const PrintTemplate = forwardRef<HTMLDivElement, PrintTemplateProps>(
           <div className="flex gap-6 shrink-0 text-right">
             <div>
               <div className="text-[7.5px] font-bold en-text uppercase tracking-widest mb-0.5">
-                TANGGAL / DATE
+                DATE
               </div>
               <div className="text-[9.5px] font-black text-black">{date}</div>
             </div>
             <div>
               <div className="text-[7.5px] font-bold en-text uppercase tracking-widest mb-0.5">
-                REFERENSI / REF.
+                REFERENCE / REF.
               </div>
               <div className="text-[9.5px] font-black text-black font-mono tracking-tight">
                 {referenceNumber}
@@ -221,19 +232,19 @@ export const PrintTemplate = forwardRef<HTMLDivElement, PrintTemplateProps>(
                 {signatureStatus === "signed" ? (
                   <>
                     <div className="text-[10px] text-black font-bold uppercase tracking-wide leading-tight mb-1">
-                      Dokumen ini telah diotorisasi dan disahkan secara komputasi. Sah secara hukum dengan verifikasi sistem.
+                      This document has been digitally authorized and computationally verified. Legally valid with system verification.
                     </div>
                     <div className="text-[9px] en-text uppercase tracking-wide leading-tight">
-                      This document has been digitally authorized and verified. Legally valid under registry ref: {referenceNumber}.
+                      Official system registry reference: {referenceNumber}.
                     </div>
                   </>
                 ) : (
                   <>
                     <div className="text-[10px] text-black font-bold uppercase tracking-wide leading-tight mb-1">
-                      Dokumen ini diterbitkan dan divalidasi secara komputasi. Sah tanpa tanda tangan fisik.
+                      This document is computationally issued and validated. Valid without physical signature.
                     </div>
                     <div className="text-[9px] en-text uppercase tracking-wide leading-tight">
-                      This document is computationally validated. Valid without physical signature under registry ref: {referenceNumber}.
+                      Official system registry reference: {referenceNumber}.
                     </div>
                   </>
                 )}

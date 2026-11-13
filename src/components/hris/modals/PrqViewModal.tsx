@@ -2,6 +2,7 @@ import React from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Printer } from "lucide-react";
 import { formatRupiah } from "@/utils/format";
+import { printPrqSummaryReport } from "@/utils/hrDocuments";
 
 interface PrqViewModalProps {
   isOpen: boolean;
@@ -46,7 +47,7 @@ export const PrqViewModal: React.FC<PrqViewModalProps> = ({
             <span className="text-[10px] font-black uppercase tracking-widest text-stone-400">
               Total Disbursement Amount
             </span>
-            <p className="text-2xl font-mono font-black text-[#b02524] mt-0.5">
+            <p className="text-2xl font-mono font-black text-stone-900 mt-0.5">
               {formatRupiah(selectedPrqView.total_net_pay)}
             </p>
             <div className="mt-2">
@@ -149,11 +150,11 @@ export const PrqViewModal: React.FC<PrqViewModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() => printPrqSummaryReport(selectedPrqView)}
               className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print / Export Summary</span>
+              <span>Print / Export PRq PDF</span>
             </button>
           </div>
 
@@ -184,7 +185,7 @@ export const PrqViewModal: React.FC<PrqViewModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 bg-[#b02524] text-white text-xs font-bold rounded-xl hover:bg-[#961f1e] transition-all cursor-pointer shadow-xs"
+              className="px-6 py-2 bg-stone-900 text-white text-xs font-bold rounded-xl hover:bg-stone-800 transition-all cursor-pointer shadow-xs"
             >
               Close
             </button>

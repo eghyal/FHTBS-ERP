@@ -3,11 +3,17 @@ import crypto from "crypto";
 export interface WotQrPayload {
   v: number;              // Version (1)
   wot_id: string;         // UUID of WOT
+  id?: string;            // Alias for wot_id
   lot: string;            // Human readable lot number
+  wot_number?: string;    // Alias for lot
   prj: string;            // Project code/number
+  project_id?: string;    // Alias for prj
   st: string;             // Station code/name
-  proc: string;           // Process name
+  station_id?: string;    // Alias for st
+  proc: string;           // Process name / BOP id
+  bop_id?: string;        // Alias for proc
   mch: string;            // Machine code/name
+  machine_id?: string;    // Alias for mch
   qty: number;            // Batch quantity
   ts: string;             // Timestamp ISO
   sig?: string;           // HMAC-SHA256 signature
@@ -65,33 +71,59 @@ export function decryptQrPayload(cipherText: string): string | null {
   }
 }
 
+export interface WotQrInputData {
+  wot_id?: string;
+  id?: string;
+  lot?: string;
+  wot_number?: string;
+  prj?: string;
+  project_id?: string;
+  st?: string;
+  station_id?: string;
+  proc?: string;
+  bop_id?: string;
+  mch?: string;
+  machine_id?: string;
+  qty: number;
+  ts?: string;
+}
+
 /**
  * Generate complete signed WOT QR Payload
  */
-export function generateSignedWotQr(data: {
-  wot_id: string;
-  lot: string;
-  prj: string;
-  st?: string;
-  proc?: string;
-  mch?: string;
-  qty: number;
-  ts?: string;
-}): {
+export function generateSignedWotQr(data: WotQrInputData): {
   payloadObj: WotQrPayload;
   rawJson: string;
   encryptedQrText: string;
+  qrString: string;
+  signature: string;
+  qrDataUrl: string;
 } {
+  const resolvedWotId = data.wot_id || data.id || "";
+  const resolvedLot = data.lot || data.wot_number || "";
+  const resolvedPrj = data.prj || data.project_id || "";
+  const resolvedSt = data.st || data.station_id || "ST-01";
+  const resolvedProc = data.proc || data.bop_id || "General";
+  const resolvedMch = data.mch || data.machine_id || "MANUAL";
+  const resolvedQty = Number(data.qty) || 1;
+  const resolvedTs = data.ts || new Date().toISOString();
+
   const payloadWithoutSig: Omit<WotQrPayload, "sig"> = {
     v: 1,
-    wot_id: data.wot_id,
-    lot: data.lot,
-    prj: data.prj,
-    st: data.st || "ST-01",
-    proc: data.proc || "General",
-    mch: data.mch || "MANUAL",
-    qty: Number(data.qty) || 1,
-    ts: data.ts || new Date().toISOString()
+    wot_id: resolvedWotId,
+    id: resolvedWotId,
+    lot: resolvedLot,
+    wot_number: resolvedLot,
+    prj: resolvedPrj,
+    project_id: resolvedPrj,
+    st: resolvedSt,
+    station_id: resolvedSt,
+    proc: resolvedProc,
+    bop_id: resolvedProc,
+    mch: resolvedMch,
+    machine_id: resolvedMch,
+    qty: resolvedQty,
+    ts: resolvedTs
   };
 
   const sig = signWotPayload(payloadWithoutSig);
@@ -102,7 +134,34 @@ export function generateSignedWotQr(data: {
   return {
     payloadObj,
     rawJson,
-    encryptedQrText
+    encryptedQrText,
+    qrString: encryptedQrText,
+    signature: sig,
+    qrDataUrl: encryptedQrText,
+  };
+}
+
+function hydratePayloadAliases(parsed: WotQrPayload): WotQrPayload {
+  const wotId = parsed.wot_id || parsed.id || "";
+  const lot = parsed.lot || parsed.wot_number || "";
+  const prj = parsed.prj || parsed.project_id || "";
+  const st = parsed.st || parsed.station_id || "";
+  const proc = parsed.proc || parsed.bop_id || "";
+  const mch = parsed.mch || parsed.machine_id || "";
+  return {
+    ...parsed,
+    wot_id: wotId,
+    id: wotId,
+    lot,
+    wot_number: lot,
+    prj,
+    project_id: prj,
+    st,
+    station_id: st,
+    proc,
+    bop_id: proc,
+    mch,
+    machine_id: mch,
   };
 }
 
@@ -111,12 +170,13 @@ export function generateSignedWotQr(data: {
  */
 export function verifyAndParseWotQr(rawInput: string): {
   isValid: boolean;
+  valid: boolean;
   payload?: WotQrPayload;
   reason?: string;
   isFallbackLot?: boolean;
 } {
   if (!rawInput || typeof rawInput !== "string") {
-    return { isValid: false, reason: "EMPTY_PAYLOAD" };
+    return { isValid: false, valid: false, reason: "EMPTY_PAYLOAD" };
   }
 
   const trimmed = rawInput.trim();
@@ -143,10 +203,11 @@ export function verifyAndParseWotQr(rawInput: string): {
   // Case 3: Parse JSON
   if (jsonString.startsWith("{")) {
     try {
-      const parsed: WotQrPayload = JSON.parse(jsonString);
+      const rawParsed: WotQrPayload = JSON.parse(jsonString);
+      const parsed = hydratePayloadAliases(rawParsed);
 
       if (!parsed.wot_id && !parsed.lot) {
-        return { isValid: false, reason: "MALFORMED_PAYLOAD" };
+        return { isValid: false, valid: false, reason: "MALFORMED_PAYLOAD" };
       }
 
       // Check HMAC signature if present
@@ -166,22 +227,24 @@ export function verifyAndParseWotQr(rawInput: string): {
         if (parsed.sig !== expectedSig) {
           return {
             isValid: false,
+            valid: false,
             reason: "INVALID_SIGNATURE",
             payload: parsed
           };
         }
 
-        return { isValid: true, payload: parsed };
+        return { isValid: true, valid: true, payload: parsed };
       } else {
         // Unsigned JSON payload
         return {
           isValid: false,
+          valid: false,
           reason: "UNSIGNED_PAYLOAD",
           payload: parsed
         };
       }
     } catch (e: any) {
-      return { isValid: false, reason: "JSON_PARSE_ERROR" };
+      return { isValid: false, valid: false, reason: "JSON_PARSE_ERROR" };
     }
   }
 
@@ -189,8 +252,9 @@ export function verifyAndParseWotQr(rawInput: string): {
   // Permitted as manual operator fallback on kiosk terminal
   return {
     isValid: true,
+    valid: true,
     isFallbackLot: true,
-    payload: {
+    payload: hydratePayloadAliases({
       v: 1,
       wot_id: "",
       lot: trimmed,
@@ -200,6 +264,6 @@ export function verifyAndParseWotQr(rawInput: string): {
       mch: "",
       qty: 0,
       ts: new Date().toISOString()
-    }
+    })
   };
 }

@@ -1,7 +1,8 @@
-export const getDailyAuthKeyForDate = (
+const getDailyAuthKeyForDate = (
   username: string | undefined | null,
   dateStr: string,
 ): string => {
+
   if (!username || typeof username !== "string") return "";
   const cleanUsername = String(username).trim().toLowerCase();
   if (!cleanUsername) return "";

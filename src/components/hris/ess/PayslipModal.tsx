@@ -1,6 +1,8 @@
 import React from "react";
 import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
 import { ReceiptText, Printer } from "lucide-react";
+import { printOfficialPayslip } from "@/utils/hrDocuments";
 
 interface PayslipModalProps {
   selectedPayslip: any;
@@ -19,6 +21,7 @@ export const PayslipModal: React.FC<PayslipModalProps> = ({
     <Modal
       isOpen={Boolean(selectedPayslip)}
       onClose={onClose}
+      uiTheme="hris"
       maxWidth="2xl"
       contentClassName="p-0 overflow-hidden"
       title={
@@ -39,65 +42,61 @@ export const PayslipModal: React.FC<PayslipModalProps> = ({
     >
       {selectedPayslip && (
         <div>
-          <div className="p-8 space-y-6 text-stone-800">
+          <div className="p-4 sm:p-6 space-y-4 text-stone-800">
             {/* Header Info */}
-            <div className="flex justify-between items-start border-b border-stone-200 pb-5 text-xs font-bold">
+            <div className="flex justify-between items-start border-b border-stone-200 pb-4 text-xs font-bold">
               <div>
-                <h4 className="font-mono text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">
-                  Recipient
+                <h4 className="font-mono text-[10px] font-black text-stone-400 uppercase tracking-widest mb-0.5">
+                  Employee
                 </h4>
                 <p className="font-extrabold text-stone-900 uppercase text-sm">
-                  {user?.username}
+                  {selectedPayslip.employee_name || user?.name || user?.username}
                 </p>
                 <p className="text-stone-500 font-bold">
-                  Role: {user?.role || "Staff"}
+                  {user?.role || "Staff"} (@{selectedPayslip.employee_username || user?.username})
                 </p>
               </div>
               <div className="text-right text-xs">
-                <h4 className="font-mono text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">
+                <h4 className="font-mono text-[10px] font-black text-stone-400 uppercase tracking-widest mb-0.5">
                   Period
                 </h4>
                 <p className="font-extrabold text-stone-900 text-sm uppercase">
                   {selectedPayslip.period_month}
                 </p>
-                <p className="text-stone-500 font-mono text-[10px]">
+                <p className="text-stone-500 font-mono text-[10px] tabular-nums">
                   ID: {selectedPayslip.id}
                 </p>
               </div>
             </div>
 
-            {/* Financial Calculations Table */}
-            <div className="space-y-4">
-              <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest block font-bold">
-                Financial Components
-              </span>
-
+            {/* Financial Calculations */}
+            <div className="space-y-3">
               <div className="bg-stone-50 border border-stone-200/80 rounded-2xl overflow-hidden font-bold">
-                <div className="grid grid-cols-2 bg-stone-150/40 border-b border-stone-200 py-2.5 px-4 text-[10px] font-black text-stone-500 uppercase tracking-wider">
-                  <span>Component Type</span>
+                <div className="grid grid-cols-2 bg-stone-150/40 border-b border-stone-200 py-2.5 px-3.5 text-[10px] font-black text-stone-500 uppercase tracking-wider">
+                  <span>Component</span>
                   <span className="text-right">Amount (IDR)</span>
                 </div>
 
                 <div className="divide-y divide-stone-150 font-bold text-xs text-stone-700">
-                  <div className="grid grid-cols-2 py-3 px-4">
+                  <div className="grid grid-cols-2 py-3 px-3.5">
                     <span>Basic Salary</span>
-                    <span className="text-right font-mono text-stone-900">
+                    <span className="text-right font-mono tabular-nums text-stone-900">
                       {formatRupiah(selectedPayslip.basic_salary)}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 py-3 px-4">
-                    <span className="text-emerald-700 flex items-center gap-1">
-                      Operational Allowance (+)
+                  <div className="grid grid-cols-2 py-3 px-3.5">
+                    <span className="text-emerald-700">
+                      Allowances & Overtime (+)
                     </span>
-                    <span className="text-right font-mono text-emerald-700">
+                    <span className="text-right font-mono tabular-nums text-emerald-700">
                       +{formatRupiah(selectedPayslip.allowances)}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 py-3 px-4">
-                    <span className="text-rose-700 flex items-center gap-1">
+                  <div className="grid grid-cols-2 py-3 px-3.5">
+                    <span className="text-rose-700">
                       Deductions (-)
                     </span>
-                    <span className="text-right font-mono text-rose-700">
+                    <span className="text-right font-mono tabular-nums text-rose-700">
                       -{formatRupiah(selectedPayslip.deductions)}
                     </span>
                   </div>
@@ -105,76 +104,39 @@ export const PayslipModal: React.FC<PayslipModalProps> = ({
               </div>
 
               {/* Net Income block */}
-              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex justify-between items-center font-bold">
+              <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl flex justify-between items-center font-bold gap-2">
                 <div>
                   <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest block">
-                    Total Take Home Pay (THP)
+                    Take Home Pay
                   </span>
-                  <span className="text-xs text-stone-500 font-bold">
-                    Net salary transferred to registered account
+                  <span className="text-[11px] text-stone-500 font-bold">
+                    Net Salary
                   </span>
                 </div>
-                <span className="text-xl font-extrabold text-emerald-700 font-mono tracking-tight">
+                <span className="text-lg sm:text-xl font-extrabold text-emerald-700 font-mono tabular-nums tracking-tight">
                   {formatRupiah(selectedPayslip.net_salary)}
                 </span>
               </div>
             </div>
-
-            {/* Legal confirmation seal */}
-            <div className="flex justify-between items-end pt-4 border-t border-stone-200/60 text-[10px] text-stone-500 font-medium">
-              <div>
-                <p>
-                  Validity: <strong>SYSTEM VERIFIED</strong>
-                </p>
-                <p>
-                  Status:{" "}
-                  <strong
-                    className={
-                      selectedPayslip.status === "PAID"
-                        ? "text-emerald-600"
-                        : "text-amber-600"
-                    }
-                  >
-                    {selectedPayslip.status === "PAID"
-                      ? "PAID (DISBURSED)"
-                      : "PENDING PAYMENT"}
-                  </strong>
-                </p>
-                <p>
-                  Printed:{" "}
-                  {new Date().toLocaleString("en-US", {
-                    timeZone: "Asia/Jakarta",
-                  })}
-                </p>
-              </div>
-              <div className="text-right cursor-default select-none font-bold">
-                <p className="uppercase tracking-widest font-black text-stone-400 mb-4">
-                  Finance Department
-                </p>
-                <div className="font-mono bg-stone-100 text-stone-600 border border-stone-200 px-2 py-1 rounded inline-block">
-                  PAVINGJOSS-ERP-SECURE✓
-                </div>
-              </div>
-            </div>
           </div>
 
-          <div className="bg-stone-50 px-8 py-5 border-t border-stone-100 flex justify-end gap-3 font-bold">
-            <button
+          <div className="bg-stone-50 px-4 sm:px-6 py-4 border-t border-stone-100 flex justify-end gap-2.5 font-bold">
+            <Button
               type="button"
-              onClick={() => {
-                window.print();
-              }}
-              className="px-4 py-2.5 bg-stone-250 hover:bg-stone-300 text-stone-700 text-xs font-black uppercase tracking-wider rounded-xl transition-colors flex items-center gap-1.5"
+              variant="secondary"
+              onClick={() => printOfficialPayslip(selectedPayslip, user)}
+              className="px-3.5 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5"
             >
-              <Printer className="w-4 h-4" /> Print Slip
-            </button>
-            <button
+              <Printer className="w-4 h-4" /> Print PDF
+            </Button>
+            <Button
               type="button"
+              variant="primary"
               onClick={onClose}
-              className="px-6 py-2.5 bg-[#b02524] hover:bg-[#961f1e] text-white text-xs font-black uppercase tracking-wider rounded-xl transition-colors cursor-pointer shadow-xs"
+              className="px-5 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-xs"
             >
-              Close Document
-            </button>
+              Close
+            </Button>
           </div>
         </div>
       )}

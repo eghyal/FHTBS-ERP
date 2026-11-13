@@ -93,7 +93,7 @@ export function AttendanceReminder() {
           resolve(`${pos.coords.latitude},${pos.coords.longitude}`);
         },
         (err) => {
-          console.warn("Gagal mendapatkan lokasi GPS:", err);
+          console.warn("Failed to acquire GPS location:", err);
           resolve(null); // Continue even if failed
         },
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 },
@@ -179,7 +179,7 @@ export function AttendanceReminder() {
       <button
         onClick={handleAction}
         disabled={isProcessing}
-        className="w-full bg-[#b02524] hover:bg-[#961f1e] text-white font-bold py-3 px-4 rounded-xl shadow-md transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+        className="w-full bg-stone-900 hover:bg-stone-800 text-white font-bold py-3 px-4 rounded-xl shadow-md transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
       >
         {isProcessing
           ? "Processing..."

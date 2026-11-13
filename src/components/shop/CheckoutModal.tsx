@@ -166,12 +166,19 @@ export function CheckoutModal({
   }, [postalCode]);
 
   useEffect(() => {
-    if (customer && isOpen) {
+    if (customer) {
       setFormData((prev) => ({
         ...prev,
-        customer_name: prev.customer_name || customer.customer_name || "",
-        customer_phone: prev.customer_phone || customer.phone || "",
-        customer_email: prev.customer_email || customer.email || "",
+        customer_name: customer.customer_name || prev.customer_name || "",
+        customer_phone: customer.phone || prev.customer_phone || "",
+        customer_email: customer.email || prev.customer_email || "",
+      }));
+    } else if (!customer && isOpen) {
+      setFormData((prev) => ({
+        ...prev,
+        customer_name: "",
+        customer_phone: "",
+        customer_email: "",
       }));
     }
   }, [customer, isOpen]);
@@ -298,6 +305,24 @@ export function CheckoutModal({
       const json = await res.json();
       if (!res.ok || !json.success) {
         throw new Error(json.error || "Gagal membuat pesanan.");
+      }
+
+      // If customer is signed in, persist their entered phone/name in active session
+      if (customer) {
+        try {
+          const updatedSession = {
+            ...customer,
+            customer_name: formData.customer_name.trim() || customer.customer_name,
+            phone: formData.customer_phone.trim() || customer.phone,
+            email: formData.customer_email?.trim() || customer.email,
+            cart_snapshot: [],
+          };
+          localStorage.setItem(
+            "shop_customer_session_v1",
+            JSON.stringify(updatedSession)
+          );
+          window.dispatchEvent(new Event("shop_customer_auth_changed"));
+        } catch {}
       }
 
       onOrderPlaced(json.data);

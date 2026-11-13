@@ -16,17 +16,43 @@ import {
   AlertCircle,
   UploadCloud,
   X,
+  Printer,
+  ShieldCheck,
+  Calendar,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useToast } from "@/contexts/ToastContext";
 import { apiFetch } from "@/utils/api";
 import { Modal } from "@/components/ui/Modal";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { generatePDF } from "@/lib/pdfGenerator";
 
-import { PublicHeader, PublicFooter } from "@/components/layouts/PublicLayout";
+import {
+  PublicHeader,
+  PublicFooter,
+  usePublicCmsConfig,
+} from "@/components/layouts/PublicLayout";
+import {
+  harmonizeScenePalette,
+  isAnnualEventActive,
+} from "@/constants/cmsDefaults";
 import { trackPageView, trackJobView, trackJobApplyClick, trackFilter } from "@/lib/tracker";
+import {
+  getLatestCmsSnapshot,
+  recordServerCmsSnapshot,
+  subscribeToCmsUpdates,
+} from "@/utils/cmsLiveSync";
+import {
+  normalizeDepartmentToRole,
+  getDepartmentLabel,
+} from "@/constants/rbac";
 
 const formatSalaryString = (val?: string) => {
-  if (!val) return "Competitive";
+  if (!val) return "Kompetitif / Sesuai Kualifikasi";
   // Standardize the separator to "s/d" and remove the second "Rp"
   return val.replace(
     /(Rp\s*[\d.,-]+)\s*(?:-|s\/d)\s*Rp\s*([\d.,-]+)/gi,
@@ -59,15 +85,28 @@ export default function Careers() {
   const [selectedDept, setSelectedDept] = useState("All");
 
   // CMS & Team
-  const [cmsContent, setCmsContent] = useState<any>({});
+  const [cmsContent, setCmsContent] = useState<any>(
+    () => getLatestCmsSnapshot("careers") || {},
+  );
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
 
-  // Tracking Application State
+  // Tracking Application & Self-Service Offering Confirmation State
   const [isTracking, setIsTracking] = useState(false);
   const [trackEmail, setTrackEmail] = useState("");
   const [trackId, setTrackId] = useState("");
   const [trackResult, setTrackResult] = useState<any>(null);
   const [trackingLoading, setTrackingLoading] = useState(false);
+  const [isPrintingOffer, setIsPrintingOffer] = useState(false);
+  const [isSubmittingOfferConfirm, setIsSubmittingOfferConfirm] = useState(false);
+  const [offerConfirmForm, setOfferConfirmForm] = useState({
+    join_date: new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
+    id_card_number: "",
+    npwp: "",
+    ptkp_status: "TK/0",
+    bank_account_info: "",
+    candidate_notes: "",
+  });
+  const offeringLetterRef = React.useRef<HTMLDivElement>(null);
 
   // Application Form State
   const [isApplying, setIsApplying] = useState(false);
@@ -92,8 +131,16 @@ export default function Careers() {
   const { showToast } = useToast();
 
   useEffect(() => {
+    const unsubscribeLive = subscribeToCmsUpdates<any>("careers", (data) => {
+      if (data && typeof data === "object") {
+        setCmsContent(data);
+      }
+    });
     fetchData();
     trackPageView("CAREERS", "Portal Lowongan & Karir Pabrik Paving Joss", "/careers");
+    return () => {
+      unsubscribeLive();
+    };
   }, []);
 
   const fetchData = async () => {
@@ -108,7 +155,10 @@ export default function Careers() {
       ]);
 
       if (jobsRes.ok) setJobs(jobsRes.data);
-      if (cmsRes.ok) setCmsContent(cmsRes.data);
+      if (cmsRes.ok && cmsRes.data) {
+        recordServerCmsSnapshot("careers", cmsRes.data);
+        setCmsContent(cmsRes.data);
+      }
       if (teamRes.ok) setTeamMembers(teamRes.data);
 
       if (!jobsRes.ok) throw new Error("Jobs API failed");
@@ -121,25 +171,72 @@ export default function Careers() {
     }
   };
 
-  const handleTrackSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!trackEmail || !trackId) return;
+  const handleTrackSubmit = async (e?: React.FormEvent, customEmail?: string, customId?: string) => {
+    if (e) e.preventDefault();
+    const targetEmail = (customEmail ?? trackEmail).trim();
+    const targetId = (customId ?? trackId).trim();
+    if (!targetEmail || !targetId) return;
     setTrackingLoading(true);
     try {
       const res = await apiFetch("/api/hr/track", {
         method: "POST",
-        body: JSON.stringify({ email: trackEmail, tracking_id: trackId }),
+        body: JSON.stringify({ email: targetEmail, tracking_id: targetId }),
       });
       if (res.ok) {
         setTrackResult(res.data);
       } else {
-        showToast(res.error || "Application not found", "error");
+        showToast(res.error || "Berkas lamaran atau Tracking ID tidak ditemukan", "error");
         setTrackResult(null);
       }
     } catch (err) {
-      showToast("Failed to track application Status", "error");
+      showToast("Gagal memeriksa status berkas lamaran", "error");
     } finally {
       setTrackingLoading(false);
+    }
+  };
+
+  const handleConfirmOfferSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!trackResult) return;
+    setIsSubmittingOfferConfirm(true);
+    try {
+      const res = await apiFetch("/api/hr/track/respond", {
+        method: "POST",
+        body: JSON.stringify({
+          email: trackResult.email || trackEmail,
+          tracking_id: trackResult.id || trackId,
+          ...offerConfirmForm,
+        }),
+      });
+      if (res.ok && res.data) {
+        setTrackResult(res.data.data || res.data);
+        showToast(
+          res.data.message || "Konfirmasi penerimaan Offering Letter berhasil dikirim ke HRIS!",
+          "success",
+        );
+      } else {
+        showToast(res.error || "Gagal menyimpan konfirmasi penawaran kerja", "error");
+      }
+    } catch {
+      showToast("Kesalahan jaringan saat menyimpan konfirmasi", "error");
+    } finally {
+      setIsSubmittingOfferConfirm(false);
+    }
+  };
+
+  const handlePrintOfferingLetter = async () => {
+    if (!trackResult || !offeringLetterRef.current) return;
+    setIsPrintingOffer(true);
+    try {
+      await generatePDF(
+        offeringLetterRef.current,
+        `Offering_Letter_${trackResult.id}_${(trackResult.name || "Kandidat").replace(/\s+/g, "_")}.pdf`,
+      );
+      showToast("Offering Letter Resmi (PDF) berhasil diunduh!", "success");
+    } catch {
+      showToast("Gagal membuat dokumen PDF Offering Letter", "error");
+    } finally {
+      setIsPrintingOffer(false);
     }
   };
 
@@ -220,7 +317,9 @@ export default function Careers() {
 
   const departments = [
     "All",
-    ...Array.from(new Set(jobs.map((j) => j.department))),
+    ...Array.from(
+      new Set(jobs.map((j) => normalizeDepartmentToRole(j.department))),
+    ),
   ];
 
   const filteredJobs = jobs.filter((job) => {
@@ -228,7 +327,8 @@ export default function Careers() {
       job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesDept =
-      selectedDept === "All" || job.department === selectedDept;
+      selectedDept === "All" ||
+      normalizeDepartmentToRole(job.department) === selectedDept;
     return matchesSearch && matchesDept;
   });
 
@@ -241,13 +341,13 @@ export default function Careers() {
       !formData.email.trim() ||
       !formData.phone.trim()
     ) {
-      showToast("Harap isi semua kolom wajib", "error");
+      showToast("Harap lengkapi semua kolom wajib.", "error");
       return;
     }
 
     if (!uploadedFileUrl) {
       showToast(
-        "Please select and upload your resume or CV document first.",
+        "Harap pilih dan unggah dokumen CV / Resume Anda terlebih dahulu.",
         "error",
       );
       return;
@@ -276,9 +376,13 @@ export default function Careers() {
       });
 
       if (res.ok) {
+        const submittedEmail = formData.email;
+        const generatedId = res.data?.id || "N/A";
         setFormSuccess(true);
-        setApplicationId(res.data?.id || "N/A");
-        showToast("Your job application has been submitted successfully!", "success");
+        setApplicationId(generatedId);
+        setTrackEmail(submittedEmail);
+        setTrackId(generatedId);
+        showToast("Lamaran pekerjaan Anda berhasil dikirim ke tim HRD!", "success");
         setFormData({
           name: "",
           email: "",
@@ -290,12 +394,12 @@ export default function Careers() {
         setUploadedFileUrl("");
         setUploadedFileName("");
       } else {
-        throw new Error(res.error || "Failed to submit application");
+        throw new Error(res.error || "Gagal mengirim berkas lamaran");
       }
     } catch (err: any) {
       console.error(err);
       showToast(
-        err.message || "An unexpected error occurred. Please try again.",
+        err.message || "Terjadi kesalahan sistem. Silakan coba kembali.",
         "error",
       );
     } finally {
@@ -316,12 +420,43 @@ export default function Careers() {
     }
   };
 
+  const publicCms = usePublicCmsConfig();
+  const publicEventActive = isAnnualEventActive(publicCms);
+  const sceneThemeActive = publicEventActive && publicCms.event_scene_auto_theme;
+  const harmonized = sceneThemeActive
+    ? harmonizeScenePalette({
+        primary: publicCms.event_primary_color || "#047857",
+        secondary: publicCms.event_secondary_color || "#b45309",
+        surfaceTint: publicCms.event_surface_tint || "#ecfdf5",
+        badgeText: publicCms.event_badge_text_color || "#065f46",
+      })
+    : {
+        primary: "#b02524",
+        secondary: "#8d1d1c",
+        surfaceTint: "#fff1f2",
+        badgeText: "#8d1d1c",
+      };
+
   return (
     <div className="bg-stone-50 min-h-screen text-stone-900 font-sans pb-0 flex flex-col">
       <PublicHeader />
 
-      {/* Hero Banner */}
-      <section className="bg-gradient-to-br from-[#b02524] to-[#8d1d1c]/95 text-white py-20 lg:py-28 px-4 relative overflow-hidden">
+      {/* Hero Banner with Harmonized Monochromatic Scene Gradient & Seamless Top/Bottom Dissolve */}
+      <section
+        className="text-white pt-16 pb-24 lg:pt-24 lg:pb-32 px-4 relative overflow-hidden"
+        style={{
+          background: `linear-gradient(175deg, ${harmonized.primary} 0%, ${harmonized.secondary} 78%, #292524 100%)`,
+        }}
+      >
+        {/* Top Soft Atmospheric Feather from Header/Ornament into Hero */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-14 z-0"
+          style={{
+            background: `linear-gradient(180deg, ${harmonized.surfaceTint}38 0%, rgba(0,0,0,0) 100%)`,
+          }}
+          aria-hidden="true"
+        />
+
         <div className="absolute inset-0 opacity-10 pointer-events-none">
           {/* Subtle grid pattern background */}
           <div
@@ -338,10 +473,12 @@ export default function Careers() {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-bold text-amber-300 mb-6 border border-white/10 uppercase tracking-widest"
+            className="public-glass-badge-dark inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold text-white mb-6 uppercase tracking-widest"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            {cmsContent?.hero_label || "Join Our Elite Team"}
+            <Sparkles className="w-3.5 h-3.5 text-white/95 relative z-10" />
+            <span className="relative z-10">
+              {cmsContent?.hero_label || "Bergabung Bersama Kami"}
+            </span>
           </motion.div>
           <motion.h1
             initial={{ opacity: 0, y: 15 }}
@@ -349,35 +486,46 @@ export default function Careers() {
             transition={{ delay: 0.1 }}
             className="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight mb-4"
           >
-            {cmsContent?.hero_title || "Building the Future of Infrastructure"}
+            {cmsContent?.hero_title || "Membangun Masa Depan Infrastruktur Berkualitas"}
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-stone-200 text-sm md:text-base max-w-2xl mx-auto leading-relaxed"
+            className="text-white/90 text-sm md:text-base max-w-2xl mx-auto leading-relaxed"
           >
             {cmsContent?.hero_subtitle ||
-              "We believe our strength lies in our people. Join CV Batu Emas Group to build a thriving career in modern precast concrete and paving manufacturing."}
+              "Kami percaya keunggulan bermula dari dedikasi insan terbaik. Bergabunglah bersama CV Batu Emas Group untuk membangun karir cemerlang di industri manufaktur paving block dan beton pracetak modern."}
           </motion.p>
-          <div className="mt-8 flex justify-center gap-4">
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
             <button
               onClick={() => {
                 const el = document.getElementById("jobs-section");
                 el?.scrollIntoView({ behavior: "smooth" });
               }}
-              className="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-sm uppercase tracking-wider transition-colors cursor-pointer"
+              className="px-6 py-3 bg-white hover:bg-stone-100 font-extrabold rounded-xl text-sm uppercase tracking-wider transition-all shadow-md cursor-pointer"
+              style={{ color: harmonized.badgeText }}
             >
-              Explore Openings
+              Jelajahi Lowongan Kerja
             </button>
             <button
               onClick={() => setIsTracking(true)}
-              className="px-6 py-3 bg-white/10 border border-white/20 hover:bg-white/20 text-white font-bold rounded-xl text-sm uppercase tracking-wider transition-colors cursor-pointer"
+              className="px-6 py-3 bg-white/12 border border-white/25 hover:bg-white/20 text-white font-bold rounded-xl text-sm uppercase tracking-wider transition-colors cursor-pointer"
             >
-              Track Application Status
+              Lacak Status Berkas Lamaran
             </button>
           </div>
         </div>
+
+        {/* Seamless Multi-Stop Bottom Fade-Out Gradient from Banner into Stone-50 Page Background */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-28"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(250,250,249,0) 0%, rgba(250,250,249,0.45) 55%, #fafaf9 100%)",
+          }}
+          aria-hidden="true"
+        />
       </section>
 
       {/* Main Content Area */}
@@ -418,28 +566,27 @@ export default function Careers() {
             >
               {/* Search & Theme Headers */}
               <div className="bg-white border border-stone-200/80 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
-                <div className="w-full md:max-w-md relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400">
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
-                  </span>
-                  <input
+                <div className="w-full md:max-w-md">
+                  <Input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search job title or required skills..."
-                    className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#b02524]/20 focus:border-[#b02524] transition-all text-sm font-medium"
+                    placeholder="Cari posisi lowongan atau keahlian yang dibutuhkan..."
+                    leftIcon={
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    }
                   />
                 </div>
 
@@ -458,7 +605,7 @@ export default function Careers() {
                           : "bg-stone-100 hover:bg-stone-200 text-stone-600"
                       }`}
                     >
-                      {dept === "All" ? "Semua Divisi" : dept}
+                      {dept === "All" ? "Semua Divisi" : getDepartmentLabel(dept)}
                     </button>
                   ))}
                 </div>
@@ -478,10 +625,10 @@ export default function Careers() {
                     <Briefcase className="w-7 h-7 text-stone-400" />
                   </div>
                   <h3 className="font-bold text-lg text-stone-800 mb-1">
-                    No Active Job Openings
+                    Belum Ada Lowongan Terbuka
                   </h3>
                   <p className="text-stone-500 text-sm mb-6">
-                    There are currently no open positions matching the selected filters. Please check back soon or reset filters!
+                    Saat ini belum ada posisi lowongan yang cocok dengan kriteria pencarian Anda. Silakan cek kembali secara berkala atau atur ulang filter pencarian!
                   </p>
                   <button
                     onClick={() => {
@@ -490,7 +637,7 @@ export default function Careers() {
                     }}
                     className="px-4 py-2.5 bg-[#b02524] hover:bg-[#961f1e] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-xs cursor-pointer"
                   >
-                    Reset Filter
+                    Atur Ulang Filter
                   </button>
                 </div>
               ) : (
@@ -509,7 +656,7 @@ export default function Careers() {
                         {/* Bullet / Division Tag */}
                         <div className="flex items-center justify-between mb-4">
                           <span className="px-3 py-1 bg-stone-100 text-[10px] font-bold text-stone-600 rounded-lg uppercase tracking-wider">
-                            {job.department}
+                            {getDepartmentLabel(job.department)}
                           </span>
                           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                         </div>
@@ -531,7 +678,7 @@ export default function Careers() {
                           </div>
                           <div className="flex items-center gap-2">
                             <Coins className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                            <span className="text-stone-800 lowercase first-letter:uppercase">
+                            <span className="text-stone-800 font-mono tabular-nums lowercase first-letter:uppercase">
                               {formatSalaryString(job.salary_string)}
                             </span>
                           </div>
@@ -544,7 +691,7 @@ export default function Careers() {
 
                       {/* Apply button link */}
                       <div className="mt-6 pt-4 border-t border-stone-100 flex items-center justify-between">
-                        <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-widest">
+                        <span className="text-[10px] font-extrabold font-mono tabular-nums text-stone-400 uppercase tracking-widest">
                           ID: {job.id.slice(0, 10)}
                         </span>
                         <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#b02524] group-hover:translate-x-1 transition-transform">
@@ -575,7 +722,7 @@ export default function Careers() {
                 className="inline-flex items-center gap-2 text-stone-500 hover:text-stone-900 transition-colors font-bold text-xs uppercase tracking-widest mb-6"
               >
                 <ArrowLeft className="w-4 h-4" />
-                Back to Job Openings
+                Kembali ke Daftar Lowongan
               </button>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -584,7 +731,7 @@ export default function Careers() {
                   {/* Job Detail Header Card */}
                   <div className="bg-white border border-stone-200 rounded-3xl p-8 shadow-sm">
                     <span className="inline-block px-3 py-1 bg-stone-100 text-[10px] font-bold uppercase tracking-wider text-stone-600 rounded-lg mb-4">
-                      {selectedJob.department}
+                      {getDepartmentLabel(selectedJob.department)}
                     </span>
                     <h2 className="text-2xl md:text-3xl font-extrabold text-stone-900 tracking-tight leading-snug mb-4">
                       {selectedJob.title}
@@ -611,7 +758,7 @@ export default function Careers() {
                   {/* Responsibilities */}
                   <div className="bg-white border border-stone-200 rounded-3xl p-8 shadow-sm space-y-4">
                     <h3 className="font-extrabold text-base text-stone-900 uppercase tracking-wider pb-2 border-b border-stone-100">
-                      Job Responsibilities & Scope
+                      Tanggung Jawab &amp; Ruang Lingkup Pekerjaan
                     </h3>
                     <p className="text-stone-600 text-sm leading-relaxed whitespace-pre-line">
                       {selectedJob.description}
@@ -622,7 +769,7 @@ export default function Careers() {
                   {parseList(selectedJob.requirements).length > 0 && (
                     <div className="bg-white border border-stone-200 rounded-3xl p-8 shadow-sm space-y-4">
                       <h3 className="font-extrabold text-base text-stone-900 uppercase tracking-wider pb-2 border-b border-stone-100">
-                        Candidate Qualifications
+                        Kualifikasi &amp; Persyaratan Kandidat
                       </h3>
                       <ul className="space-y-3">
                         {parseList(selectedJob.requirements).map((req, idx) => (
@@ -642,7 +789,7 @@ export default function Careers() {
                   {parseList(selectedJob.benefits).length > 0 && (
                     <div className="bg-white border border-stone-200 rounded-3xl p-8 shadow-sm space-y-4">
                       <h3 className="font-extrabold text-base text-stone-900 uppercase tracking-wider pb-2 border-b border-stone-100">
-                        Benefits & Compensation
+                        Fasilitas &amp; Kompensasi Kerja
                       </h3>
                       <ul className="space-y-3">
                         {parseList(selectedJob.benefits).map((benefit, idx) => (
@@ -669,17 +816,17 @@ export default function Careers() {
                         </div>
                         <div className="space-y-1">
                           <h4 className="font-bold text-sm text-stone-900">
-                            Join Paving Joss Team
+                            Bergabung Bersama Tim Paving Joss
                           </h4>
                           <p className="text-xs text-stone-500">
-                            Submit your dossier today! Our talent acquisition team will review your qualifications promptly.
+                            Kirimkan berkas lamaran Anda hari ini! Tim rekrutmen kami akan meninjau kualifikasi dan menghubungi kandidat terpilih.
                           </p>
                         </div>
                         <button
                           onClick={() => setIsApplying(true)}
                           className="w-full py-3.5 bg-[#b02524] hover:bg-[#921e1d] text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
                         >
-                          <span>Apply for This Role</span>
+                          <span>Lamar Posisi Ini</span>
                           <ArrowRight className="w-4 h-4" />
                         </button>
                       </div>
@@ -694,35 +841,47 @@ export default function Careers() {
                         </div>
                         <div className="space-y-1.5">
                           <h4 className="font-extrabold text-base text-stone-950">
-                            Application Received!
+                            Lamaran Berhasil Diterima!
                           </h4>
                           <p className="text-xs text-stone-500 leading-relaxed">
-                            Thank you for your application. Your candidate profile has been recorded in our HR talent pool.
+                            Terima kasih atas minat Anda. Berkas profil kandidat Anda telah tercatat dengan aman di database HRIS kami.
                           </p>
                           <div className="bg-stone-50 p-4 border border-stone-200 rounded-xl my-4">
                             <p className="text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">
-                              Your Tracking ID
+                              Nomor ID Pelacakan Anda
                             </p>
                             <p className="text-xl font-mono text-stone-900 font-bold select-all">
                               {applicationId}
                             </p>
                             <p className="text-xs text-stone-500 mt-2">
-                              Use this Tracking ID along with your email address to check status updates.
+                              Gunakan ID Pelacakan ini bersama alamat email Anda untuk memeriksa perkembangan seleksi kapan saja.
                             </p>
                           </div>
                         </div>
-                        <button
-                          onClick={() => {
-                            setSelectedJob(null);
-                            setIsApplying(false);
-                            setFormSuccess(false);
-                            setUploadedFileUrl("");
-                            setUploadedFileName("");
-                          }}
-                          className="w-full py-3 bg-[#b02524] hover:bg-[#961f1e] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-xs"
-                        >
-                          Back to Openings
-                        </button>
+                        <div className="space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsTracking(true);
+                              handleTrackSubmit(undefined, trackEmail, applicationId);
+                            }}
+                            className="w-full py-3 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 font-bold text-xs uppercase tracking-wider rounded-lg transition-all cursor-pointer shadow-xs"
+                          >
+                            Lacak Status Lamaran Sekarang
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedJob(null);
+                              setIsApplying(false);
+                              setFormSuccess(false);
+                              setUploadedFileUrl("");
+                              setUploadedFileName("");
+                            }}
+                            className="w-full py-3 bg-[#b02524] hover:bg-[#961f1e] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-xs"
+                          >
+                            Kembali ke Daftar Lowongan
+                          </button>
+                        </div>
                       </motion.div>
                     ) : (
                       <motion.div
@@ -732,7 +891,7 @@ export default function Careers() {
                       >
                         <div className="flex justify-between items-center pb-3 border-b border-stone-150">
                           <h4 className="font-extrabold text-sm text-stone-900 uppercase tracking-tight">
-                            Application Form
+                            Formulir Pendaftaran Kerja
                           </h4>
                           <button
                             onClick={() => {
@@ -742,130 +901,101 @@ export default function Careers() {
                             }}
                             className="text-xs text-stone-400 hover:text-stone-900 font-bold cursor-pointer"
                           >
-                            Cancel
+                            Batal
                           </button>
                         </div>
 
                         <form
                           onSubmit={handleApplySubmit}
-                          className="space-y-4"
+                          className="space-y-3.5"
                         >
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                              Full Name *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="e.g. John Doe"
-                              value={formData.name}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  name: e.target.value,
-                                })
-                              }
-                              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#b02524]/10 focus:border-[#b02524] transition-all text-xs font-semibold"
-                            />
-                          </div>
+                          <Input
+                            label="Nama Lengkap *"
+                            type="text"
+                            required
+                            placeholder="Contoh: Budi Santoso"
+                            value={formData.name}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                name: e.target.value,
+                              })
+                            }
+                          />
 
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                              Email Address *
-                            </label>
-                            <input
-                              type="email"
-                              required
-                              placeholder="e.g. johndoe@gmail.com"
-                              value={formData.email}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  email: e.target.value,
-                                })
-                              }
-                              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#b02524]/10 focus:border-[#b02524] transition-all text-xs font-semibold"
-                            />
-                          </div>
+                          <Input
+                            label="Alamat Email *"
+                            type="email"
+                            required
+                            placeholder="Contoh: budi.santoso@gmail.com"
+                            value={formData.email}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                email: e.target.value,
+                              })
+                            }
+                          />
 
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                              Phone / WhatsApp Number *
-                            </label>
-                            <input
-                              type="tel"
-                              required
-                              placeholder="e.g. +62 812 3456 7890"
-                              value={formData.phone}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  phone: e.target.value,
-                                })
-                              }
-                              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#b02524]/10 focus:border-[#b02524] transition-all text-xs font-semibold"
-                            />
-                          </div>
+                          <Input
+                            label="Nomor WhatsApp / Telepon *"
+                            type="tel"
+                            required
+                            placeholder="Contoh: 0812-3456-7890"
+                            value={formData.phone}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                phone: e.target.value,
+                              })
+                            }
+                            className="font-mono tabular-nums"
+                          />
 
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                              LinkedIn Profile (Optional)
-                            </label>
-                            <input
-                              type="url"
-                              placeholder="e.g. linkedin.com/in/johndoe"
-                              value={formData.linkedin}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  linkedin: e.target.value,
-                                })
-                              }
-                              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#b02524]/10 focus:border-[#b02524] transition-all text-xs font-semibold"
-                            />
-                          </div>
+                          <Input
+                            label="Tautan Profil LinkedIn (Opsional)"
+                            type="url"
+                            placeholder="Contoh: linkedin.com/in/budisantoso"
+                            value={formData.linkedin}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                linkedin: e.target.value,
+                              })
+                            }
+                          />
 
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                              Professional Summary / Background *
-                            </label>
-                            <textarea
-                              required
-                              rows={3}
-                              placeholder="Summarize your professional experience (e.g. 3 years in industrial manufacturing)..."
-                              value={formData.experience}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  experience: e.target.value,
-                                })
-                              }
-                              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#b02524]/10 focus:border-[#b02524] transition-all text-xs font-semibold resize-none"
-                            />
-                          </div>
+                          <Textarea
+                            label="Ringkasan Pengalaman Kerja / Profil Singkat *"
+                            required
+                            rows={3}
+                            placeholder="Tuliskan ringkasan pengalaman dan keahlian Anda (contoh: 3 tahun di industri manufaktur atau operator mesin)..."
+                            value={formData.experience}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                experience: e.target.value,
+                              })
+                            }
+                          />
 
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider font-sans">
-                              Cover Letter / Note
-                            </label>
-                            <textarea
-                              rows={3}
-                              placeholder="Introduce yourself and explain why you are interested in this position..."
-                              value={formData.coverLetter}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  coverLetter: e.target.value,
-                                })
-                              }
-                              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#b02524]/10 focus:border-[#b02524] transition-all text-xs font-semibold resize-none"
-                            />
-                          </div>
+                          <Textarea
+                            label="Surat Lamaran / Catatan Tambahan"
+                            rows={3}
+                            placeholder="Perkenalkan diri Anda secara singkat dan ceritakan motivasi Anda melamar posisi ini..."
+                            value={formData.coverLetter}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                coverLetter: e.target.value,
+                              })
+                            }
+                          />
 
                           {/* Beautiful Interactive Drag and Drop Resume File field */}
                           <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
-                              Upload Resume / CV *
+                              Unggah Dokumen CV / Resume *
                             </label>
 
                             {!uploadedFileUrl ? (
@@ -884,17 +1014,17 @@ export default function Careers() {
                                   <div className="flex flex-col items-center gap-2">
                                     <div className="w-5 h-5 border-2 border-stone-300 border-t-[#b02524] rounded-full animate-spin" />
                                     <span className="text-[10px] text-stone-500 font-bold uppercase tracking-wider animate-pulse">
-                                      Uploading document...
+                                      Sedang mengunggah berkas...
                                     </span>
                                   </div>
                                 ) : (
                                   <>
                                     <UploadCloud className="w-8 h-8 text-stone-400 mb-1.5" />
                                     <p className="text-xs font-semibold text-stone-700">
-                                      Drag document here or click to browse
+                                      Tarik berkas ke sini atau klik untuk memilih
                                     </p>
                                     <p className="text-[9px] text-stone-400 uppercase font-semibold">
-                                      Max 5MB (PDF/DOCX/JPG/PNG)
+                                      Maksimal 5MB (Format: PDF, DOCX, JPG, PNG)
                                     </p>
                                     <input
                                       type="file"
@@ -914,7 +1044,7 @@ export default function Careers() {
                                       {uploadedFileName}
                                     </p>
                                     <p className="text-[9px] text-emerald-600 font-semibold uppercase tracking-wider">
-                                      READY TO SUBMIT
+                                      BERKAS SIAP DIKIRIM
                                     </p>
                                   </div>
                                 </div>
@@ -925,7 +1055,7 @@ export default function Careers() {
                                     setUploadedFileName("");
                                   }}
                                   className="p-1.5 hover:bg-stone-250 rounded-lg text-stone-400 hover:text-stone-700 transition cursor-pointer"
-                                  aria-label="Remove File"
+                                  aria-label="Hapus Berkas"
                                 >
                                   <X className="w-4 h-4" />
                                 </button>
@@ -940,8 +1070,8 @@ export default function Careers() {
                           >
                             <Send className="w-3.5 h-3.5" />
                             {formSubmitting
-                              ? "Submitting Dossier..."
-                              : "Submit Application"}
+                              ? "Mengirimkan Berkas Lamaran..."
+                              : "Kirim Lamaran Sekarang"}
                           </button>
                         </form>
                       </motion.div>
@@ -957,83 +1087,396 @@ export default function Careers() {
       <Modal
         isOpen={isTracking}
         onClose={() => setIsTracking(false)}
-        maxWidth="md"
-        contentClassName="p-8"
+        maxWidth="xl"
+        contentClassName="p-6 sm:p-8"
         title={
-          <h3 className="text-xl font-bold text-stone-900 tracking-tight mb-2">
-            Track Application Status
+          <h3 className="text-xl font-bold text-stone-900 tracking-tight">
+            Portal Pelacakan Lamaran &amp; Offering Letter
           </h3>
         }
       >
-        <p className="text-sm text-stone-500 mb-6">
-          Enter the email address and Tracking ID generated upon submitting your application.
+        <p className="text-xs sm:text-sm text-stone-500 mb-5">
+          Masukkan alamat email dan nomor referensi Tracking ID Anda untuk memantau tahapan seleksi, mengunduh <strong>Offering Letter Resmi (PDF)</strong>, serta mengonfirmasi kesiapan bergabung.
         </p>
-        <form onSubmit={handleTrackSubmit} className="space-y-4">
-          <div>
-            <label className="text-xs font-bold text-stone-600 uppercase tracking-wider mb-2 block">
-              Your Email Address
-            </label>
-            <input
+        <form onSubmit={(e) => handleTrackSubmit(e)} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+          <div className="sm:col-span-5">
+            <Input
+              label="Alamat Email Kandidat"
               type="email"
               value={trackEmail}
               onChange={(e) => setTrackEmail(e.target.value)}
               required
-              className="w-full border-b border-stone-200 pb-2 focus:outline-none focus:border-[#b02524]"
               placeholder="candidate@example.com"
             />
           </div>
-          <div>
-            <label className="text-xs font-bold text-stone-600 uppercase tracking-wider mb-2 block">
-              Application Tracking ID
-            </label>
-            <input
+          <div className="sm:col-span-4">
+            <Input
+              label="Tracking ID Lamaran"
               type="text"
               value={trackId}
               onChange={(e) => setTrackId(e.target.value)}
               required
-              className="w-full border-b border-stone-200 pb-2 focus:outline-none focus:border-[#b02524]"
-              placeholder="APP-12345"
+              className="font-mono tabular-nums font-bold"
+              placeholder="APP-XXXXXX"
             />
           </div>
-          <button
-            type="submit"
-            disabled={trackingLoading}
-            className="w-full bg-[#b02524] text-white font-bold rounded-xl py-3 mt-4 hover:bg-[#961f1e] disabled:opacity-50 transition-all shadow-xs cursor-pointer"
-          >
-            {trackingLoading ? "Searching..." : "Track Status"}
-          </button>
+          <div className="sm:col-span-3">
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={trackingLoading}
+              className="w-full bg-[#b02524] hover:bg-[#961f1e] border-[#b02524]"
+            >
+              {trackingLoading ? "Mencari..." : "Cek Status"}
+            </Button>
+          </div>
         </form>
+
         {trackResult && (
-          <div className="mt-6 p-4 bg-stone-50 rounded-xl border border-stone-200">
-            <div className="text-[10px] uppercase font-bold text-stone-400 tracking-widest mb-1">
-              Application Milestone
+          <div className="mt-6 space-y-4">
+            {/* Candidate Summary Header */}
+            <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block">
+                    Kandidat Terdaftar • <span className="font-mono text-stone-700">{trackResult.id}</span>
+                  </span>
+                  <h4 className="text-base font-extrabold text-stone-900 mt-0.5">
+                    {trackResult.name || "Kandidat"} — {trackResult.job_title}
+                  </h4>
+                  <p className="text-xs font-semibold text-stone-500">
+                    Divisi {trackResult.department} • {trackResult.location || "Head Office"} • Melamar pada{" "}
+                    {new Date(trackResult.applied_at).toLocaleDateString("id-ID", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+
+                <Badge
+                  variant={
+                    trackResult.status === "ACCEPTED"
+                      ? "success"
+                      : trackResult.status === "OFFER_MADE"
+                      ? "warning"
+                      : trackResult.status === "REJECTED"
+                      ? "danger"
+                      : "info"
+                  }
+                  size="md"
+                >
+                  {trackResult.status === "ACCEPTED"
+                    ? "Diterima / Onboarded"
+                    : trackResult.status === "OFFER_MADE"
+                    ? "Penawaran Kerja (PKWT)"
+                    : trackResult.status === "INTERVIEW"
+                    ? "Tahap Wawancara"
+                    : trackResult.status === "SCREENING"
+                    ? "Tahap Skrining"
+                    : trackResult.status === "REJECTED"
+                    ? "Belum Lolos"
+                    : "Berkas Terkirim"}
+                </Badge>
+              </div>
+
+              {/* 5-Stage Recruitment Progress Stepper */}
+              {trackResult.status !== "REJECTED" && (
+                <div className="pt-3 border-t border-stone-200/80">
+                  <div className="grid grid-cols-5 gap-1.5 text-center">
+                    {[
+                      { id: "APPLIED", label: "1. Berkas Masuk" },
+                      { id: "SCREENING", label: "2. Skrining Awal" },
+                      { id: "INTERVIEW", label: "3. Wawancara" },
+                      { id: "OFFER_MADE", label: "4. Penawaran (PKWT)" },
+                      { id: "ACCEPTED", label: "5. Karyawan Baru" },
+                    ].map((st, idx) => {
+                      const order = ["APPLIED", "SCREENING", "INTERVIEW", "OFFER_MADE", "ACCEPTED"];
+                      const currentIdx = order.indexOf(trackResult.status);
+                      const isDone = currentIdx >= idx;
+                      const isCurrent = currentIdx === idx;
+                      return (
+                        <div
+                          key={st.id}
+                          className={`p-2 rounded-xl border text-[10px] font-bold transition-all ${
+                            isCurrent
+                              ? "bg-[#b02524] text-white border-[#b02524] shadow-2xs"
+                              : isDone
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                              : "bg-white text-stone-400 border-stone-200/70"
+                          }`}
+                        >
+                          {st.label}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {trackResult.notes && (
+                <div className="p-3 rounded-xl bg-white border border-stone-200 text-xs text-stone-600 whitespace-pre-line">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block mb-0.5">
+                    Catatan &amp; Riwayat Seleksi HRD:
+                  </span>
+                  {trackResult.notes}
+                </div>
+              )}
             </div>
-            <div className="text-lg font-bold text-stone-900 mb-2">
-              {trackResult.status === "APPLIED" && (
-                <span className="text-blue-600">Application Received</span>
-              )}
-              {trackResult.status === "SCREENING" && (
-                <span className="text-purple-600">In Screening Review</span>
-              )}
-              {trackResult.status === "INTERVIEW" && (
-                <span className="text-amber-600">Interview Scheduled</span>
-              )}
-              {trackResult.status === "OFFER_MADE" && (
-                <span className="text-emerald-600">Offer Extended</span>
-              )}
-              {trackResult.status === "ACCEPTED" && (
-                <span className="text-emerald-800">Accepted & Onboarded</span>
-              )}
-              {trackResult.status === "REJECTED" && (
-                <span className="text-red-600">Application Closed</span>
-              )}
-            </div>
-            <div className="text-xs font-bold text-stone-700">
-              {trackResult.job_title} ({trackResult.department})
-            </div>
-            <div className="text-[10px] text-stone-500 mt-1">
-              Submission Date:{" "}
-              {new Date(trackResult.applied_at).toLocaleDateString("en-US", { dateStyle: "medium" })}
+
+            {/* Offering Letter & Self-Service Confirmation Hub (Visible when OFFER_MADE or ACCEPTED) */}
+            {(trackResult.status === "OFFER_MADE" ||
+              trackResult.status === "ACCEPTED" ||
+              trackResult.status === "INTERVIEW") && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/60 border border-amber-200/90 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/70">
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-800 block">
+                      Dokumen Resmi HRIS &amp; Onboarding
+                    </span>
+                    <h5 className="text-sm font-black text-stone-900">
+                      Surat Penawaran Kerja (Offering Letter) &amp; Konfirmasi Kandidat
+                    </h5>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isPrintingOffer}
+                    onClick={handlePrintOfferingLetter}
+                    className="px-4 py-2 rounded-lg bg-[#b02524] hover:bg-[#8e1d1c] disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-2 shadow-xs cursor-pointer shrink-0"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-white" />
+                    <span>
+                      {isPrintingOffer ? "Menyiapkan PDF..." : "Cetak Offering Letter (PDF)"}
+                    </span>
+                  </button>
+                </div>
+
+                {trackResult.onboarding_token && (
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+                        Token Onboarding Aktif (Tersinkronisasi ke HRIS)
+                      </span>
+                      <span className="text-xs text-emerald-900 font-medium">
+                        Simpan token ini untuk aktivasi akun karyawan &amp; ESS bersama tim HRD.
+                      </span>
+                    </div>
+                    <span className="font-mono font-black text-sm text-emerald-900 bg-white px-3 py-1.5 rounded-lg border border-emerald-200 select-all">
+                      {trackResult.onboarding_token}
+                    </span>
+                  </div>
+                )}
+
+                <form onSubmit={handleConfirmOfferSubmit} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <Input
+                      label="Kesiapan Tanggal Mulai *"
+                      type="date"
+                      required
+                      value={offerConfirmForm.join_date}
+                      onChange={(e) =>
+                        setOfferConfirmForm({ ...offerConfirmForm, join_date: e.target.value })
+                      }
+                      className="font-mono tabular-nums"
+                    />
+                    <Input
+                      label="Nomor NIK KTP (Onboarding) *"
+                      type="text"
+                      required
+                      placeholder="16 Digit NIK KTP"
+                      value={offerConfirmForm.id_card_number}
+                      onChange={(e) =>
+                        setOfferConfirmForm({
+                          ...offerConfirmForm,
+                          id_card_number: e.target.value,
+                        })
+                      }
+                      className="font-mono tabular-nums"
+                    />
+                    <Select
+                      label="Status PTKP (Pajak PPh 21)"
+                      value={offerConfirmForm.ptkp_status}
+                      onChange={(e) =>
+                        setOfferConfirmForm({
+                          ...offerConfirmForm,
+                          ptkp_status: e.target.value,
+                        })
+                      }
+                      options={["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3"].map(
+                        (ptkp) => ({ value: ptkp, label: ptkp }),
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <Input
+                      label="Nomor NPWP (Opsional)"
+                      type="text"
+                      placeholder="Nomor NPWP Pribadi"
+                      value={offerConfirmForm.npwp}
+                      onChange={(e) =>
+                        setOfferConfirmForm({
+                          ...offerConfirmForm,
+                          npwp: e.target.value,
+                        })
+                      }
+                      className="font-mono tabular-nums"
+                    />
+                    <Input
+                      label="Info Bank & No. Rekening Payroll"
+                      type="text"
+                      placeholder="BCA / Mandiri - No. Rek"
+                      value={offerConfirmForm.bank_account_info}
+                      onChange={(e) =>
+                        setOfferConfirmForm({
+                          ...offerConfirmForm,
+                          bank_account_info: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <Input
+                    label="Pernyataan Konfirmasi & Catatan Tambahan"
+                    type="text"
+                    placeholder="Contoh: Saya menerima penawaran kerja ini dan siap melengkapi dokumen fisik saat hari pertama."
+                    value={offerConfirmForm.candidate_notes}
+                    onChange={(e) =>
+                      setOfferConfirmForm({
+                        ...offerConfirmForm,
+                        candidate_notes: e.target.value,
+                      })
+                    }
+                  />
+
+                  <Button
+                    type="submit"
+                    variant="success"
+                    isLoading={isSubmittingOfferConfirm}
+                    leftIcon={<CheckCircle2 className="w-4 h-4" />}
+                    className="w-full"
+                  >
+                    {isSubmittingOfferConfirm
+                      ? "Menyimpan ke HRIS..."
+                      : "Terima Penawaran Kerja & Kirim Data Onboarding ke HRIS"}
+                  </Button>
+                </form>
+              </div>
+            )}
+
+            {/* Offscreen A4 Offering Letter Template for PDF Generation */}
+            <div className="fixed -left-[9999px] top-0 pointer-events-none">
+              <div
+                ref={offeringLetterRef}
+                className="w-[794px] min-h-[1123px] bg-white p-12 text-stone-900 font-sans flex flex-col justify-between"
+              >
+                <div className="space-y-6">
+                  <div className="border-b-2 border-[#b02524] pb-5 flex items-start justify-between">
+                    <div>
+                      <h1 className="text-2xl font-black uppercase tracking-tight text-stone-900">
+                        CV. BATU EMAS GROUP (PAVING JOSS)
+                      </h1>
+                      <p className="text-xs text-stone-600 mt-1">
+                        Dusun Petahunan, Kecamatan Gambiran, Kabupaten Banyuwangi, Jawa Timur 68486
+                      </p>
+                      <p className="text-xs text-stone-500 font-mono mt-0.5">
+                        Telp: 0811-1111-3993 • Email: hrd@batuemas.com / pavingjoss@gmail.com
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#b02524] bg-red-50 px-2.5 py-1 rounded border border-red-200">
+                        OFFICIAL OFFERING LETTER
+                      </span>
+                      <p className="text-xs font-mono font-bold text-stone-700 mt-2">
+                        Ref: OL/{new Date().getFullYear()}/{trackResult.id}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-stone-700 space-y-1">
+                    <p>
+                      Banyuwangi,{" "}
+                      {new Date().toLocaleDateString("id-ID", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </p>
+                    <p className="font-bold pt-2">Kepada Yth.</p>
+                    <p className="text-sm font-black text-stone-900">{trackResult.name}</p>
+                    <p className="font-mono text-stone-600">{trackResult.email} • {trackResult.phone}</p>
+                  </div>
+
+                  <div className="space-y-3 text-xs leading-relaxed text-stone-800">
+                    <p className="font-bold text-sm text-stone-900">
+                      Perihal: Surat Penawaran Kerja Resmi (Offering Letter) — {trackResult.job_title}
+                    </p>
+                    <p>
+                      Berdasarkan hasil evaluasi kualifikasi dan tahapan seleksi yang telah Anda lalui dengan sangat baik, Manajemen <strong>CV. Batu Emas Group (Paving Joss)</strong> dengan bangga menyampaikan penawaran kerja resmi kepada Anda dengan rincian sebagai berikut:
+                    </p>
+                  </div>
+
+                  <div className="p-5 rounded-xl bg-stone-50 border border-stone-200 grid grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-stone-400 block">
+                        Jabatan / Posisi
+                      </span>
+                      <span className="font-bold text-stone-900 text-sm">{trackResult.job_title}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-stone-400 block">
+                        Departemen / Divisi
+                      </span>
+                      <span className="font-bold text-stone-900 text-sm">{trackResult.department}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-stone-400 block">
+                        Lokasi Penempatan
+                      </span>
+                      <span className="font-semibold text-stone-800">
+                        {trackResult.location || "Pabrik Utama Gambiran, Banyuwangi"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-stone-400 block">
+                        Status Kekaryawanan
+                      </span>
+                      <span className="font-semibold text-stone-800">
+                        {trackResult.job_type || "Full-time"}
+                      </span>
+                    </div>
+                    <div className="col-span-2 pt-2 border-t border-stone-200">
+                      <span className="text-[10px] font-bold uppercase text-stone-400 block">
+                        Paket Kompensasi &amp; Remunerasi Bulanan
+                      </span>
+                      <span className="font-mono font-black text-base text-[#b02524]">
+                        {formatSalaryString(trackResult.salary_string)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-xs leading-relaxed text-stone-700">
+                    <p>
+                      Penawaran ini terintegrasi langsung dengan sistem <strong>HRIS &amp; Payroll CV. Batu Emas Group</strong>. Setelah Anda mengonfirmasi penerimaan tawaran kerja ini melalui Portal Karir, akun pengguna ERP/ESS, pengaturan gaji pokok, serta penugasan divisi Anda akan segera diaktifkan.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-10 border-t border-stone-200 flex items-end justify-between text-xs">
+                  <div>
+                    <p className="font-bold text-stone-900">Divisi Human Capital &amp; HRIS</p>
+                    <p className="text-stone-500 mb-8">CV. Batu Emas Group</p>
+                    <div className="inline-block px-3 py-1 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-[10px] font-bold">
+                      DIGITALLY VERIFIED • {trackResult.id}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-stone-900">Persetujuan Kandidat,</p>
+                    <p className="text-stone-500 mb-10">Dikonfirmasi Secara Elektronik</p>
+                    <p className="font-bold text-stone-900 underline">{trackResult.name}</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

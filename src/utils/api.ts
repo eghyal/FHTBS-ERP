@@ -1,3 +1,5 @@
+import { getCachedData, setCachedData, invalidateSmartCache } from "./smartCache";
+
 export interface ApiResponse<T = any> {
   data: T | null;
   error: string | null;
@@ -8,7 +10,10 @@ export interface ApiResponse<T = any> {
   rateLimited?: boolean;
 }
 
-export const safeFetchJson = async <T = any>(res: Response): Promise<ApiResponse<T>> => {
+export const safeFetchJson = async <T = any>(
+  res: Response,
+  options?: { suppressUnauthorizedEvent?: boolean; sentToken?: string | null }
+): Promise<ApiResponse<T>> => {
   try {
     const text = await res.text();
     if (!text) {
@@ -46,13 +51,24 @@ export const safeFetchJson = async <T = any>(res: Response): Promise<ApiResponse
       };
     }
 
+    const shouldDispatchUnauthorized = () => {
+      if (typeof window === "undefined" || options?.suppressUnauthorizedEvent) {
+        return false;
+      }
+      const currentToken = getCachedAuthToken();
+      // Only trigger session invalidation if we actually sent the currently active token
+      if (!currentToken) return false;
+      if (options?.sentToken !== undefined && options.sentToken !== currentToken) {
+        return false;
+      }
+      return true;
+    };
+
     if (!res.ok) {
       try {
         const data = JSON.parse(text);
-        if (res.status === 401) {
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("api:unauthorized"));
-          }
+        if (res.status === 401 && shouldDispatchUnauthorized()) {
+          window.dispatchEvent(new CustomEvent("api:unauthorized"));
         }
         return {
           data: null,
@@ -71,7 +87,7 @@ export const safeFetchJson = async <T = any>(res: Response): Promise<ApiResponse
             status: res.status,
           };
         if (res.status === 401) {
-          if (typeof window !== "undefined") {
+          if (shouldDispatchUnauthorized()) {
             window.dispatchEvent(new CustomEvent("api:unauthorized"));
           }
           return { data: null, error: "Unauthorized access", ok: false, status: res.status };
@@ -109,49 +125,98 @@ export const safeFetchJson = async <T = any>(res: Response): Promise<ApiResponse
 };
 
 let cachedUserEmail: string | null = null;
-let lastStorageCheck = 0;
+let cachedAuthToken: string | null = null;
 
-function getCachedUserEmail(): string | null {
-  if (typeof window === "undefined") return null;
+export function setApiAuthSession(
+  user: { username?: string } | null,
+  token?: string | null
+): void {
+  cachedUserEmail = user?.username || null;
+  if (token !== undefined) {
+    cachedAuthToken = token || null;
+  }
+}
+
+function syncAuthStorageCache(): void {
+  if (typeof window === "undefined") return;
   try {
+    const token = localStorage.getItem("erp_token") || null;
+    cachedAuthToken = token;
     const stored = localStorage.getItem("erp_user");
     if (stored) {
       const u = JSON.parse(stored);
-      return u?.username || null;
+      cachedUserEmail = u?.username || null;
+    } else {
+      cachedUserEmail = null;
     }
   } catch (e) {
-    return null;
+    cachedUserEmail = null;
+    cachedAuthToken = null;
   }
-  return null;
+}
+
+function getCachedUserEmail(): string | null {
+  syncAuthStorageCache();
+  return cachedUserEmail;
 }
 
 function getCachedAuthToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem("erp_token") || null;
-  } catch (e) {
-    return null;
-  }
+  syncAuthStorageCache();
+  return cachedAuthToken;
 }
 
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
     if (e.key === "erp_user" || e.key === "erp_token") {
-      lastStorageCheck = 0;
+      syncAuthStorageCache();
     }
   });
 }
 
+function hashPayload(input: string): string {
+  let h1 = 0xdeadbeef ^ input.length;
+  let h2 = 0x41c6ce57 ^ input.length;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(36) + "_" + (h1 >>> 0).toString(36) + "_" + input.length.toString(36);
+}
+
+const activeMutationFlight = new Map<string, Promise<ApiResponse<any>>>();
+const activeGetFlight = new Map<string, Promise<ApiResponse<any>>>();
+
+const NON_CACHEABLE_PREFIXES = [
+  "/api/auth/",
+  "/api/time",
+  "/api/health",
+  "/api/chat",
+  "/api/notifications",
+  "/api/cms/",
+];
+
+function isCacheableGetUrl(url: string): boolean {
+  return !NON_CACHEABLE_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
+
 export const apiFetch = async <T = any>(
   url: string,
-  options: (Omit<RequestInit, "body"> & { body?: any }) = {},
+  options: (Omit<RequestInit, "body"> & {
+    body?: any;
+    idempotencyKey?: string;
+    skipCache?: boolean;
+    cacheTtlMs?: number;
+  }) = {},
   userEmail: string = "",
   retries = 1,
   isStartingRetries = 10,
   rateLimitRetries = 4,
   currentBackoffMs = 1500
 ): Promise<ApiResponse<T>> => {
-  let effectiveEmail = userEmail || getCachedUserEmail();
+  const effectiveEmail = userEmail || getCachedUserEmail();
   const authToken = getCachedAuthToken();
 
   let body = options.body;
@@ -169,67 +234,177 @@ export const apiFetch = async <T = any>(
     }
   }
 
-  const headers = {
-    ...(body instanceof FormData
-      ? {}
-      : { "Content-Type": "application/json" }),
-    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-    ...(effectiveEmail ? { "x-user-email": effectiveEmail } : {}),
-    ...(options.headers || {}),
-  } as Record<string, string>;
+  const methodUpper = (options.method || "GET").toUpperCase();
+  const isMutation = methodUpper !== "GET" && methodUpper !== "HEAD";
+  const mutationKey = isMutation
+    ? options.idempotencyKey
+      ? `explicit:${options.idempotencyKey}`
+      : `auto:${methodUpper}:${url}:${hashPayload(typeof body === "string" ? body : "")}`
+    : "";
 
-  // Only GET requests should be retried automatically for idempotency safety on generic network errors
-  const shouldRetry =
-    retries > 0 && (!options.method || options.method.toUpperCase() === "GET");
+  // Deduplicate concurrent identical mutations in flight (prevents double-click race conditions)
+  if (isMutation && mutationKey && activeMutationFlight.has(mutationKey)) {
+    return activeMutationFlight.get(mutationKey) as Promise<ApiResponse<T>>;
+  }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+  const getCacheKey = !isMutation ? `api:${effectiveEmail || "anon"}:${url}` : "";
+  const canUseSmartCache =
+    !isMutation &&
+    !options.skipCache &&
+    options.cache !== "no-store" &&
+    options.cache !== "reload" &&
+    isCacheableGetUrl(url);
 
-  try {
-    const res = await fetch(url, {
-      ...options,
-      body,
-      headers,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    const parsedRes = await safeFetchJson(res);
-
-    // Exponential Backoff for Rate Limits (429 or RESOURCE_EXHAUSTED)
-    if ((parsedRes.rateLimited || res.status === 429) && rateLimitRetries > 0) {
-      console.warn(`[Rate Limit] API ${url} throttled. Retrying in ${currentBackoffMs}ms... (${rateLimitRetries} retries left)`);
-      await new Promise((resolve) => setTimeout(resolve, currentBackoffMs));
-      return apiFetch(url, options, userEmail, retries, isStartingRetries, rateLimitRetries - 1, currentBackoffMs * 2);
+  // Serve fresh smart-cache entry immediately, or deduplicate concurrent GET requests
+  if (canUseSmartCache) {
+    const ttl = options.cacheTtlMs ?? 25_000; // 25s fresh window
+    const cached = getCachedData<ApiResponse<T>>(getCacheKey, ttl);
+    if (cached.data && cached.data.ok) {
+      if (cached.isFresh) {
+        return cached.data;
+      }
+      // Stale-While-Revalidate: return cached immediately and refresh in background
+      if (!activeGetFlight.has(getCacheKey)) {
+        const bgPromise = executeFetchInternal().finally(() => {
+          activeGetFlight.delete(getCacheKey);
+        });
+        activeGetFlight.set(getCacheKey, bgPromise);
+      }
+      return cached.data;
     }
 
-    // Automatically poll if the server is starting up
-    if (parsedRes.isStarting && isStartingRetries > 0) {
-      console.warn(
-        `Server is starting. Retrying fetch to ${url}... (${isStartingRetries} retries left)`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 3000)); // wait 3 seconds
-      return apiFetch(url, options, userEmail, retries, isStartingRetries - 1, rateLimitRetries, currentBackoffMs);
+    if (activeGetFlight.has(getCacheKey)) {
+      return activeGetFlight.get(getCacheKey) as Promise<ApiResponse<T>>;
     }
+  }
 
-    return parsedRes;
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === "AbortError") {
+  async function executeFetchInternal(): Promise<ApiResponse<T>> {
+    const headers = {
+      ...(body instanceof FormData
+        ? {}
+        : { "Content-Type": "application/json" }),
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...(effectiveEmail ? { "x-user-email": effectiveEmail } : {}),
+      ...(mutationKey ? { "x-idempotency-key": mutationKey.slice(0, 128) } : {}),
+      ...(options.headers || {}),
+    } as Record<string, string>;
+
+    // Only GET requests should be retried automatically for idempotency safety on generic network errors
+    const shouldRetry = retries > 0 && !isMutation;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+    try {
+      const isAuthCredentialEndpoint =
+        url.startsWith("/api/auth/login") ||
+        url.startsWith("/api/auth/register") ||
+        url.startsWith("/api/auth/exchange-token");
+
+      const res = await fetch(url, {
+        credentials: "same-origin",
+        ...options,
+        body,
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const parsedRes = await safeFetchJson<T>(res, {
+        suppressUnauthorizedEvent: isAuthCredentialEndpoint,
+        sentToken: authToken,
+      });
+
+      // Exponential Backoff for Rate Limits (429 or RESOURCE_EXHAUSTED)
+      if ((parsedRes.rateLimited || res.status === 429) && rateLimitRetries > 0) {
+        console.warn(
+          `[Rate Limit] API ${url} throttled. Retrying in ${currentBackoffMs}ms... (${rateLimitRetries} retries left)`
+        );
+        await new Promise((resolve) => setTimeout(resolve, currentBackoffMs));
+        return apiFetch(
+          url,
+          options,
+          userEmail,
+          retries,
+          isStartingRetries,
+          rateLimitRetries - 1,
+          currentBackoffMs * 2
+        );
+      }
+
+      // Automatically poll if the server is starting up
+      if (parsedRes.isStarting && isStartingRetries > 0) {
+        console.warn(
+          `Server is starting. Retrying fetch to ${url}... (${isStartingRetries} retries left)`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 3000)); // wait 3 seconds
+        return apiFetch(
+          url,
+          options,
+          userEmail,
+          retries,
+          isStartingRetries - 1,
+          rateLimitRetries,
+          currentBackoffMs
+        );
+      }
+
+      if (parsedRes.ok) {
+        if (isMutation) {
+          // Automatically invalidate smart cache on successful write mutation
+          invalidateSmartCache();
+        } else if (canUseSmartCache) {
+          setCachedData(getCacheKey, parsedRes);
+        }
+      }
+
+      return parsedRes;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        return {
+          data: null,
+          error: "Request timed out. Please try again.",
+          ok: false,
+        };
+      }
+      if (shouldRetry) {
+        console.warn(`Retrying fetch to ${url}...`);
+        await new Promise((resolve) => setTimeout(resolve, 500)); // wait 500ms before retry
+        return apiFetch(
+          url,
+          options,
+          userEmail,
+          retries - 1,
+          isStartingRetries,
+          rateLimitRetries,
+          currentBackoffMs
+        );
+      }
       return {
         data: null,
-        error: "Request timed out. Please try again.",
+        error: "Network error. Check your connection.",
         ok: false,
       };
     }
-    if (shouldRetry) {
-      console.warn(`Retrying fetch to ${url}...`);
-      await new Promise((resolve) => setTimeout(resolve, 500)); // wait 500ms before retry
-      return apiFetch(url, options, userEmail, retries - 1, isStartingRetries, rateLimitRetries, currentBackoffMs);
-    }
-    return {
-      data: null,
-      error: "Network error. Check your connection.",
-      ok: false,
-    };
   }
+
+  if (isMutation && mutationKey) {
+    const promise = executeFetchInternal().finally(() => {
+      activeMutationFlight.delete(mutationKey);
+    });
+    activeMutationFlight.set(mutationKey, promise);
+    return promise;
+  }
+
+  if (canUseSmartCache && getCacheKey) {
+    const promise = executeFetchInternal().finally(() => {
+      activeGetFlight.delete(getCacheKey);
+    });
+    activeGetFlight.set(getCacheKey, promise);
+    return promise;
+  }
+
+  return executeFetchInternal();
 };
+
+

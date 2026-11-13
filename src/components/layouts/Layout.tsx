@@ -1,289 +1,89 @@
-import { safeFetchJson, apiFetch } from "@/utils/api";
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import { safeFetchJson } from "@/utils/api";
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useInterval } from "@/hooks/useInterval";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  LogOut,
-  User,
   ChevronLeft,
   ChevronRight,
   MessageSquare,
-  Bell,
-  Package,
-  CheckCircle2,
-  AlertCircle,
-  Info,
-  Clock,
-  ExternalLink,
-  Trash2,
-  Briefcase,
-  ClipboardList,
-  ShoppingCart,
   ChevronDown,
-  Key,
-  Eye,
-  EyeOff,
-  Copy,
-  Check,
-  ShieldCheck,
-  Shield,
-  Activity,
   Globe,
+  Smartphone,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useToast } from "@/contexts/ToastContext";
-import { Action, hasPermission, hasGodMode } from "@/utils/pbac";
-import { getDailyAuthKey } from "@/utils/auth";
-import { copyToClipboard } from "@/utils/clipboard";
 import { PWAInstallButton } from "@/components/pwa/PWAInstallButton";
 import { OfflineIndicator } from "@/components/pwa/OfflineIndicator";
+import { useMobileMonitoring } from "@/contexts/MonitoringContext";
+import { useTheme } from "@/contexts/ThemeContext";
+import {
+  DesktopModeNoticeModal,
+  DesktopModeRequiredPage,
+} from "@/components/mobile/DesktopModeNotice";
+import { MobileAppShell } from "@/components/mobile/MobileAppShell";
+import { computeFilteredNavGroups } from "@/components/layouts/header/navConfig";
+import { LiveClock, HeaderClock } from "@/components/layouts/header/HeaderClocks";
+import { UserMenuPopover } from "@/components/layouts/header/UserMenuPopover";
+import { MobileMonitoringStrip } from "@/components/layouts/header/MobileMonitoringStrip";
+import {
+  ChatNotificationToast,
+  type ChatNotificationData,
+} from "@/components/layouts/header/ChatNotificationToast";
 
-const NAV_GROUPS = [
-  {
-    group: "Sales & Business",
-    items: [
-      {
-        name: "Customer Profiles",
-        path: "/customers",
-        action: Action.VIEW_CUSTOMERS,
-      },
-      {
-        name: "Quotations",
-        path: "/quotations",
-        action: Action.VIEW_QUOTATIONS,
-      },
-      {
-        name: "Delivery Manifests",
-        path: "/deliveries",
-        action: Action.VIEW_DELIVERIES,
-      },
-      {
-        name: "Shop Management",
-        path: "/shop-management",
-        roles: ["SALES", "FC", "ADMIN", "GOD_MODE"],
-        badge: "B2C",
-      },
-      {
-        name: "Potential Customers",
-        path: "/potential-customers",
-        roles: ["SALES", "FC", "ADMIN", "GOD_MODE"],
-        badge: "AI Scout",
-      },
-    ],
-  },
-  {
-    group: "General",
-    items: [
-      {
-        name: "General Request",
-        path: "/general-requests",
-      },
-      {
-        name: "Document Workspace",
-        path: "/document-workspace",
-      },
-    ],
-  },
-  {
-    group: "Engineering",
-    items: [
-      {
-        name: "Design Requests",
-        path: "/requests",
-        action: Action.VIEW_DESIGN_REQUESTS,
-      },
-      {
-        name: "Bill of Materials",
-        path: "/engineering",
-        action: Action.VIEW_BOM,
-      },
-      {
-        name: "Bill of Process",
-        path: "/engineering/bop",
-        action: Action.VIEW_BOM,
-      },
-    ],
-  },
-  {
-    group: "Procurement",
-    items: [
-      {
-        name: "Supplier Profiles",
-        path: "/vendors",
-        action: Action.VIEW_VENDORS,
-      },
-      {
-        name: "Sourcing & Pricing",
-        path: "/pricing",
-        action: Action.VIEW_PRICING,
-      },
-      {
-        name: "Purchase Orders",
-        path: "/procurement",
-        action: Action.VIEW_PROCUREMENT,
-      },
-    ],
-  },
-  {
-    group: "Manufacturing",
-    items: [
-      {
-        name: "Production Hub",
-        path: "/production",
-        action: Action.VIEW_PRODUCTION,
-      }
-    ],
-  },
-  {
-    group: "Warehouse",
-    items: [
-      {
-        name: "Warehouse Inventory",
-        path: "/warehouse",
-        action: Action.VIEW_WAREHOUSE,
-      },
-    ],
-  },
-  {
-    group: "Finance",
-    items: [
-      {
-        name: "Financial Overview",
-        path: "/finance",
-        action: Action.VIEW_FINANCE,
-      },
-      {
-        name: "Accounts Receivable",
-        path: "/invoices",
-        action: Action.VIEW_INVOICES,
-      },
-      {
-        name: "AR Aging & Dunning",
-        path: "/ar-aging",
-        action: Action.VIEW_FINANCE,
-      },
-      {
-        name: "Accounts Payable",
-        path: "/payables",
-        action: Action.VIEW_FINANCE,
-      },
-      { name: "Payroll", path: "/payroll", action: Action.VIEW_FINANCE },
-      {
-        name: "General Ledger",
-        path: "/general-ledger",
-        action: Action.VIEW_FINANCE,
-      },
-      {
-        name: "Cash Flow Forecasting",
-        path: "/cashflow-forecast",
-        action: Action.VIEW_FINANCE,
-      },
-    ],
-  },
-  {
-    group: "Human Resources",
-    items: [{ name: "Staff Self Service", path: "/ess" }],
-  },
-  {
-    group: "System & Master Data",
-    items: [
-      {
-        name: "Master Data Hub",
-        path: "/data-center",
-        action: Action.VIEW_MASTER_DATA,
-      },
-      {
-        name: "Workflow & Automation",
-        path: "/workflow",
-        action: Action.MANAGE_ACCOUNTS,
-      },
-      {
-        name: "Access Control",
-        path: "/manage-accounts",
-        action: Action.MANAGE_ACCOUNTS,
-      },
-      {
-        name: "Cloud Migration & Sync",
-        path: "/cloud-migration",
-        fcOnly: true,
-      },
-      { name: "System Logs", path: "/logs", fcOnly: true },
-    ],
-  },
-];
-
-const LiveClock = React.memo(() => {
-  const [time, setTime] = useState("");
-  
-  const updateTime = useCallback(() => {
-    const now = new Date();
-    const options: Intl.DateTimeFormatOptions = {
-      timeZone: "Asia/Jakarta",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
+function playNotificationSound() {
+  try {
+    const audioCtx = new (
+      window.AudioContext || (window as any).webkitAudioContext
+    )();
+    const playTone = (
+      freq: number,
+      type: OscillatorType,
+      duration: number,
+      vol: number,
+      startTime: number,
+    ) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(vol, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
     };
-    const formatter = new Intl.DateTimeFormat("en-GB", options);
-    const parts = formatter.formatToParts(now);
-    const dateObj: any = {};
-    parts.forEach(({ type, value }) => {
-      dateObj[type] = value;
-    });
-    setTime(
-      `${dateObj.year}-${dateObj.month}-${dateObj.day} ${dateObj.hour}:${dateObj.minute}:${dateObj.second} WIB`,
-    );
-  }, []);
-
-  useEffect(() => {
-    updateTime();
-  }, [updateTime]);
-
-  useInterval(updateTime, 1000);
-
-  return (
-    <span className="text-[10px] text-stone-300 font-mono tracking-tighter">
-      {time}
-    </span>
-  );
-});
-
-const HeaderClock = React.memo(() => {
-  const [time, setTime] = useState("");
-  const updateTime = useCallback(() => {
-    const now = new Date();
-    const options: Intl.DateTimeFormatOptions = {
-      timeZone: "Asia/Jakarta",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    };
-    setTime(new Intl.DateTimeFormat("en-GB", options).format(now));
-  }, []);
-  useEffect(() => {
-    updateTime();
-  }, [updateTime]);
-  useInterval(updateTime, 1000);
-  return (
-    <span className="font-mono text-stone-600">
-      {time || "--:--:--"}
-    </span>
-  );
-});
+    playTone(1174.66, "sine", 0.4, 0.3, audioCtx.currentTime);
+    playTone(1760.0, "sine", 0.6, 0.3, audioCtx.currentTime + 0.15);
+  } catch {
+    // Ignore audio context autoplay restrictions
+  }
+}
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { language, t } = useLanguage();
-  const { showToast } = useToast();
+  const { t } = useLanguage();
+  const { appLogo } = useTheme();
+  const {
+    isMobileViewport,
+    isForceDesktopMode,
+    isExemptInteractiveRoute,
+    isDesktopHeavyRoute,
+    isMobileReadOnly,
+    openDesktopNotice,
+    disableForceDesktopMode,
+  } = useMobileMonitoring();
   const {
     notifications,
     unreadCount: historyCount,
@@ -292,79 +92,227 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     markAllAsRead,
     clearAll,
   } = useNotifications();
+
   const [unreadCount, setUnreadCount] = useState(0);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showAuthKey, setShowAuthKey] = useState(false);
-  const [copiedAuthKey, setCopiedAuthKey] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const [chatNotification, setChatNotification] = useState<{
-    id: string;
-    sender: string;
-    content: string;
-    visible: boolean;
-  } | null>(null);
-  const lastNotifiedRef = React.useRef<string | null>(null);
-  const hideNotifTimeoutRef = React.useRef<any>(null);
+  const [chatNotification, setChatNotification] =
+    useState<ChatNotificationData | null>(null);
+  const lastNotifiedRef = useRef<string | null>(null);
+  const hideNotifTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
+  const desktopNavWrapperRef = useRef<HTMLDivElement>(null);
   const desktopNavRef = useRef<HTMLElement>(null);
-  const mobileNavRef = useRef<HTMLDivElement>(null);
   const isFirstMountRef = useRef(true);
   const [canScrollDesktopLeft, setCanScrollDesktopLeft] = useState(false);
   const [canScrollDesktopRight, setCanScrollDesktopRight] = useState(false);
-  const [canScrollMobileLeft, setCanScrollMobileLeft] = useState(false);
-  const [canScrollMobileRight, setCanScrollMobileRight] = useState(false);
 
   const buttonRefs = useRef<{
     [key: string]: HTMLButtonElement | HTMLAnchorElement | null;
   }>({});
   const [dropdownLeft, setDropdownLeft] = useState<number | null>(null);
+  const holdDelayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const holdRafRef = useRef<number | null>(null);
+  const isHoldingScrollRef = useRef(false);
 
-  const updateDropdownPosition = useCallback(() => {
+  const activeDropdownRef = useRef<string | null>(null);
+  activeDropdownRef.current = activeDropdown;
+
+  const computeDropdownLeft = useCallback((groupName: string | null) => {
     if (
-      activeDropdown &&
-      buttonRefs.current[activeDropdown] &&
-      desktopNavRef.current
+      groupName &&
+      buttonRefs.current[groupName] &&
+      desktopNavRef.current &&
+      desktopNavWrapperRef.current
     ) {
-      const btn = buttonRefs.current[activeDropdown];
+      const btn = buttonRefs.current[groupName];
       if (btn) {
         const rect = btn.getBoundingClientRect();
-        const navContainer = desktopNavRef.current;
-        const parentRect = navContainer.parentElement?.getBoundingClientRect();
-        if (parentRect) {
-          setDropdownLeft(rect.left - parentRect.left);
-        }
+        const wrapperRect =
+          desktopNavWrapperRef.current.getBoundingClientRect();
+        const rawLeft = rect.left - wrapperRect.left;
+        const dropdownWidth = 224; // w-56
+        const maxLeft = Math.max(0, wrapperRect.width - dropdownWidth);
+        return Math.max(0, Math.min(rawLeft, maxLeft));
       }
-    } else {
-      setDropdownLeft(null);
     }
-  }, [activeDropdown]);
+    return null;
+  }, []);
+
+  const ensureNavButtonVisible = useCallback((groupName: string) => {
+    const btn = buttonRefs.current[groupName];
+    const nav = desktopNavRef.current;
+    if (btn && nav) {
+      const btnRect = btn.getBoundingClientRect();
+      const navRect = nav.getBoundingClientRect();
+      const margin = 28;
+      if (btnRect.right > navRect.right - margin) {
+        nav.scrollBy({
+          left: btnRect.right - navRect.right + margin,
+          behavior: "smooth",
+        });
+      } else if (btnRect.left < navRect.left + margin) {
+        nav.scrollBy({
+          left: btnRect.left - navRect.left - margin,
+          behavior: "smooth",
+        });
+      }
+    }
+  }, []);
+
+  const handleDropdownClick = useCallback(
+    (groupName: string) => {
+      ensureNavButtonVisible(groupName);
+      setActiveDropdown((prev) => {
+        const next = prev === groupName ? null : groupName;
+        if (next) {
+          const nextLeft = computeDropdownLeft(next);
+          if (nextLeft !== null) setDropdownLeft(nextLeft);
+        }
+        return next;
+      });
+    },
+    [ensureNavButtonVisible, computeDropdownLeft],
+  );
+
+  const handleDropdownHover = useCallback(
+    (groupName: string) => {
+      if (activeDropdown !== null && activeDropdown !== groupName) {
+        ensureNavButtonVisible(groupName);
+        const nextLeft = computeDropdownLeft(groupName);
+        if (nextLeft !== null) setDropdownLeft(nextLeft);
+        setActiveDropdown(groupName);
+      }
+    },
+    [activeDropdown, ensureNavButtonVisible, computeDropdownLeft],
+  );
+
+  const updateDropdownPosition = useCallback(() => {
+    const currentGroup = activeDropdownRef.current;
+    if (currentGroup) {
+      const nextLeft = computeDropdownLeft(currentGroup);
+      if (nextLeft !== null) {
+        setDropdownLeft(nextLeft);
+      }
+    }
+  }, [computeDropdownLeft]);
 
   useEffect(() => {
-    updateDropdownPosition();
+    if (activeDropdown) {
+      updateDropdownPosition();
+    }
   }, [activeDropdown, updateDropdownPosition]);
 
-  const checkScroll = () => {
+  const checkScroll = useCallback(() => {
     if (desktopNavRef.current) {
-      setCanScrollDesktopLeft(desktopNavRef.current.scrollLeft > 0);
+      setCanScrollDesktopLeft(desktopNavRef.current.scrollLeft > 4);
       setCanScrollDesktopRight(
         desktopNavRef.current.scrollLeft <
           desktopNavRef.current.scrollWidth -
             desktopNavRef.current.clientWidth -
-            1,
-      );
-    }
-    if (mobileNavRef.current) {
-      setCanScrollMobileLeft(mobileNavRef.current.scrollLeft > 0);
-      setCanScrollMobileRight(
-        mobileNavRef.current.scrollLeft <
-          mobileNavRef.current.scrollWidth -
-            mobileNavRef.current.clientWidth -
-            1,
+            4,
       );
     }
     updateDropdownPosition();
-  };
+  }, [updateDropdownPosition]);
+
+  const stopHoldScroll = useCallback(() => {
+    if (holdDelayTimeoutRef.current) {
+      clearTimeout(holdDelayTimeoutRef.current);
+      holdDelayTimeoutRef.current = null;
+    }
+    if (holdRafRef.current !== null) {
+      cancelAnimationFrame(holdRafRef.current);
+      holdRafRef.current = null;
+    }
+  }, []);
+
+  const startHoldScroll = useCallback(
+    (direction: "left" | "right") => {
+      stopHoldScroll();
+      isHoldingScrollRef.current = false;
+
+      holdDelayTimeoutRef.current = setTimeout(() => {
+        isHoldingScrollRef.current = true;
+        const step = direction === "right" ? 6 : -6;
+
+        const glide = () => {
+          const nav = desktopNavRef.current;
+          if (!nav) return;
+          const prevScroll = nav.scrollLeft;
+          nav.scrollLeft += step;
+          checkScroll();
+          if (nav.scrollLeft !== prevScroll) {
+            holdRafRef.current = requestAnimationFrame(glide);
+          } else {
+            holdRafRef.current = null;
+          }
+        };
+
+        holdRafRef.current = requestAnimationFrame(glide);
+      }, 180);
+    },
+    [stopHoldScroll, checkScroll],
+  );
+
+  const snapScrollNav = useCallback((direction: "left" | "right") => {
+    const nav = desktopNavRef.current;
+    if (!nav) return;
+    const navRect = nav.getBoundingClientRect();
+    const children = Array.from(
+      nav.querySelectorAll<HTMLElement>(":scope > a, :scope > button"),
+    );
+    const margin = 32;
+
+    if (direction === "right") {
+      const targetItem = children.find(
+        (el) => el.getBoundingClientRect().right > navRect.right - 6,
+      );
+      if (targetItem) {
+        const itemRect = targetItem.getBoundingClientRect();
+        const step = Math.max(itemRect.right - navRect.right + margin, 140);
+        nav.scrollBy({ left: step, behavior: "smooth" });
+      } else {
+        nav.scrollBy({ left: 180, behavior: "smooth" });
+      }
+    } else {
+      const clippedLeftItems = children.filter(
+        (el) => el.getBoundingClientRect().left < navRect.left + 6,
+      );
+      const targetItem = clippedLeftItems[clippedLeftItems.length - 1];
+      if (targetItem) {
+        const itemRect = targetItem.getBoundingClientRect();
+        const step = Math.min(itemRect.left - navRect.left - margin, -140);
+        nav.scrollBy({ left: step, behavior: "smooth" });
+      } else {
+        nav.scrollBy({ left: -180, behavior: "smooth" });
+      }
+    }
+  }, []);
+
+  const handleNavWheel = useCallback(
+    (e: React.WheelEvent<HTMLElement>) => {
+      const nav = desktopNavRef.current;
+      if (!nav) return;
+      if (nav.scrollWidth <= nav.clientWidth) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        nav.scrollLeft += e.deltaY;
+        checkScroll();
+      }
+    },
+    [checkScroll],
+  );
+
+  useEffect(() => {
+    return () => {
+      stopHoldScroll();
+    };
+  }, [stopHoldScroll]);
 
   useEffect(() => {
     checkScroll();
@@ -377,14 +325,30 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       ) {
         setShowUserMenu(false);
       }
+      if (
+        desktopNavWrapperRef.current &&
+        !desktopNavWrapperRef.current.contains(event.target as Node)
+      ) {
+        setActiveDropdown(null);
+      }
     };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveDropdown(null);
+        setShowUserMenu(false);
+      }
+    };
+
     document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
       window.removeEventListener("resize", checkScroll);
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [user]);
+  }, [user, checkScroll]);
 
   useEffect(() => {
     let animationFrameId: number | null = null;
@@ -394,12 +358,32 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       activeEl: HTMLElement,
       isInstant: boolean,
     ) => {
-      const containerWidth = container.clientWidth;
-      const activeWidth = activeEl.clientWidth;
-      const activeOffsetLeft = activeEl.offsetLeft;
+      const navRect = container.getBoundingClientRect();
+      const itemRect = activeEl.getBoundingClientRect();
+      const margin = 28;
 
-      let targetLeft = activeOffsetLeft - containerWidth / 2 + activeWidth / 2;
-      const maxScroll = container.scrollWidth - containerWidth;
+      // If the active item is already fully visible inside the navbar viewport,
+      // preserve the user's current scroll position without resetting or jumping.
+      if (
+        itemRect.left >= navRect.left + margin &&
+        itemRect.right <= navRect.right - margin
+      ) {
+        checkScroll();
+        return;
+      }
+
+      const containerWidth = container.clientWidth;
+      const maxScroll = Math.max(0, container.scrollWidth - containerWidth);
+      let targetLeft = container.scrollLeft;
+
+      if (itemRect.right > navRect.right - margin) {
+        targetLeft =
+          container.scrollLeft + (itemRect.right - navRect.right + margin);
+      } else if (itemRect.left < navRect.left + margin) {
+        targetLeft =
+          container.scrollLeft - (navRect.left + margin - itemRect.left);
+      }
+
       targetLeft = Math.max(0, Math.min(targetLeft, maxScroll));
 
       if (isInstant) {
@@ -409,24 +393,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         const startLeft = container.scrollLeft;
         const change = targetLeft - startLeft;
 
-        // Skip animating if scroll position change is negligible
         if (Math.abs(change) <= 1) {
+          checkScroll();
           return;
         }
 
         const startTime = performance.now();
-        const duration = 380; // beautiful, ultra-smooth and premium duration for human eyes
+        const duration = 300;
 
-        const easeInOutCubic = (t: number) => {
-          return t < 0.5
-            ? 4 * t * t * t
-            : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1;
-        };
+        const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
         const animate = (currentTime: number) => {
           const elapsed = currentTime - startTime;
           const progress = Math.min(elapsed / duration, 1);
-          const ease = easeInOutCubic(progress);
+          const ease = easeOutCubic(progress);
 
           container.scrollLeft = startLeft + change * ease;
           checkScroll();
@@ -444,22 +424,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     };
 
     const scrollToActive = (isInstant: boolean) => {
-      // Desktop Nav alignment
       if (desktopNavRef.current) {
         const container = desktopNavRef.current;
-        const activeEl = container.querySelector(
-          ".bg-stone-100",
-        ) as HTMLElement;
-        if (activeEl) {
-          scrollContainerToElement(container, activeEl, isInstant);
-        }
-      }
-      // Mobile Nav alignment
-      if (mobileNavRef.current) {
-        const container = mobileNavRef.current;
-        const activeEl = container.querySelector(
-          ".bg-stone-100",
-        ) as HTMLElement;
+        const activeEl = container.querySelector<HTMLElement>(
+          '[data-nav-active="true"]',
+        );
         if (activeEl) {
           scrollContainerToElement(container, activeEl, isInstant);
         }
@@ -467,22 +436,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       checkScroll();
     };
 
-    // Attempt immediately
     scrollToActive(isFirstMountRef.current);
-
-    // Also run inside a micro-timeout to ensure dynamic widths are resolved perfectly
-    const timer = setTimeout(() => {
-      scrollToActive(isFirstMountRef.current);
-      isFirstMountRef.current = false;
-    }, 50);
+    isFirstMountRef.current = false;
 
     return () => {
-      clearTimeout(timer);
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [location.pathname]);
+  }, [location.pathname, checkScroll]);
 
   const sendHeartbeat = useCallback(() => {
     if (!user) return;
@@ -502,7 +464,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         username: user.username,
       }),
     }).catch((e) => {
-      // Silently ignore network disconnections or aborts
       if (e.message !== "Failed to fetch" && e.name !== "AbortError") {
         console.error("Heartbeat failed", e);
       }
@@ -514,41 +475,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [sendHeartbeat]);
 
   useInterval(sendHeartbeat, user ? 20000 : null);
-
-  const scrollNav = (ref: React.RefObject<HTMLElement>, amount: number) => {
-    if (ref.current) {
-      ref.current.scrollBy({ left: amount, behavior: "smooth" });
-    }
-  };
-
-  const playNotificationSound = () => {
-    try {
-      const audioCtx = new (
-        window.AudioContext || (window as any).webkitAudioContext
-      )();
-      const playTone = (
-        freq: number,
-        type: OscillatorType,
-        duration: number,
-        vol: number,
-        startTime: number,
-      ) => {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, startTime);
-        gain.gain.setValueAtTime(0, startTime);
-        gain.gain.linearRampToValueAtTime(vol, startTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start(startTime);
-        osc.stop(startTime + duration);
-      };
-      playTone(1174.66, "sine", 0.4, 0.3, audioCtx.currentTime);
-      playTone(1760.0, "sine", 0.6, 0.3, audioCtx.currentTime + 0.15);
-    } catch (e) {}
-  };
 
   const fetchUnreadCount = useCallback(async () => {
     if (!user) return;
@@ -597,7 +523,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           lastNotifiedRef.current = msgId;
         }
       }
-    } catch (e) {}
+    } catch {
+      // Ignore transient network errors
+    }
   }, [user, addNotification]);
 
   useEffect(() => {
@@ -615,68 +543,116 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useInterval(fetchUnreadCount, user ? 4000 : null);
 
-  const activeNavGroupsSource = NAV_GROUPS;
+  const filteredNavGroups = useMemo(
+    () => computeFilteredNavGroups(user, t),
+    [user, t],
+  );
 
-  // Group filter based on roles
-  const filteredNavGroups = activeNavGroupsSource
-    .map((group) => {
-      let items = group.items.filter((item: any) => {
-        if (hasGodMode(user)) return true;
-        if (item.fcOnly) return user?.role === "FC";
-        if (item.action) return hasPermission(user, item.action);
-        if (item.roles) return item.roles.includes(user?.role || "");
-        return true;
-      });
+  const nonGeneralNavGroups = useMemo(
+    () => filteredNavGroups.filter((g) => g.group !== "General"),
+    [filteredNavGroups],
+  );
 
-      if (group.group === "Human Resources") {
-        const isManagerOrFc =
-          user?.level === "MANAGER" ||
-          user?.role === "FC" ||
-          user?.role === "HR" ||
-          hasGodMode(user);
-        items = items.map((item: any) => {
-          if (item.path === "/ess") {
-            return {
-              ...item,
-              name: isManagerOrFc
-                ? "Manager Self Service"
-                : "Staff Self Service",
-            };
-          }
-          return item;
-        });
+  const activeDropdownGroup = useMemo(
+    () =>
+      activeDropdown
+        ? filteredNavGroups.find((g) => g.group === activeDropdown) || null
+        : null,
+    [activeDropdown, filteredNavGroups],
+  );
+
+  const handleDismissChatNotification = useCallback(() => {
+    setChatNotification((prev) => (prev ? { ...prev, visible: false } : null));
+  }, []);
+
+  const handleMainClick = useCallback(() => {
+    setActiveDropdown(null);
+  }, []);
+
+  const handleMainClickCapture = useCallback(
+    (e: React.MouseEvent<HTMLElement>) => {
+      if (!isMobileReadOnly) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const btn = target.closest("button");
+      if (!btn) return;
+
+      const text = (
+        btn.textContent ||
+        btn.getAttribute("title") ||
+        btn.getAttribute("aria-label") ||
+        ""
+      )
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (
+        /^(refresh|muat ulang|clear|hapus pencarian|tutup|close|cancel|batal|back|kembali|detail|view|lihat|preview|cetak|print|filter|all|semua|sort|next|prev|previous|monitor|mode desktop|lanjutkan|salin)/i.test(
+          text,
+        )
+      ) {
+        return;
       }
 
-      return {
-        group: group.group,
-        translatedGroup: t(group.group),
-        items: items.map((item: any) => ({
-          ...item,
-          translatedName: t(item.name),
-        })),
-      };
-    })
-    .filter((g) => g.items.length > 0);
+      const isSubmit = btn.getAttribute("type") === "submit";
+      const isMutationKeyword =
+        /^\+\s*\w+/i.test(text) ||
+        /\b(add|tambah|create|buat|new|baru|edit|ubah|update|delete|hapus|remove|save|simpan|submit|ajukan|approve|setuju|setujui|reject|tolak|authorize|otorisasi|sync|sinkron|commit|receive|terima|dispatch|issue|consume|record|catat|post|posting|import|upload|unggah|config|konfigurasi|generate|assign|alokasi|archive|arsipkan|repeat order|convert|konversi|process|proses|settle|lunasi|pay|bayar)\b/i.test(
+          text,
+        );
+
+      if (isSubmit || isMutationKeyword) {
+        e.preventDefault();
+        e.stopPropagation();
+        openDesktopNotice(
+          text || "ERP Action Locked",
+          `The "${text || "selected"}" action is locked in Mobile Monitoring Mode (Read-Only). Please use a desktop browser or enable Force Desktop View to modify records.`,
+        );
+      }
+    },
+    [isMobileReadOnly, openDesktopNotice],
+  );
+
+  if (isMobileViewport && !isForceDesktopMode) {
+    return (
+      <MobileAppShell unreadForumCount={unreadCount}>
+        {children}
+      </MobileAppShell>
+    );
+  }
+
+  const isDashboardActive = location.pathname === "/erp";
+  const isMessagesActive = location.pathname === "/forum";
+  const isGeneralActive = ["/general-requests", "/document-workspace"].includes(
+    location.pathname,
+  );
 
   return (
     <div className="h-screen bg-stone-50 text-stone-900 font-sans selection:bg-stone-200 selection:text-stone-900 flex flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-stone-200 bg-white/90 backdrop-blur-xl z-50 sticky top-0 relative shadow-sm">
-        <div className="w-full px-4 md:px-10 h-[60px] md:h-[72px] grid grid-cols-[auto_1fr_auto] items-center relative z-10">
+      <header className="shrink-0 border-b border-stone-200 bg-white/95 backdrop-blur-xl z-50 sticky top-0 relative shadow-2xs">
+        <div className="w-full px-3 sm:px-6 md:px-10 h-[50px] sm:h-[56px] md:h-[62px] flex items-center justify-between gap-3 relative z-10">
           {/* Column 1: Brand Logo */}
           <div className="flex items-center shrink-0">
-            <Link to="/erp" className="flex items-center gap-3 shrink-0 group">
-              <div className="w-8 h-8 md:w-9 md:h-9 rounded-xl bg-white border border-stone-100 flex items-center justify-center shadow-sm transition-all">
+            <Link
+              to="/erp"
+              onClick={handleMainClick}
+              className="flex items-center gap-2 sm:gap-2.5 shrink-0 group"
+            >
+              <div className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 rounded-lg sm:rounded-xl bg-white border border-stone-200/70 flex items-center justify-center shadow-2xs transition-all">
                 <img
-                  src="/logo.png"
+                  src={appLogo}
                   alt="Paving Joss Logo"
-                  className="w-5 h-5 md:w-6 md:h-6 object-contain drop-shadow-sm group-hover:scale-105 transition-transform"
+                  onError={(e) => {
+                    e.currentTarget.src = "/logo.png";
+                  }}
+                  className="w-4.5 h-4.5 sm:w-5 sm:h-5 md:w-6 md:h-6 object-contain drop-shadow-2xs group-hover:scale-105 transition-transform"
                   referrerPolicy="no-referrer"
                   crossOrigin="anonymous"
                 />
               </div>
               <div className="flex items-center gap-1.5">
-                <h1 className="text-[15px] md:text-[17px] font-bold tracking-tight text-stone-900 transition-colors">
-                  Enterprise OS
+                <h1 className="text-sm sm:text-[15px] md:text-base font-bold tracking-tight text-stone-900 transition-colors">
+                  FHTBS
                 </h1>
                 <span className="px-1.5 py-0.5 rounded border border-stone-200/60 bg-stone-50 text-stone-500 text-[8px] md:text-[9px] uppercase tracking-widest font-bold hidden sm:inline-block">
                   ERP
@@ -685,211 +661,388 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
 
-          {/* Column 2: Sliding Dropdown Nav (In the center) */}
+          {/* Column 2: Sliding Dropdown Nav (Hidden on mobile, shown on desktop) */}
           <div
-            className="hidden xl:flex items-center justify-center flex-1 h-full overflow-visible relative px-6 mx-4 min-w-0"
-            onMouseLeave={() => setActiveDropdown(null)}
+            ref={desktopNavWrapperRef}
+            className="hidden md:flex items-center justify-center flex-1 h-full overflow-visible relative px-2 mx-2 min-w-0 gap-1.5"
           >
-            <AnimatePresence>
-              {canScrollDesktopLeft && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  onClick={() => scrollNav(desktopNavRef, -185)}
-                  className="absolute left-1 top-1/2 -translate-y-1/2 z-30 w-7 h-7 bg-white/95 border border-stone-150 rounded-lg flex items-center justify-center shadow-md text-stone-500 hover:text-stone-900 transition-colors cursor-pointer"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </motion.button>
-              )}
-            </AnimatePresence>
-
-            <nav
-              ref={desktopNavRef}
-              onScroll={checkScroll}
-              className="flex items-center justify-start gap-1 lg:gap-1.5 overflow-x-auto scrollbar-hide py-2 relative px-1 w-fit max-w-full"
-            >
-              {/* Prepend Dashboard Link */}
-              <Link
-                to="/erp"
-                onMouseEnter={() => setActiveDropdown(null)}
-                className={cn(
-                  "text-[10px] uppercase tracking-[0.1em] transition-all px-2.5 xl:px-3 py-2 rounded-xl font-bold whitespace-nowrap shrink-0",
-                  location.pathname === "/erp"
-                    ? "text-stone-900 bg-stone-100 border border-stone-200/40 shadow-sm"
-                    : "text-stone-500 hover:text-stone-900 hover:bg-stone-50/80",
-                )}
-              >
-                Dashboard
-              </Link>
-
-              {/* Prepend Messages Link */}
-              <Link
-                to="/forum"
-                onMouseEnter={() => setActiveDropdown(null)}
-                className={cn(
-                  "text-[10px] uppercase tracking-[0.1em] transition-all px-2.5 xl:px-3 py-2 rounded-xl font-bold whitespace-nowrap shrink-0 flex items-center gap-1.5 group",
-                  location.pathname === "/forum"
-                    ? "text-stone-900 bg-stone-100 border border-stone-200/40 shadow-sm"
-                    : "text-stone-500 hover:text-stone-900 hover:bg-stone-50/80",
-                )}
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-stone-400 group-hover:text-stone-900" />
-                Messages
-                {unreadCount > 0 && (
-                  <span className="ml-1.5 bg-stone-900 text-white rounded-lg px-2 py-0.5 text-[8px] font-bold leading-none tracking-normal shadow-xs">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
-              </Link>
-
-              {/* Prepend General Dropdown Link next to Messages */}
-              <button
-                ref={(el) => {
-                  buttonRefs.current["General"] = el;
-                }}
-                onMouseEnter={() => setActiveDropdown("General")}
-                className={cn(
-                  "text-[10px] uppercase tracking-[0.1em] transition-all px-2.5 xl:px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 whitespace-nowrap outline-none cursor-pointer shrink-0 group",
-                  ["/general-requests", "/document-workspace"].includes(location.pathname)
-                    ? "text-stone-900 bg-stone-100 border border-stone-200/40 shadow-sm"
-                    : "text-stone-500 hover:text-stone-900 hover:bg-stone-50/80",
-                )}
-              >
-                <Globe className="w-3.5 h-3.5 text-stone-400 group-hover:text-stone-900" />
-                General
-                <ChevronDown
-                  className={cn(
-                    "w-3.5 h-3.5 transition-transform duration-300",
-                    activeDropdown === "General"
-                      ? "-rotate-180 text-stone-850"
-                      : "text-stone-400",
-                  )}
-                />
-              </button>
-
-              {/* Aesthetic Spacer Divider */}
-              <div className="h-4 w-[1px] bg-stone-200/65 shrink-0 mx-1 xl:mx-1.5" />
-              {filteredNavGroups.filter((g) => g.group !== "General").map((group) => {
-                const isActiveGroup = group.items.some(
-                  (it) => location.pathname === it.path,
-                );
-
-                if (group.items.length === 1) {
-                  const isMessages =
-                    group.group === "Messages" ||
-                    group.items.some(
-                      (it) =>
-                        it.name === "Collaboration Forum" ||
-                        it.name === "Messages",
-                    );
-                  return (
-                    <Link
-                      key={group.group}
-                      to={group.items[0].path}
-                      ref={(el) => {
-                        buttonRefs.current[group.group] = el;
-                      }}
-                      onMouseEnter={() => setActiveDropdown(null)}
-                      className={cn(
-                        "text-[10px] uppercase tracking-[0.1em] transition-all px-2.5 xl:px-3 py-2 rounded-xl font-bold whitespace-nowrap shrink-0 flex items-center gap-1.5",
-                        isActiveGroup
-                          ? "text-stone-900 bg-stone-100 border border-stone-200/40 shadow-sm"
-                          : "text-stone-500 hover:text-stone-900 hover:bg-stone-50/80",
-                      )}
-                    >
-                      {group.translatedGroup}
-                      {isMessages && unreadCount > 0 && (
-                        <span className="ml-1.5 bg-stone-900 text-white rounded-lg px-2 py-0.5 text-[8px] font-bold leading-none tracking-normal shadow-xs">
-                          {unreadCount > 99 ? "99+" : unreadCount}
-                        </span>
-                      )}
-                    </Link>
-                  );
+            {/* Left Scroll Button (Permanent Fixed Slot to prevent layout shift) */}
+            <button
+              type="button"
+              aria-label="Scroll navigation left"
+              aria-hidden={!canScrollDesktopLeft}
+              tabIndex={canScrollDesktopLeft ? 0 : -1}
+              disabled={!canScrollDesktopLeft}
+              onPointerDown={() =>
+                canScrollDesktopLeft && startHoldScroll("left")
+              }
+              onPointerUp={stopHoldScroll}
+              onPointerLeave={stopHoldScroll}
+              onPointerCancel={stopHoldScroll}
+              onClick={() => {
+                if (!canScrollDesktopLeft) return;
+                if (!isHoldingScrollRef.current) {
+                  snapScrollNav("left");
                 }
+                isHoldingScrollRef.current = false;
+              }}
+              className={cn(
+                "w-7 h-7 shrink-0 bg-white border border-stone-200/90 rounded-lg flex items-center justify-center shadow-2xs text-stone-500 hover:text-stone-900 hover:border-stone-300 hover:bg-stone-50 active:scale-95 transition-all duration-200 ease-out z-20 select-none",
+                canScrollDesktopLeft
+                  ? "opacity-100 scale-100 pointer-events-auto cursor-pointer"
+                  : "opacity-0 scale-90 pointer-events-none",
+              )}
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
 
-                return (
-                  <button
-                    key={group.group}
-                    ref={(el) => {
-                      buttonRefs.current[group.group] = el;
-                    }}
-                    onMouseEnter={() => setActiveDropdown(group.group)}
-                    className={cn(
-                      "text-[10px] uppercase tracking-[0.1em] transition-all px-2.5 xl:px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 whitespace-nowrap outline-none cursor-pointer shrink-0",
-                      isActiveGroup
-                        ? "text-stone-900 bg-stone-100 border border-stone-200/40 shadow-sm"
-                        : "text-stone-500 hover:text-stone-900 hover:bg-stone-50/80",
+            <div className="relative flex items-center min-w-0 max-w-full overflow-hidden">
+              {/* Left Edge Gradient Mask */}
+              <div
+                className={cn(
+                  "pointer-events-none absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white via-white/90 to-transparent z-10 transition-opacity duration-200",
+                  canScrollDesktopLeft ? "opacity-100" : "opacity-0",
+                )}
+              />
+
+              <motion.nav
+                ref={desktopNavRef}
+                layoutScroll
+                onScroll={checkScroll}
+                onWheel={handleNavWheel}
+                className="flex items-center justify-start gap-1 overflow-x-auto scrollbar-hide py-1.5 px-1 relative w-fit max-w-full min-w-0"
+              >
+                {/* Prepend Dashboard Link */}
+                <Link
+                  to="/erp"
+                  data-nav-active={isDashboardActive ? "true" : undefined}
+                  onClick={handleMainClick}
+                  className={cn(
+                    "relative h-8 text-[10px] uppercase tracking-[0.08em] transition-colors px-2.5 xl:px-3 rounded-lg font-bold whitespace-nowrap shrink-0 inline-flex items-center border",
+                    isDashboardActive
+                      ? "text-stone-900 border-transparent"
+                      : "text-stone-500 border-transparent hover:text-stone-900 hover:bg-stone-50/80",
+                  )}
+                >
+                  {isDashboardActive && (
+                    <motion.span
+                      layoutId="erp-nav-active-pill"
+                      transition={{
+                        type: "spring",
+                        stiffness: 420,
+                        damping: 32,
+                        mass: 0.8,
+                      }}
+                      className="absolute inset-0 bg-stone-100 border border-stone-200/80 rounded-lg shadow-2xs pointer-events-none"
+                    />
+                  )}
+                  <span className="relative z-10">Dashboard</span>
+                </Link>
+
+                {/* Prepend Messages Link */}
+                <Link
+                  to="/forum"
+                  data-nav-active={isMessagesActive ? "true" : undefined}
+                  onClick={handleMainClick}
+                  className={cn(
+                    "relative h-8 text-[10px] uppercase tracking-[0.08em] transition-colors px-2.5 xl:px-3 rounded-lg font-bold whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 group border",
+                    isMessagesActive
+                      ? "text-stone-900 border-transparent"
+                      : "text-stone-500 border-transparent hover:text-stone-900 hover:bg-stone-50/80",
+                  )}
+                >
+                  {isMessagesActive && (
+                    <motion.span
+                      layoutId="erp-nav-active-pill"
+                      transition={{
+                        type: "spring",
+                        stiffness: 420,
+                        damping: 32,
+                        mass: 0.8,
+                      }}
+                      className="absolute inset-0 bg-stone-100 border border-stone-200/80 rounded-lg shadow-2xs pointer-events-none"
+                    />
+                  )}
+                  <span className="relative z-10 inline-flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-stone-400 group-hover:text-stone-900 transition-colors" />
+                    Messages
+                    {unreadCount > 0 && (
+                      <span className="ml-1 bg-stone-900 text-white rounded-md px-1.5 py-0.5 text-[8px] font-bold leading-none tracking-normal shadow-2xs">
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
                     )}
-                  >
-                    {group.translatedGroup}
+                  </span>
+                </Link>
+
+                {/* Prepend General Dropdown Link next to Messages */}
+                <button
+                  type="button"
+                  data-nav-active={isGeneralActive ? "true" : undefined}
+                  ref={(el) => {
+                    buttonRefs.current["General"] = el;
+                  }}
+                  onMouseEnter={() => handleDropdownHover("General")}
+                  onClick={() => handleDropdownClick("General")}
+                  aria-expanded={activeDropdown === "General"}
+                  className={cn(
+                    "relative h-8 text-[10px] uppercase tracking-[0.08em] transition-colors px-2.5 xl:px-3 rounded-lg font-bold inline-flex items-center gap-1.5 whitespace-nowrap outline-none cursor-pointer shrink-0 group border",
+                    isGeneralActive
+                      ? "text-stone-900 border-transparent"
+                      : activeDropdown === "General"
+                        ? "text-stone-900 bg-stone-100/70 border-stone-200/60"
+                        : "text-stone-500 border-transparent hover:text-stone-900 hover:bg-stone-50/80",
+                  )}
+                >
+                  {isGeneralActive && (
+                    <motion.span
+                      layoutId="erp-nav-active-pill"
+                      transition={{
+                        type: "spring",
+                        stiffness: 420,
+                        damping: 32,
+                        mass: 0.8,
+                      }}
+                      className="absolute inset-0 bg-stone-100 border border-stone-200/80 rounded-lg shadow-2xs pointer-events-none"
+                    />
+                  )}
+                  <span className="relative z-10 inline-flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-stone-400 group-hover:text-stone-900 transition-colors" />
+                    General
                     <ChevronDown
                       className={cn(
-                        "w-3.5 h-3.5 transition-transform duration-300",
-                        activeDropdown === group.group
-                          ? "-rotate-180 text-stone-850"
+                        "w-3 h-3 shrink-0 transition-transform duration-200",
+                        activeDropdown === "General"
+                          ? "-rotate-180 text-stone-800"
                           : "text-stone-400",
                       )}
                     />
-                    {group.items.some(
-                      (it) =>
-                        it.name === "Collaboration Forum" ||
-                        it.name === "Messages",
-                    ) &&
-                      unreadCount > 0 && (
-                        <span className="ml-1.5 bg-stone-900 text-white rounded-lg px-2 py-0.5 text-[8px] font-bold leading-none tracking-normal shadow-xs">
-                          {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                </button>
+
+                {/* Aesthetic Spacer Divider */}
+                <div className="h-4 w-[1px] bg-stone-200/70 shrink-0 mx-1" />
+
+                {nonGeneralNavGroups.map((group) => {
+                  const isActiveGroup = group.items.some(
+                    (it) => location.pathname === it.path,
+                  );
+
+                  if (group.items.length === 1) {
+                    const isMessages =
+                      group.group === "Messages" ||
+                      group.items.some(
+                        (it) =>
+                          it.name === "Collaboration Forum" ||
+                          it.name === "Messages",
+                      );
+                    return (
+                      <Link
+                        key={group.group}
+                        to={group.items[0].path}
+                        data-nav-active={isActiveGroup ? "true" : undefined}
+                        ref={(el) => {
+                          buttonRefs.current[group.group] = el;
+                        }}
+                        onClick={handleMainClick}
+                        className={cn(
+                          "relative h-8 text-[10px] uppercase tracking-[0.08em] transition-colors px-2.5 xl:px-3 rounded-lg font-bold whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 border",
+                          isActiveGroup
+                            ? "text-stone-900 border-transparent"
+                            : "text-stone-500 border-transparent hover:text-stone-900 hover:bg-stone-50/80",
+                        )}
+                      >
+                        {isActiveGroup && (
+                          <motion.span
+                            layoutId="erp-nav-active-pill"
+                            transition={{
+                              type: "spring",
+                              stiffness: 420,
+                              damping: 32,
+                              mass: 0.8,
+                            }}
+                            className="absolute inset-0 bg-stone-100 border border-stone-200/80 rounded-lg shadow-2xs pointer-events-none"
+                          />
+                        )}
+                        <span className="relative z-10 inline-flex items-center gap-1.5">
+                          {group.translatedGroup}
+                          {isMessages && unreadCount > 0 && (
+                            <span className="ml-1 bg-stone-900 text-white rounded-md px-1.5 py-0.5 text-[8px] font-bold leading-none tracking-normal shadow-2xs">
+                              {unreadCount > 99 ? "99+" : unreadCount}
+                            </span>
+                          )}
                         </span>
+                      </Link>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={group.group}
+                      type="button"
+                      data-nav-active={isActiveGroup ? "true" : undefined}
+                      ref={(el) => {
+                        buttonRefs.current[group.group] = el;
+                      }}
+                      onMouseEnter={() => handleDropdownHover(group.group)}
+                      onClick={() => handleDropdownClick(group.group)}
+                      aria-expanded={activeDropdown === group.group}
+                      className={cn(
+                        "relative h-8 text-[10px] uppercase tracking-[0.08em] transition-colors px-2.5 xl:px-3 rounded-lg font-bold inline-flex items-center gap-1.5 whitespace-nowrap outline-none cursor-pointer shrink-0 border",
+                        isActiveGroup
+                          ? "text-stone-900 border-transparent"
+                          : activeDropdown === group.group
+                            ? "text-stone-900 bg-stone-100/70 border-stone-200/60"
+                            : "text-stone-500 border-transparent hover:text-stone-900 hover:bg-stone-50/80",
                       )}
-                  </button>
-                );
-              })}
-            </nav>
+                    >
+                      {isActiveGroup && (
+                        <motion.span
+                          layoutId="erp-nav-active-pill"
+                          transition={{
+                            type: "spring",
+                            stiffness: 420,
+                            damping: 32,
+                            mass: 0.8,
+                          }}
+                          className="absolute inset-0 bg-stone-100 border border-stone-200/80 rounded-lg shadow-2xs pointer-events-none"
+                        />
+                      )}
+                      <span className="relative z-10 inline-flex items-center gap-1.5">
+                        <span>{group.translatedGroup}</span>
+                        <ChevronDown
+                          className={cn(
+                            "w-3 h-3 shrink-0 transition-transform duration-200",
+                            activeDropdown === group.group
+                              ? "-rotate-180 text-stone-800"
+                              : "text-stone-400",
+                          )}
+                        />
+                        {group.items.some(
+                          (it) =>
+                            it.name === "Collaboration Forum" ||
+                            it.name === "Messages",
+                        ) &&
+                          unreadCount > 0 && (
+                            <span className="ml-1 bg-stone-900 text-white rounded-md px-1.5 py-0.5 text-[8px] font-bold leading-none tracking-normal shadow-2xs">
+                              {unreadCount > 99 ? "99+" : unreadCount}
+                            </span>
+                          )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </motion.nav>
 
-            <AnimatePresence>
-              {canScrollDesktopRight && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  onClick={() => scrollNav(desktopNavRef, 185)}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 z-30 w-7 h-7 bg-white/95 border border-stone-250 rounded-lg flex items-center justify-center shadow-md text-stone-500 hover:text-stone-900 transition-colors cursor-pointer"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </motion.button>
+              {/* Right Edge Gradient Mask */}
+              <div
+                className={cn(
+                  "pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white via-white/90 to-transparent z-10 transition-opacity duration-200",
+                  canScrollDesktopRight ? "opacity-100" : "opacity-0",
+                )}
+              />
+            </div>
+
+            {/* Right Scroll Button (Permanent Fixed Slot to prevent layout shift) */}
+            <button
+              type="button"
+              aria-label="Scroll navigation right"
+              aria-hidden={!canScrollDesktopRight}
+              tabIndex={canScrollDesktopRight ? 0 : -1}
+              disabled={!canScrollDesktopRight}
+              onPointerDown={() =>
+                canScrollDesktopRight && startHoldScroll("right")
+              }
+              onPointerUp={stopHoldScroll}
+              onPointerLeave={stopHoldScroll}
+              onPointerCancel={stopHoldScroll}
+              onClick={() => {
+                if (!canScrollDesktopRight) return;
+                if (!isHoldingScrollRef.current) {
+                  snapScrollNav("right");
+                }
+                isHoldingScrollRef.current = false;
+              }}
+              className={cn(
+                "w-7 h-7 shrink-0 bg-white border border-stone-200/90 rounded-lg flex items-center justify-center shadow-2xs text-stone-500 hover:text-stone-900 hover:border-stone-300 hover:bg-stone-50 active:scale-95 transition-all duration-200 ease-out z-20 select-none",
+                canScrollDesktopRight
+                  ? "opacity-100 scale-100 pointer-events-auto cursor-pointer"
+                  : "opacity-0 scale-90 pointer-events-none",
               )}
-            </AnimatePresence>
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
 
             <AnimatePresence>
-              {activeDropdown &&
-                filteredNavGroups.find((g) => g.group === activeDropdown) && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute top-full mt-1 z-[100] w-56 origin-top-left"
-                    style={{
-                      left: dropdownLeft !== null ? dropdownLeft : "auto",
-                    }}
-                  >
-                    {/* Hover spacer to close gap */}
-                    <div className="absolute -top-3 left-0 right-0 h-3 bg-transparent" />
-                    <div className="bg-white rounded-xl shadow-lg border border-stone-200/50 py-1.5 flex flex-col relative">
-                      {filteredNavGroups
-                        .find((g) => g.group === activeDropdown)
-                        ?.items.map((item) => {
-                          const isItemActive = location.pathname === item.path;
-                          return (
+              {activeDropdownGroup && (
+                <motion.div
+                  initial={{
+                    opacity: 0,
+                    y: 6,
+                    scale: 0.97,
+                    left: dropdownLeft !== null ? dropdownLeft : 0,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                    scale: 1,
+                    left: dropdownLeft !== null ? dropdownLeft : 0,
+                  }}
+                  exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 420,
+                    damping: 32,
+                    mass: 0.8,
+                  }}
+                  className="absolute top-full mt-1.5 z-[100] w-56 origin-top-left"
+                  style={{
+                    left: dropdownLeft !== null ? dropdownLeft : 0,
+                  }}
+                >
+                  <div className="bg-white/95 backdrop-blur-xl rounded-xl shadow-[0_12px_32px_-8px_rgba(28,25,23,0.12)] border border-stone-200/80 py-1.5 flex flex-col relative overflow-hidden">
+                    <motion.div
+                      key={activeDropdownGroup.group}
+                      initial="hidden"
+                      animate="visible"
+                      variants={{
+                        hidden: { opacity: 0 },
+                        visible: {
+                          opacity: 1,
+                          transition: {
+                            staggerChildren: 0.025,
+                            delayChildren: 0.01,
+                          },
+                        },
+                      }}
+                      className="flex flex-col"
+                    >
+                      {activeDropdownGroup.items.map((item) => {
+                        const isItemActive = location.pathname === item.path;
+                        return (
+                          <motion.div
+                            key={item.path}
+                            variants={{
+                              hidden: { opacity: 0, y: 4 },
+                              visible: {
+                                opacity: 1,
+                                y: 0,
+                                transition: {
+                                  type: "spring",
+                                  stiffness: 500,
+                                  damping: 34,
+                                  mass: 0.6,
+                                },
+                              },
+                            }}
+                          >
                             <Link
-                              key={item.path}
                               to={item.path}
-                              onClick={() => setActiveDropdown(null)}
+                              onClick={handleMainClick}
                               className={cn(
-                                "px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-all flex items-center justify-between gap-2.5",
+                                "px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center justify-between gap-2.5",
                                 isItemActive
-                                  ? "text-stone-900 bg-stone-50 font-bold border-l-2 border-stone-800 pl-3"
-                                  : "text-stone-500 hover:text-stone-900 hover:bg-stone-50/50",
+                                  ? "text-stone-900 bg-stone-100/80 font-bold border-l-2 border-stone-800 pl-3.5"
+                                  : "text-stone-500 hover:text-stone-900 hover:bg-stone-50/80",
                               )}
                             >
                               <span className="leading-snug">
@@ -897,7 +1050,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                               </span>
                               <div className="flex items-center gap-1.5 shrink-0 ml-auto">
                                 {item.badge && (
-                                  <span className="bg-[#b02524] text-white rounded px-1.5 py-0.5 text-[8px] font-black leading-none tracking-normal uppercase">
+                                  <span className="bg-stone-900 text-white rounded px-1.5 py-0.5 text-[8px] font-black leading-none tracking-normal uppercase">
                                     {item.badge}
                                   </span>
                                 )}
@@ -910,16 +1063,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                   )}
                               </div>
                             </Link>
-                          );
-                        })}
-                    </div>
-                  </motion.div>
-                )}
+                          </motion.div>
+                        );
+                      })}
+                    </motion.div>
+                  </div>
+                </motion.div>
+              )}
             </AnimatePresence>
           </div>
 
           {/* Column 3: Stats, Timer & User Profile */}
-          <div className="flex items-center gap-3 shrink-0 justify-end">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0 justify-end">
             <PWAInstallButton />
 
             <div className="flex items-center gap-2 text-[11px] text-stone-500 font-medium hidden lg:flex">
@@ -929,473 +1084,75 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            {user && (
-              <div className="relative" ref={userMenuRef}>
-                <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                  className={cn(
-                    "flex items-center gap-3 px-2 py-1.5 transition-all rounded-full group",
-                    showUserMenu
-                      ? "bg-stone-100 ring-4 ring-stone-50"
-                      : "hover:bg-stone-50",
-                  )}
-                >
-                  <div className="w-9 h-9 rounded-full bg-white border border-stone-200/60 flex items-center justify-center shadow-sm relative z-10 overflow-hidden">
-                    <div className="absolute inset-0 bg-stone-800 opacity-0 group-hover:opacity-5 transition-opacity" />
-                    <span className="text-[11px] font-bold text-stone-800 tracking-tight relative z-20">
-                      {String(user?.username || "US").substring(0, 2).toUpperCase()}
-                    </span>
-                    {historyCount > 0 && (
-                      <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 border-2 border-white rounded-full" />
-                    )}
-                  </div>
-                  <div className="hidden md:block pr-4">
-                    <span className="text-[11px] font-bold text-stone-900 uppercase tracking-[0.1em]">
-                      {String(user?.username || "User")}
-                    </span>
-                  </div>
-                </button>
-
-                <AnimatePresence>
-                  {showUserMenu && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      transition={{ duration: 0.2, ease: "easeOut" }}
-                      className="absolute right-0 mt-3 w-80 bg-white rounded-3xl border border-stone-100 shadow-[0_20px_50px_rgba(0,0,0,0.12)] z-[100] overflow-hidden"
-                    >
-                      <div className="p-5 border-b border-stone-50 bg-stone-50/30">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">
-                            {t("Activity & Notifications")}
-                          </h3>
-                          <div className="flex items-center gap-3">
-                            {historyCount > 0 && (
-                              <button
-                                onClick={markAllAsRead}
-                                className="text-[9px] font-bold text-stone-900 hover:text-stone-700 uppercase tracking-wider transition-colors cursor-pointer"
-                              >
-                                {t("Mark all Read")}
-                              </button>
-                            )}
-                            <button
-                              onClick={clearAll}
-                              className="flex items-center gap-1.5 text-[9px] font-bold text-stone-400 hover:text-stone-900 uppercase tracking-widest transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-3 h-3" /> {t("Clear All")}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="max-h-[320px] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
-                          {(!notifications || notifications.length === 0) ? (
-                            <div className="text-center py-10">
-                              <Bell className="w-8 h-8 text-stone-200 mx-auto mb-3" />
-                              <p className="text-[11px] font-bold text-stone-400 uppercase tracking-widest">
-                                {t("No activity history")}
-                              </p>
-                            </div>
-                          ) : (
-                            notifications.map((notif, index) => {
-                              if (!notif) return null;
-                              const safeId = notif.id || `notif-${index}`;
-                              const safeTitle = typeof notif.title === "string" ? notif.title : String(notif.title || "Notification");
-                              const safeMsg = typeof notif.message === "string" ? notif.message : String(notif.message || "");
-                              
-                              let formattedTime = "--:--";
-                              try {
-                                const d = notif.timestamp instanceof Date ? notif.timestamp : new Date(notif.timestamp);
-                                if (!isNaN(d.getTime())) {
-                                  formattedTime = d.toLocaleTimeString("en-US", {
-                                    timeZone: "Asia/Jakarta",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  });
-                                }
-                              } catch {
-                                formattedTime = "--:--";
-                              }
-
-                              return (
-                                <div
-                                  key={safeId}
-                                  onClick={() => notif.id && markAsRead(notif.id)}
-                                  className={cn(
-                                    "p-3 rounded-2xl border transition-all flex gap-3 group relative cursor-default",
-                                    notif.isRead
-                                      ? "bg-transparent border-transparent grayscale-[0.5] opacity-60"
-                                      : "bg-white border-stone-100 shadow-sm ring-1 ring-stone-900/5",
-                                  )}
-                                >
-                                  {!notif.isRead && (
-                                    <div className="absolute top-3 right-3 w-1.5 h-1.5 bg-stone-800 rounded-full" />
-                                  )}
-                                  <div
-                                    className={cn(
-                                      "w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border",
-                                      notif.type === "SUCCESS"
-                                        ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-                                        : notif.type === "ERROR"
-                                          ? "bg-red-50 border-red-100 text-red-600"
-                                          : notif.type === "CHAT"
-                                            ? "bg-amber-50 border-amber-100 text-amber-600"
-                                            : "bg-blue-50 border-blue-100 text-blue-600",
-                                    )}
-                                  >
-                                    {notif.type === "SUCCESS" && (
-                                      <CheckCircle2 className="w-4 h-4" />
-                                    )}
-                                    {notif.type === "ERROR" && (
-                                      <AlertCircle className="w-4 h-4" />
-                                    )}
-                                    {notif.type === "CHAT" && (
-                                      <MessageSquare className="w-4 h-4" />
-                                    )}
-                                    {notif.type !== "SUCCESS" && notif.type !== "ERROR" && notif.type !== "CHAT" && (
-                                      <Info className="w-4 h-4" />
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-[11px] font-bold text-stone-900 mb-0.5">
-                                      {safeTitle}
-                                    </p>
-                                    <div
-                                      className="text-[10px] text-stone-500 line-clamp-2 leading-relaxed mb-2"
-                                      title={safeMsg}
-                                    >
-                                      {(() => {
-                                        try {
-                                          const sharedMatch = safeMsg.match(
-                                            /🔗 \*Shared Resource: (.*)\* \((PROJECT|PR|PO)\) #(.*)$/s,
-                                          );
-                                          if (sharedMatch) {
-                                            const [fullMatch, title, type, itemId] = sharedMatch;
-                                            const textBefore = safeMsg.replace(fullMatch, "").trim();
-                                            return (
-                                              <div className="flex flex-col gap-0.5 mt-0.5">
-                                                {textBefore && (
-                                                  <span className="truncate">{textBefore}</span>
-                                                )}
-                                                <span className="flex items-center gap-1 font-medium bg-stone-100 text-stone-700 px-1.5 py-0.5 rounded w-fit text-[9px] uppercase tracking-widest">
-                                                  {type === "PROJECT" && (
-                                                    <Briefcase className="w-2.5 h-2.5" />
-                                                  )}
-                                                  {type === "PR" && (
-                                                    <ClipboardList className="w-2.5 h-2.5" />
-                                                  )}
-                                                  {type === "PO" && (
-                                                    <ShoppingCart className="w-2.5 h-2.5" />
-                                                  )}
-                                                  Attached {type}
-                                                </span>
-                                              </div>
-                                            );
-                                          }
-                                        } catch {
-                                          // fallback to plain text
-                                        }
-                                        return safeMsg;
-                                      })()}
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[9px] text-stone-400 font-bold uppercase tracking-tight font-mono">
-                                        {formattedTime}
-                                      </span>
-                                      {notif.link && (
-                                        <Link
-                                          to={String(notif.link)}
-                                          className="text-[9px] text-stone-900 font-bold uppercase tracking-widest hover:underline flex items-center gap-1"
-                                        >
-                                          View <ExternalLink className="w-2.5 h-2.5" />
-                                        </Link>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="p-5 border-t border-stone-50 bg-stone-50/50">
-                        <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">
-                            Security
-                          </h3>
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-stone-500 bg-stone-200/50 px-2 py-0.5 rounded">
-                            Daily Internal Auth
-                          </span>
-                        </div>
-                        <div className="bg-white border border-stone-200 rounded-2xl p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-stone-100 flex items-center justify-center text-stone-600">
-                              <Key className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">
-                                Your Key
-                              </div>
-                              <div className="font-mono font-bold tracking-[0.2em] text-stone-900 group">
-                                {showAuthKey
-                                  ? getDailyAuthKey(user?.username)
-                                  : "••••••"}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {showAuthKey && (
-                              <button
-                                type="button"
-                                onClick={async (e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  try {
-                                    const text = getDailyAuthKey(user?.username);
-                                    const success = await copyToClipboard(text);
-                                    if (success) {
-                                      setCopiedAuthKey(true);
-                                      setTimeout(() => setCopiedAuthKey(false), 2000);
-                                      showToast("Auth Key copied to clipboard", "success");
-                                    } else {
-                                      showToast("Failed to copy Auth Key", "error");
-                                    }
-                                  } catch (err) {
-                                    console.error("Error copying auth key:", err);
-                                    showToast("Failed to copy Auth Key", "error");
-                                  }
-                                }}
-                                className="w-8 h-8 rounded-xl bg-stone-50 hover:bg-stone-100 flex items-center justify-center transition-colors text-stone-500"
-                                title="Copy PIN"
-                              >
-                                {copiedAuthKey ? (
-                                  <Check className="w-4 h-4 text-emerald-600" />
-                                ) : (
-                                  <Copy className="w-4 h-4" />
-                                )}
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setShowAuthKey(!showAuthKey);
-                              }}
-                              className="w-8 h-8 rounded-xl bg-stone-50 hover:bg-stone-100 flex items-center justify-center transition-colors text-stone-500 cursor-pointer"
-                            >
-                              {showAuthKey ? (
-                                <EyeOff className="w-4 h-4" />
-                              ) : (
-                                <Eye className="w-4 h-4" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-2 border-t border-stone-50">
-                        <button
-                          onClick={logout}
-                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-red-50 text-stone-600 hover:text-red-600 transition-all rounded-2xl group cursor-pointer"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-stone-50 border border-stone-100 flex items-center justify-center group-hover:bg-red-100 group-hover:border-red-200 transition-colors">
-                              <LogOut className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-                            </div>
-                            <span className="text-[13px] font-bold tracking-tight">
-                              Sign Out
-                            </span>
-                          </div>
-                          <span className="text-[10px] uppercase font-bold tracking-[0.2em] opacity-30 group-hover:opacity-100 transition-opacity">
-                            Session Exit
-                          </span>
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
+            <UserMenuPopover
+              user={user}
+              logout={logout}
+              unreadCount={unreadCount}
+              historyCount={historyCount}
+              notifications={notifications}
+              markAsRead={markAsRead}
+              markAllAsRead={markAllAsRead}
+              clearAll={clearAll}
+              showUserMenu={showUserMenu}
+              setShowUserMenu={setShowUserMenu}
+              userMenuRef={userMenuRef}
+            />
           </div>
         </div>
       </header>
 
-      <nav className="xl:hidden bg-white border-b border-stone-100 px-4 py-3 relative overflow-hidden group">
-        <AnimatePresence>
-          {canScrollMobileLeft && (
-            <motion.button
-              initial={{ opacity: 0, x: -5 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -5 }}
-              onClick={() => scrollNav(mobileNavRef, -150)}
-              className="absolute left-1 top-1/2 -translate-y-1/2 z-20 w-8 h-8 bg-white/95 border border-stone-200 rounded-lg flex items-center justify-center shadow-lg text-stone-400"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </motion.button>
-          )}
-        </AnimatePresence>
-
-        <div
-          ref={mobileNavRef}
-          onScroll={checkScroll}
-          className="flex items-center gap-2 overflow-x-auto scrollbar-hide px-2 pb-1"
-        >
-          {/* Dashboard Standalone Link for mobile */}
-          <Link
-            to="/erp"
-            className={cn(
-              "text-[10px] uppercase tracking-[0.15em] transition-all px-4 py-2.5 rounded-xl font-bold whitespace-nowrap outline-none",
-              location.pathname === "/erp"
-                ? "text-stone-950 bg-stone-100 ring-1 ring-stone-200"
-                : "text-stone-500 hover:text-stone-900",
-            )}
-          >
-            Dashboard
-          </Link>
-
-          {/* Messages Standalone Link for mobile */}
-          <Link
-            to="/forum"
-            className={cn(
-              "text-[10px] uppercase tracking-[0.15em] transition-all px-4 py-2.5 rounded-xl font-bold whitespace-nowrap outline-none flex items-center gap-1.5",
-              location.pathname === "/forum"
-                ? "text-stone-950 bg-stone-100 ring-1 ring-stone-200"
-                : "text-stone-500 hover:text-stone-900",
-            )}
-          >
-            Messages
-            {unreadCount > 0 && (
-              <span className="ml-1.5 bg-stone-900 text-white rounded-lg px-2 py-0.5 text-[8px] font-bold leading-none tracking-normal shadow-xs">
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
-            )}
-          </Link>
-
-          {filteredNavGroups.map((group) => {
-            const isActiveGroup = group.items.some(
-              (it) => location.pathname === it.path,
-            );
-
-            return (
-              <div key={group.group} className="relative">
-                <button
-                  onClick={() =>
-                    setActiveDropdown(
-                      activeDropdown === group.group ? null : group.group,
-                    )
-                  }
-                  className={cn(
-                    "text-[10px] uppercase tracking-[0.15em] transition-all px-4 py-2.5 rounded-xl font-bold whitespace-nowrap outline-none flex items-center gap-1.5 focus:bg-stone-50",
-                    isActiveGroup
-                      ? "text-stone-900 bg-stone-100 ring-1 ring-stone-200"
-                      : "text-stone-500 hover:text-stone-800",
-                  )}
-                >
-                  {group.translatedGroup}
-                  <ChevronDown
-                    className={cn(
-                      "w-3 h-3 transition-transform duration-200",
-                      activeDropdown === group.group
-                        ? "-rotate-180 text-stone-800"
-                        : "text-stone-400",
-                    )}
-                  />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-
-        <AnimatePresence>
-          {canScrollMobileRight && (
-            <motion.button
-              initial={{ opacity: 0, x: 5 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 5 }}
-              onClick={() => scrollNav(mobileNavRef, 150)}
-              className="absolute right-1 top-1/2 -translate-y-1/2 z-20 w-8 h-8 bg-white/95 border border-stone-200 rounded-lg flex items-center justify-center shadow-lg text-stone-400"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </motion.button>
-          )}
-        </AnimatePresence>
-      </nav>
-
-      <AnimatePresence>
-        {activeDropdown &&
-          filteredNavGroups.find((g) => g.group === activeDropdown) && (
-            <>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-stone-900/10 backdrop-blur-[2px] z-[80] xl:hidden"
-                onClick={() => setActiveDropdown(null)}
-              />
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                className="fixed top-[130px] left-4 right-4 bg-white border border-stone-200 rounded-2xl shadow-xl z-[90] overflow-hidden xl:hidden pb-2 pt-2"
-              >
-                <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 py-3 px-6 border-b border-stone-100 mb-2">
-                  {activeDropdown}
-                </div>
-                {filteredNavGroups
-                  .find((g) => g.group === activeDropdown)
-                  ?.items.map((item) => (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={() => setActiveDropdown(null)}
-                      className="w-full py-3.5 px-6 text-[11px] font-bold text-stone-700 hover:bg-stone-50 hover:text-stone-900 active:bg-stone-100 transition-colors uppercase tracking-widest flex items-center justify-between gap-3"
-                    >
-                      <span className="leading-snug">{item.translatedName}</span>
-                      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                        {item.badge && (
-                          <span className="bg-[#b02524] text-white rounded px-1.5 py-0.5 text-[8px] font-black leading-none tracking-normal uppercase">
-                            {item.badge}
-                          </span>
-                        )}
-                        {(item.name === "Collaboration Forum" ||
-                          item.name === "Messages") &&
-                          unreadCount > 0 && (
-                            <span className="bg-stone-900 text-white rounded-lg px-2 py-0.5 text-[8px] font-bold leading-none tracking-normal shadow-xs">
-                              {unreadCount > 99 ? "99+" : unreadCount}
-                            </span>
-                          )}
-                      </div>
-                    </Link>
-                  ))}
-              </motion.div>
-            </>
-          )}
-      </AnimatePresence>
+      {/* Mobile Monitoring & Force Desktop Status Strip */}
+      <MobileMonitoringStrip
+        user={user}
+        isMobileReadOnly={isMobileReadOnly}
+        isMobileViewport={isMobileViewport}
+        isForceDesktopMode={isForceDesktopMode}
+        isExemptInteractiveRoute={isExemptInteractiveRoute}
+        openDesktopNotice={openDesktopNotice}
+        disableForceDesktopMode={disableForceDesktopMode}
+      />
 
       <main
-        className="flex-1 overflow-y-auto w-full"
-        onClick={() => setActiveDropdown(null)}
+        className="flex-1 overflow-y-auto overflow-x-hidden w-full"
+        onClick={handleMainClick}
+        onClickCapture={handleMainClickCapture}
       >
-        <div className="max-w-7xl mx-auto w-full px-3 py-3 md:px-8 md:py-10">
-          {children}
+        <div
+          className={cn(
+            "max-w-7xl mx-auto w-full px-2.5 py-3 sm:px-4 md:px-6 lg:px-8 md:py-5",
+            isMobileViewport && isForceDesktopMode && "min-w-[1024px]",
+          )}
+        >
+          {isMobileReadOnly && isDesktopHeavyRoute ? (
+            <DesktopModeRequiredPage
+              moduleName={
+                location.pathname
+                  .replace(/^\//, "")
+                  .replace(/-/g, " ")
+                  .toUpperCase() || "WORKSPACE STUDIO"
+              }
+            />
+          ) : (
+            children
+          )}
         </div>
       </main>
 
-      <footer className="shrink-0 border-t border-stone-100 bg-white py-4">
-        <div className="w-full px-6 md:px-10 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-stone-400 font-medium tracking-wide">
+      <DesktopModeNoticeModal />
+
+      <footer className="hidden sm:block shrink-0 border-t border-stone-100 bg-white py-2.5">
+        <div className="w-full px-4 md:px-10 flex flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-stone-400 font-medium tracking-wide">
               Enterprise OS / ERP System
             </span>
             <div className="h-3 w-[1px] bg-stone-200" />
-            <span className="text-xs text-stone-400">
+            <span className="text-[11px] text-stone-400">
               Engineered by Eghy Al Vandi
             </span>
           </div>
-          <div className="flex items-center gap-6">
-            <span className="text-[10px] text-stone-400 uppercase tracking-widest font-semibold flex items-center gap-1.5">
+          <div className="flex items-center gap-4">
+            <span className="text-[9.5px] text-stone-400 uppercase tracking-widest font-semibold flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />{" "}
               Systems Operational
             </span>
@@ -1404,66 +1161,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </footer>
 
-      {chatNotification && chatNotification.visible && (
-        <div
-          className="fixed bottom-6 left-6 z-[100] w-80 bg-white border border-stone-200 rounded-2xl shadow-2xl p-4 animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-start gap-4 hover:shadow-xl transition-shadow cursor-pointer"
-          onClick={() =>
-            setChatNotification((prev) =>
-              prev ? { ...prev, visible: false } : null,
-            )
-          }
+      <ChatNotificationToast
+        chatNotification={chatNotification}
+        onDismiss={handleDismissChatNotification}
+      />
+
+      {isMobileViewport && isForceDesktopMode && (
+        <button
+          onClick={() => disableForceDesktopMode()}
+          className="fixed bottom-4 right-4 z-[120] inline-flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold shadow-xl border border-stone-800 active:scale-95 transition-transform cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center shrink-0 border border-stone-200">
-            <span className="text-stone-500 font-semibold text-sm">
-              {chatNotification.sender.substring(0, 2).toUpperCase()}
-            </span>
-          </div>
-          <div className="flex-1 min-w-0 pt-0.5">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="font-semibold text-stone-900 text-sm truncate">
-                {chatNotification.sender}
-              </h4>
-              <span className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest">
-                New
-              </span>
-            </div>
-            <p
-              className="text-xs text-stone-500 truncate mt-0.5"
-              title={chatNotification.content}
-            >
-              {(() => {
-                let contentToParse = chatNotification.content || "";
-                const sharedMatch = contentToParse.match(
-                  /🔗 \*Shared Resource: (.*)\* \((PROJECT|PR|PO)\) #(.*)$/s,
-                );
-                if (sharedMatch) {
-                  const [fullMatch, title, type, itemId] = sharedMatch;
-                  const textBefore = contentToParse
-                    .replace(fullMatch, "")
-                    .trim();
-                  return (
-                    <span className="flex items-center gap-1.5 font-medium">
-                      {textBefore && (
-                        <span className="truncate max-w-[100px]">
-                          {textBefore}
-                        </span>
-                      )}
-                      <span className="shrink-0 flex items-center gap-1 bg-stone-100 text-stone-700 px-1.5 py-0.5 rounded text-[10px]">
-                        {type === "PROJECT" && (
-                          <Briefcase className="w-3 h-3" />
-                        )}
-                        {type === "PR" && <ClipboardList className="w-3 h-3" />}
-                        {type === "PO" && <ShoppingCart className="w-3 h-3" />}
-                        Shared {type}
-                      </span>
-                    </span>
-                  );
-                }
-                return contentToParse.replace(/\n/g, " ");
-              })()}
-            </p>
-          </div>
-        </div>
+          <Smartphone className="w-4 h-4 text-white" />
+          Back to Mobile App
+        </button>
       )}
 
       <OfflineIndicator />

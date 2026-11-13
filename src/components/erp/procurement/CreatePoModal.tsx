@@ -1,6 +1,8 @@
 import React, { memo } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import {
   AlertTriangle,
   RotateCcw,
@@ -95,7 +97,7 @@ export const CreatePoModal = memo(function CreatePoModal({
               handleCancelPo(revisingPo.id);
             }}
           >
-            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Un-bulk / Batalkan PO
+            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Un-bulk / Cancel PO
           </Button>
         </div>
       )}
@@ -167,11 +169,10 @@ export const CreatePoModal = memo(function CreatePoModal({
 
       <form onSubmit={handleCreatePo} className="space-y-4">
         <div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-1.5">
             <span className="text-[10px] font-mono font-bold text-stone-500 uppercase tracking-widest">
               Optimization Matrix
             </span>
-            <span className="h-1.5 w-1.5 rounded-full bg-stone-400"></span>
           </div>
           <label className="block text-xs font-bold text-stone-900 uppercase tracking-wider mb-2">
             Vendor Proposals (Ranked by Matrix Score)
@@ -390,33 +391,25 @@ export const CreatePoModal = memo(function CreatePoModal({
         {/* Supplier Tax Profile & Payment Terms */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-stone-900 uppercase tracking-wider mb-1.5">
-              NPWP Supplier / Vendor
-            </label>
-            <input
+            <Input
+              label="Supplier Tax ID"
               type="text"
               value={poForm.supplier_npwp}
               onChange={(e) =>
                 setPoForm({ ...poForm, supplier_npwp: e.target.value })
               }
-              placeholder="Contoh: 01.234.567.8-901.000 / 16 Digit"
-              className="w-full border border-stone-200 rounded-lg px-3.5 py-2.5 text-xs font-mono focus:border-stone-400 outline-none"
+              placeholder="e.g., 01.234.567.8-901.000 / 16 Digits"
+              className="font-mono tabular-nums"
             />
-            <p className="mt-1 text-[10px] text-stone-400 font-medium">
-              Loaded from Vendor profile or customized per Purchase Order.
-            </p>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-stone-900 uppercase tracking-wider mb-1.5">
-              Payment Terms
-            </label>
-            <select
+            <Select
+              label="Payment Terms"
               value={poForm.payment_terms}
               onChange={(e) =>
                 setPoForm({ ...poForm, payment_terms: e.target.value })
               }
-              className="w-full border border-stone-200 rounded-lg px-3.5 py-2.5 text-xs font-medium focus:border-stone-400 outline-none"
             >
               <option value="Cash Before Delivery (CBD)">Cash Before Delivery (CBD)</option>
               <option value="Cash on Delivery (COD)">Cash on Delivery (COD)</option>
@@ -427,17 +420,18 @@ export const CreatePoModal = memo(function CreatePoModal({
               <option value="Net 60 Days">Net 60 Days</option>
               <option value="Net 90 Days">Net 90 Days</option>
               <option value="Custom">Custom Payment Terms...</option>
-            </select>
+            </Select>
             {poForm.payment_terms === "Custom" && (
-              <input
-                type="text"
-                value={poForm.custom_payment_terms}
-                onChange={(e) =>
-                  setPoForm({ ...poForm, custom_payment_terms: e.target.value })
-                }
-                placeholder="Enter custom payment terms..."
-                className="w-full mt-2 border border-stone-200 rounded-lg px-3 py-2 text-xs focus:border-stone-400 outline-none"
-              />
+              <div className="mt-2">
+                <Input
+                  type="text"
+                  value={poForm.custom_payment_terms}
+                  onChange={(e) =>
+                    setPoForm({ ...poForm, custom_payment_terms: e.target.value })
+                  }
+                  placeholder="Enter custom payment terms..."
+                />
+              </div>
             )}
           </div>
         </div>
@@ -447,70 +441,61 @@ export const CreatePoModal = memo(function CreatePoModal({
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
               <Percent className="w-3.5 h-3.5 text-stone-600" />
-              Indonesian Tax Regulation & Tax Schemes
+              Tax Configuration &amp; Schemes
             </label>
             <span className="text-[9px] font-mono bg-stone-200 text-stone-700 font-bold px-2 py-0.5 rounded uppercase">
-              UU HPP & PMK
+              STATUTORY TAX
             </span>
           </div>
 
           {/* Scheme Selector */}
           <div>
-            <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
-              Select Tax Category / Scheme
-            </label>
-            <select
+            <Select
+              label="Tax Scheme"
               value={poForm.tax_category}
               onChange={(e) => handlePoTaxCategoryChange(e.target.value)}
-              className="w-full border border-stone-200 bg-white rounded-lg px-3 py-2 text-xs font-semibold focus:border-stone-400 outline-none"
             >
               <option value="GOODS_DPP_LAIN">
-                Goods: VAT 12% with Other Base Value (DPP Nilai Lain 11/12)
+                Goods: VAT 12% (Adjusted Base 11/12)
               </option>
               <option value="SERVICES_DPP_LAIN">
-                Services: VAT 12% (DPP Nilai Lain 11/12) + Withholding Tax (PPh 23 2%)
+                Services: VAT 12% (Adjusted Base 11/12) + Withholding Tax (2%)
               </option>
               <option value="NON_PKP">
-                Non-PKP / Exempt: VAT 0% & No Withholding Tax
+                Tax-Exempt: VAT 0% &amp; No Withholding Tax
               </option>
               <option value="CUSTOM">
-                Custom: Manual VAT & WHT Rates
+                Custom: Manual VAT &amp; WHT Rates
               </option>
-            </select>
+            </Select>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="flex flex-col justify-end">
-              <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1 whitespace-nowrap">
-                VAT Rate (%)
-              </label>
-              <input
+              <Input
+                label="VAT Rate (%)"
                 type="number"
                 value={poForm.ppn_rate}
                 onChange={(e) => setPoForm({ ...poForm, ppn_rate: e.target.value })}
-                className="w-full border border-stone-200 bg-white rounded-lg px-3 py-2 text-xs font-mono font-bold focus:border-stone-400 outline-none"
+                className="font-mono font-bold tabular-nums bg-white"
                 placeholder="12"
               />
             </div>
 
             <div className="flex flex-col justify-end">
-              <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1 whitespace-nowrap">
-                PPh 23 WHT Rate (%)
-              </label>
-              <input
+              <Input
+                label="Withholding Tax Rate (%)"
                 type="number"
                 value={poForm.pph_rate}
                 onChange={(e) => setPoForm({ ...poForm, pph_rate: e.target.value })}
-                className="w-full border border-stone-200 bg-white rounded-lg px-3 py-2 text-xs font-mono font-bold focus:border-stone-400 outline-none"
+                className="font-mono font-bold tabular-nums bg-white"
                 placeholder="0"
               />
             </div>
 
             <div className="flex flex-col justify-end">
-              <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1 whitespace-nowrap">
-                Rounding Factor (Rp)
-              </label>
-              <input
+              <Input
+                label="Rounding Factor (IDR)"
                 type="number"
                 step="any"
                 value={poForm.rounding_factor ?? 0}
@@ -520,21 +505,11 @@ export const CreatePoModal = memo(function CreatePoModal({
                     rounding_factor: e.target.value === "" ? "" : Number(e.target.value),
                   })
                 }
-                className="w-full border border-stone-200 bg-white rounded-lg px-3 py-2 text-xs font-mono font-bold focus:border-stone-400 outline-none"
+                className="font-mono font-bold tabular-nums bg-white"
                 placeholder="0"
               />
             </div>
           </div>
-          <p className="text-[10px] text-stone-400">
-            * Enter Rounding Factor manually if supplier quotation includes rounding adjustments (e.g., -500, +250). Leave as 0 if no rounding.
-          </p>
-
-          {/* Explanation Note for DPP Nilai Lain */}
-          {poForm.tax_scheme === "DPP_NILAI_LAIN" && (
-            <div className="bg-amber-50/80 border border-amber-200/80 rounded-lg p-2.5 text-[11px] text-amber-900 leading-relaxed">
-              <span className="font-bold">Other Base Value Mechanism (DPP Nilai Lain):</span> The formal statutory rate is <strong>12%</strong> applied to an Other Tax Base (DPP Lain-Lain) of <strong>(11/12)</strong> of transaction value.
-            </div>
-          )}
 
           {/* Live Calculation Summary */}
           {poForm.supplier_id && (
@@ -559,13 +534,13 @@ export const CreatePoModal = memo(function CreatePoModal({
                 return (
                   <div className="bg-white p-3 rounded-lg border border-stone-200 space-y-1.5 text-right">
                     <div className="flex justify-between text-stone-600">
-                      <span>Subtotal DPP (Net Base):</span>
+                      <span>Taxable Base (Net):</span>
                       <span className="font-bold">{formatIDR(breakdown.dpp)}</span>
                     </div>
 
                     {breakdown.isDppNilaiLain && (
                       <div className="flex justify-between text-stone-500 bg-stone-50 px-2 py-0.5 rounded text-[10px]">
-                        <span>Other Tax Base / DPP Nilai Lain (11/12):</span>
+                        <span>Adjusted Tax Base (11/12):</span>
                         <span className="font-bold text-stone-700">
                           {formatIDRWithDecimals(breakdown.dppNilaiLain, 2)}
                         </span>
@@ -574,7 +549,7 @@ export const CreatePoModal = memo(function CreatePoModal({
 
                     <div className="flex justify-between text-emerald-700 font-bold">
                       <span>
-                        VAT / PPN {breakdown.isDppNilaiLain ? `12%` : `${breakdown.taxRate}%`}:
+                        VAT ({breakdown.isDppNilaiLain ? `12%` : `${breakdown.taxRate}%`}):
                       </span>
                       <span>+ {formatIDR(breakdown.ppnAmount)}</span>
                     </div>
@@ -597,11 +572,11 @@ export const CreatePoModal = memo(function CreatePoModal({
                     {breakdown.pphRate > 0 && (
                       <div className="mt-2 p-2 bg-stone-50 border border-stone-200 rounded text-xs space-y-1">
                         <div className="flex justify-between text-stone-600">
-                          <span>Potongan PPh 23 ({breakdown.pphRate}%):</span>
+                          <span>Withholding Tax ({breakdown.pphRate}%):</span>
                           <span className="font-bold text-rose-600">- {formatIDR(breakdown.pphAmount)}</span>
                         </div>
                         <div className="flex justify-between text-stone-900 font-black border-t border-stone-200 pt-1">
-                          <span>Estimasi Bersih Dibayar (Net Payable):</span>
+                          <span>Estimated Net Payable:</span>
                           <span className="text-emerald-700">{formatIDR(breakdown.netPayable)}</span>
                         </div>
                       </div>
@@ -614,20 +589,17 @@ export const CreatePoModal = memo(function CreatePoModal({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-stone-500 uppercase tracking-wider mb-1.5">
-            Urgency Level
-          </label>
-          <select
+          <Select
+            label="Urgency Level"
             value={poForm.urgency}
             onChange={(e) =>
               setPoForm({ ...poForm, urgency: e.target.value as any })
             }
-            className="w-full border border-stone-200 rounded-lg px-4 py-2.5 text-sm focus:border-stone-400 outline-none"
           >
             <option value="NORMAL">Normal</option>
             <option value="URGENT">Urgent</option>
             <option value="CRITICAL">Critical</option>
-          </select>
+          </Select>
           <p className="mt-2 text-[10px] text-emerald-600 font-bold uppercase tracking-wider">
             Note: Expected delivery date will be inherited from the selected
             PR items.
@@ -644,7 +616,7 @@ export const CreatePoModal = memo(function CreatePoModal({
                 handleCancelPo(revisingPo.id);
               }}
             >
-              <RotateCcw className="w-4 h-4 mr-1.5" /> Un-bulk & Reset ke PR Items
+              <RotateCcw className="w-4 h-4 mr-1.5" /> Un-bulk & Reset to PR Items
             </Button>
           ) : (
             <div></div>
@@ -658,7 +630,7 @@ export const CreatePoModal = memo(function CreatePoModal({
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Processing..." : revisingPo ? "Simpan Revisi PO" : "Issue PO"}
+              {isSubmitting ? "Processing..." : revisingPo ? "Save PO Revision" : "Issue PO"}
             </Button>
           </div>
         </div>

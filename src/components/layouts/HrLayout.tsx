@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useLanguage } from "@/contexts/LanguageContext";
-import { useToast } from "@/contexts/ToastContext";
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/contexts/NotificationContext";
 import {
@@ -10,22 +8,16 @@ import {
   Briefcase,
   Award,
   Repeat,
-  ChevronDown,
   LogOut,
-  ExternalLink,
   Clock,
   User,
   Home,
-  Menu,
-  X,
   Bell,
   CheckCircle2,
   CheckCheck,
   AlertCircle,
   Info,
   MessageSquare,
-  ShoppingCart,
-  ClipboardList,
   Trash2,
   CalendarDays,
   DollarSign,
@@ -35,19 +27,21 @@ import {
   ArrowUp,
   ArrowDown,
   Settings,
-  Sparkles,
+  LayoutGrid,
+  X,
+  Moon,
+  Sun,
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { useTheme } from "@/contexts/ThemeContext";
 
 export default function HrLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { t } = useLanguage();
-  const { showToast } = useToast();
+  const { isDark, toggleTheme, appLogo } = useTheme();
   const {
     notifications,
     unreadCount: historyCount,
-    addNotification,
     markAsRead,
     markAllAsRead,
     clearAll,
@@ -55,34 +49,24 @@ export default function HrLayout({ children }: { children: React.ReactNode }) {
 
   const [time, setTime] = useState("");
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [isGridOpen, setIsGridOpen] = useState(false);
+  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
+
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
 
-  const [isVisible, setIsVisible] = useState(false);
-  const [isFooterHovered, setIsFooterHovered] = useState(false);
-
-  // Live WIB clock updates matching the main ERP clock implementation
+  // Live WIB clock (ERP HeaderClock standard)
   const updateTime = useCallback(() => {
     const now = new Date();
     const options: Intl.DateTimeFormatOptions = {
       timeZone: "Asia/Jakarta",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
       hour12: false,
     };
-    const formatter = new Intl.DateTimeFormat("en-GB", options);
-    const parts = formatter.formatToParts(now);
-    const dateObj: any = {};
-    parts.forEach(({ type, value }) => {
-      dateObj[type] = value;
-    });
-    setTime(
-      `${dateObj.year}-${dateObj.month}-${dateObj.day} ${dateObj.hour}:${dateObj.minute}:${dateObj.second} WIB`,
-    );
+    setTime(new Intl.DateTimeFormat("en-GB", options).format(now));
   }, []);
 
   useEffect(() => {
@@ -91,38 +75,7 @@ export default function HrLayout({ children }: { children: React.ReactNode }) {
     return () => clearInterval(timer);
   }, [updateTime]);
 
-  // Handle activity for auto hide/show
-  useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-
-    const handleActivity = () => {
-      setIsVisible(true);
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        setIsVisible(false);
-      }, 3000);
-    };
-
-    handleActivity(); // Initial trigger
-
-    const mainEl = mainRef.current;
-
-    window.addEventListener("mousemove", handleActivity);
-    window.addEventListener("touchstart", handleActivity, { passive: true });
-    window.addEventListener("keydown", handleActivity);
-    if (mainEl)
-      mainEl.addEventListener("scroll", handleActivity, { passive: true });
-
-    return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener("mousemove", handleActivity);
-      window.removeEventListener("touchstart", handleActivity);
-      window.removeEventListener("keydown", handleActivity);
-      if (mainEl) mainEl.removeEventListener("scroll", handleActivity);
-    };
-  }, []);
-
-  // Click outside to close user dropdown
+  // Click outside to close user dropdown & dock pop-up
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -130,6 +83,13 @@ export default function HrLayout({ children }: { children: React.ReactNode }) {
         !userMenuRef.current.contains(event.target as Node)
       ) {
         setShowUserMenu(false);
+      }
+      if (
+        dockRef.current &&
+        !dockRef.current.contains(event.target as Node)
+      ) {
+        setIsGridOpen(false);
+        setIsEditDrawerOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -141,81 +101,123 @@ export default function HrLayout({ children }: { children: React.ReactNode }) {
     window.location.href = "/hr-login";
   };
 
-  // Setup current active tab indicator based on query parameters
   const params = new URLSearchParams(location.search);
   const currentTab = params.get("tab") || "dashboard";
 
   const menuItems = [
     {
       id: "dashboard",
-      name: "Analytics",
-      icon: <PieChart className="w-[28px] h-[28px]" />,
+      name: "Overview",
+      hint: "Pulse & KPI",
+      icon: <PieChart className="w-6 h-6" />,
+      accentBg: "bg-[#FFF2EE]",
+      accentText: "text-[#F25730]",
+      activeGrad: "from-[#F25730] to-[#FF7852]",
+      glow: "shadow-[#F25730]/25",
     },
     {
       id: "directory",
       name: "Directory",
-      icon: <Users className="w-[28px] h-[28px]" />,
+      hint: "Team & Salary",
+      icon: <Users className="w-6 h-6" />,
+      accentBg: "bg-emerald-50",
+      accentText: "text-emerald-600",
+      activeGrad: "from-emerald-500 to-teal-600",
+      glow: "shadow-emerald-500/25",
     },
     {
       id: "attendance",
       name: "Attendance",
-      icon: <Clock className="w-[28px] h-[28px]" />,
+      hint: "Shifts & GPS",
+      icon: <Clock className="w-6 h-6" />,
+      accentBg: "bg-sky-50",
+      accentText: "text-sky-600",
+      activeGrad: "from-sky-500 to-blue-600",
+      glow: "shadow-sky-500/25",
     },
     {
       id: "leave",
-      name: "Leave",
-      icon: <CalendarDays className="w-[28px] h-[28px]" />,
+      name: "Time Off",
+      hint: "Annual Leave",
+      icon: <CalendarDays className="w-6 h-6" />,
+      accentBg: "bg-amber-50",
+      accentText: "text-amber-600",
+      activeGrad: "from-amber-500 to-orange-500",
+      glow: "shadow-amber-500/25",
     },
     {
       id: "payroll",
       name: "Payroll",
-      icon: <DollarSign className="w-[28px] h-[28px]" />,
+      hint: "PRq & Slips",
+      icon: <DollarSign className="w-6 h-6" />,
+      accentBg: "bg-emerald-50",
+      accentText: "text-emerald-600",
+      activeGrad: "from-[#059669] to-[#0D9488]",
+      glow: "shadow-emerald-600/30",
     },
     {
       id: "vacancies",
-      name: "Positions",
-      icon: <Briefcase className="w-[28px] h-[28px]" />,
+      name: "Vacancies",
+      hint: "Open Roles",
+      icon: <Briefcase className="w-6 h-6" />,
+      accentBg: "bg-rose-50",
+      accentText: "text-rose-600",
+      activeGrad: "from-rose-500 to-pink-600",
+      glow: "shadow-rose-500/25",
     },
     {
       id: "candidates",
       name: "Candidates",
-      icon: <UserCheck className="w-[28px] h-[28px]" />,
+      hint: "Hiring Funnel",
+      icon: <UserCheck className="w-6 h-6" />,
+      accentBg: "bg-teal-50",
+      accentText: "text-teal-600",
+      activeGrad: "from-teal-500 to-emerald-600",
+      glow: "shadow-teal-500/25",
     },
     {
       id: "kpi",
       name: "Appraisals",
-      icon: <Award className="w-[28px] h-[28px]" />,
+      hint: "360° Review",
+      icon: <Award className="w-6 h-6" />,
+      accentBg: "bg-orange-50",
+      accentText: "text-orange-600",
+      activeGrad: "from-orange-500 to-[#F25730]",
+      glow: "shadow-orange-500/25",
     },
     {
       id: "handover",
-      name: "Transitions",
-      icon: <Repeat className="w-[28px] h-[28px]" />,
+      name: "Offboarding",
+      hint: "Clearance",
+      icon: <Repeat className="w-6 h-6" />,
+      accentBg: "bg-amber-50",
+      accentText: "text-amber-700",
+      activeGrad: "from-amber-600 to-orange-600",
+      glow: "shadow-amber-600/25",
     },
     {
       id: "settings",
-      name: "Settings",
-      icon: <Settings className="w-[28px] h-[28px]" />,
-    },
-    {
-      id: "event",
-      name: "Event",
-      icon: <Sparkles className="w-[28px] h-[28px]" />,
+      name: "Portal CMS",
+      hint: "Brand & Privacy",
+      icon: <Settings className="w-6 h-6" />,
+      accentBg: "bg-sky-50",
+      accentText: "text-sky-600",
+      activeGrad: "from-[#0284C7] to-[#2563EB]",
+      glow: "shadow-sky-500/25",
     },
   ];
 
-  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [menuOrder, setMenuOrder] = useState<string[]>(() => {
     const saved = localStorage.getItem("hr_menu_order");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          let updated = [...parsed];
+          const updated = parsed.filter((id: string) => id !== "event");
           if (!updated.includes("settings")) updated.push("settings");
-          if (!updated.includes("event")) updated.push("event");
           return updated;
         }
-      } catch (e) {}
+      } catch {}
     }
     return menuItems.map((m) => m.id);
   });
@@ -227,6 +229,18 @@ export default function HrLayout({ children }: { children: React.ReactNode }) {
   const tabsToDisplay = menuOrder
     .map((id) => menuItems.find((i) => i.id === id)!)
     .filter(Boolean);
+
+  // Primary 3 modules shown in the 3-column main dock bar:
+  // Always shows the first 2 pinned modules + either the 3rd pinned module OR the active module if it's outside the top 3
+  const primaryThreeTabs = React.useMemo(() => {
+    const topThree = tabsToDisplay.slice(0, 3);
+    if (topThree.some((t) => t.id === currentTab)) {
+      return topThree;
+    }
+    const activeItem =
+      tabsToDisplay.find((t) => t.id === currentTab) || topThree[2];
+    return [topThree[0], topThree[1], activeItem].filter(Boolean);
+  }, [tabsToDisplay, currentTab]);
 
   const moveCustomItem = (index: number, direction: "up" | "down") => {
     const newOrder = [...menuOrder];
@@ -245,299 +259,527 @@ export default function HrLayout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="h-screen bg-[#F6F5F2] text-slate-800 font-sans selection:bg-violet-200 selection:text-violet-900 flex overflow-hidden relative">
-      {/* Abstract Background Blobs */}
-      <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-stone-200 rounded-full mix-blend-multiply filter blur-[100px] opacity-40 animate-blob pointer-events-none" />
-      <div className="fixed top-[20%] right-[-10%] w-[400px] h-[400px] bg-red-100 rounded-full mix-blend-multiply filter blur-[100px] opacity-40 animate-blob animation-delay-2000 pointer-events-none" />
-      <div className="fixed bottom-[-20%] left-[20%] w-[600px] h-[600px] bg-stone-200 rounded-full mix-blend-multiply filter blur-[120px] opacity-40 animate-blob animation-delay-4000 pointer-events-none" />
+    <div className="hris-theme h-screen bg-[#F5F5F8] dark:bg-[#0c0e13] text-[#121318] dark:text-[#eaedf5] font-sans selection:bg-[#FFE3DA] selection:text-[#F25730] flex overflow-hidden relative">
+      {/* Multi-Layered Ambient Frosted Glass Backlight Blobs (Apple visionOS / Amie style) with Vibrant Aurora Glow in Dark Mode */}
+      <div className="fixed top-[-15%] left-[-6%] w-[600px] h-[600px] bg-gradient-to-br from-[#FF7852]/22 via-[#FFC5B3]/20 to-amber-200/16 dark:from-[#FF5722]/35 dark:via-[#FF7852]/26 dark:to-amber-500/20 rounded-full blur-[140px] hris-blob-1 pointer-events-none z-0" />
+      <div className="fixed top-[12%] right-[-8%] w-[540px] h-[540px] bg-gradient-to-bl from-emerald-400/20 via-teal-200/22 to-sky-200/18 dark:from-emerald-400/32 dark:via-teal-400/26 dark:to-cyan-400/20 rounded-full blur-[135px] hris-blob-2 pointer-events-none z-0" />
+      <div className="fixed bottom-[-18%] left-[25%] w-[660px] h-[660px] bg-gradient-to-tr from-[#FF7852]/14 via-amber-200/16 to-emerald-300/16 dark:from-[#FF5722]/25 dark:via-teal-500/22 dark:to-emerald-400/25 rounded-full blur-[145px] hris-blob-1 pointer-events-none z-0" />
 
-      {/* Main Content Area */}
+      {/* Main Scrollable Content Area */}
       <main
         ref={mainRef}
-        className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar relative z-10 w-full mb-0"
+        className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar relative z-10 w-full"
       >
-        {/* Top Header */}
-        <header className="sticky top-0 z-40 bg-[#F6F5F2]/80 backdrop-blur-3xl border-b border-stone-200/50 w-full px-4 py-3 md:px-8 md:py-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl md:text-2xl font-black tracking-tight text-stone-900">
-                Enterprise <span className="text-[#b02524]">HRIS & HCM</span>
-              </h1>
-              <span className="hidden sm:inline-block text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-600 px-2 py-0.5 rounded border border-stone-200">
-                Human Capital
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4 relative" ref={userMenuRef}>
-            <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="w-12 h-12 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-[#b02524] text-base font-black hover:scale-105 transition-all duration-300 relative overflow-hidden group cursor-pointer"
-            >
-              <div className="absolute inset-0 bg-stone-50 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <span className="relative z-10">
-                {String(user?.username || "US").substring(0, 2).toUpperCase()}
-              </span>
-              {historyCount > 0 && (
-                <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-red-500 border-2 border-white rounded-full animate-bounce z-20" />
-              )}
-            </button>
-
-            {/* User Menu Dropdown */}
-            {showUserMenu && user && (
-              <div className="absolute top-[calc(100%+8px)] right-0 w-80 bg-white/90 backdrop-blur-3xl rounded-[2.5rem] border border-white/80 shadow-[0_20px_60px_rgba(0,0,0,0.08)] z-[100] overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
-                <div className="p-6 pb-4 flex items-center justify-between bg-stone-50/80 border-b border-stone-200">
-                  <div>
-                    <p className="text-lg font-black text-stone-800">
-                      {String(user?.username || "User")}
-                    </p>
-                    <span className="inline-flex items-center mt-1 px-2.5 py-0.5 rounded-full bg-red-50 text-[10px] font-black text-[#b02524] uppercase tracking-widest">
-                      Team Success
-                    </span>
-                  </div>
-                  <button
-                    onClick={handleSignOut}
-                    className="p-3 bg-white text-rose-500 rounded-full hover:bg-rose-50 transition-colors shadow-sm cursor-pointer group"
-                    title="Logout"
-                  >
-                    <LogOut className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
-                  </button>
-                </div>
-
-                {/* Notifications Actions Header */}
-                <div className="px-5 py-2.5 bg-stone-50/50 border-b border-stone-200/60 flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-stone-400 flex items-center gap-1.5">
-                    <Bell className="w-3.5 h-3.5 text-stone-500" />
-                    <span>Activity {historyCount > 0 && `(${historyCount})`}</span>
+        {/* Minimal Airy Top Bar (NO Redundant Navigation Bar) */}
+        <header className="sticky top-0 z-30 bg-white/55 backdrop-blur-2xl border-b border-white/80 shadow-[0_4px_24px_rgba(18,19,24,0.03)] w-full px-4 py-3 sm:px-6 md:px-10">
+          <div className="max-w-[1440px] mx-auto flex items-center justify-between gap-4">
+            {/* Brand Identity — FHTBS "People & Culture" */}
+            <Link to="/hr" className="flex items-center gap-3.5 group">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/90 backdrop-blur-xl border border-white shadow-[0_8px_20px_rgba(18,19,24,0.06)] flex items-center justify-center group-hover:scale-105 transition-transform">
+                <img
+                  src={appLogo}
+                  alt="Logo"
+                  onError={(e) => {
+                    e.currentTarget.src = "/logo.png";
+                  }}
+                  className="w-6 h-6 object-contain"
+                />
+              </div>
+              <div className="flex flex-col">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-lg sm:text-xl font-extrabold tracking-[-0.03em] text-[#121318]">
+                    FHTBS
                   </span>
-                  <div className="flex items-center gap-2">
-                    {historyCount > 0 && (
-                      <button
-                        onClick={markAllAsRead}
-                        className="text-[10px] font-bold text-[#b02524] hover:text-red-700 uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1"
-                        title="Mark all notifications as read"
-                      >
-                        <CheckCheck className="w-3 h-3" />
-                        <span>Mark All Read</span>
-                      </button>
-                    )}
-                    {notifications && notifications.length > 0 && (
-                      <button
-                        onClick={clearAll}
-                        className="text-[10px] font-bold text-stone-400 hover:text-rose-600 uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1 ml-1"
-                        title="Clear all notifications"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        <span>Clear All</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="p-2 max-h-[300px] overflow-y-auto custom-scrollbar">
-                  {(!notifications || notifications.length === 0) ? (
-                    <div className="text-center py-6">
-                      <p className="text-sm font-bold text-stone-400">
-                        All notifications caught up!
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {notifications.map((notif, index) => {
-                        if (!notif) return null;
-                        const safeId = notif.id || `notif-${index}`;
-                        const safeTitle = typeof notif.title === "string" ? notif.title : String(notif.title || "Notification");
-                        const safeMsg = typeof notif.message === "string" ? notif.message : String(notif.message || "");
-                        
-                        let formattedTime = "--:--";
-                        try {
-                          const d = notif.timestamp instanceof Date ? notif.timestamp : new Date(notif.timestamp);
-                          if (!isNaN(d.getTime())) {
-                            formattedTime = d.toLocaleTimeString("en-US", {
-                              timeZone: "Asia/Jakarta",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            });
-                          }
-                        } catch {
-                          formattedTime = "--:--";
-                        }
-
-                        return (
-                          <div
-                            key={safeId}
-                            onClick={() => notif.id && markAsRead(notif.id)}
-                            className={cn(
-                              "p-3 rounded-2xl border transition-all flex gap-3 group relative cursor-pointer",
-                              notif.isRead
-                                ? "bg-transparent border-transparent grayscale-[0.5] opacity-60 hover:bg-stone-50"
-                                : "bg-white border-stone-100 shadow-sm ring-1 ring-stone-900/5 hover:scale-[1.02]",
-                            )}
-                          >
-                            {!notif.isRead && (
-                              <div className="absolute top-3 right-3 w-1.5 h-1.5 bg-stone-800 rounded-full" />
-                            )}
-                            <div
-                              className={cn(
-                                "w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border",
-                                notif.type === "SUCCESS"
-                                  ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-                                  : notif.type === "ERROR"
-                                    ? "bg-rose-50 border-rose-100 text-rose-600"
-                                    : notif.type === "CHAT"
-                                      ? "bg-amber-50 border-amber-100 text-amber-600"
-                                      : "bg-blue-50 border-blue-100 text-blue-600",
-                              )}
-                            >
-                              {notif.type === "SUCCESS" && (
-                                <CheckCircle2 className="w-4 h-4" />
-                              )}
-                              {notif.type === "ERROR" && (
-                                <AlertCircle className="w-4 h-4" />
-                              )}
-                              {notif.type === "CHAT" && (
-                                <MessageSquare className="w-4 h-4" />
-                              )}
-                              {notif.type !== "SUCCESS" && notif.type !== "ERROR" && notif.type !== "CHAT" && (
-                                <Info className="w-4 h-4" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0 flex flex-col justify-center">
-                              <p className="text-[11px] font-bold text-stone-900 mb-0.5">
-                                {safeTitle}
-                              </p>
-                              <div
-                                className="text-[10px] text-stone-500 line-clamp-2 leading-relaxed mb-1.5"
-                                title={safeMsg}
-                              >
-                                {safeMsg}
-                              </div>
-                              <div className="flex items-center justify-between mt-auto">
-                                <span className="text-[9px] text-stone-400 font-bold uppercase tracking-tight font-mono">
-                                  {formattedTime}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white/85 border border-white text-[10px] font-bold tracking-wider uppercase text-[#F25730] shadow-2xs">
+                    People &amp; Culture
+                  </span>
                 </div>
               </div>
-            )}
+            </Link>
+
+              {/* Right Minimal Clock (ERP Standard) & Profile Button */}
+            <div
+              className="flex items-center gap-3 relative shrink-0"
+              ref={userMenuRef}
+            >
+              <Link
+                to="/erp"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/85 hover:bg-white border border-stone-200/80 text-[11px] font-bold text-stone-700 hover:text-stone-950 shadow-2xs transition-all"
+                title="Switch to ERP Workspace (Dashboard, Message, General, ESS)"
+              >
+                <Home className="w-3.5 h-3.5 text-[#F25730]" />
+                <span className="hidden sm:inline">ERP Workspace</span>
+              </Link>
+
+              <div className="flex items-center gap-2 text-[11px] text-stone-500 font-medium">
+                <div className="flex items-center gap-1.5 bg-stone-50 px-3 py-1.5 rounded-full border border-stone-100 shadow-inner">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.5)]" />
+                  <span className="font-mono text-stone-600">
+                    {time || "--:--:--"}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-[#1E2028] to-[#121318] text-white flex items-center justify-center text-xs sm:text-sm font-extrabold shadow-[0_8px_20px_rgba(18,19,24,0.16)] hover:scale-105 transition-all relative cursor-pointer border border-white/20"
+              >
+                {String(user?.username || "US")
+                  .substring(0, 2)
+                  .toUpperCase()}
+                {historyCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#F25730] border-2 border-white rounded-full z-20" />
+                )}
+              </button>
+
+              {/* Frosted Glass User Menu Dropdown */}
+              {showUserMenu && user && (
+                <div className="absolute top-[calc(100%+12px)] right-0 w-76 sm:w-84 bg-white/88 backdrop-blur-3xl rounded-3xl border border-white shadow-[0_28px_70px_rgba(18,19,24,0.16)] z-[100] overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
+                  <div className="p-4 flex items-center justify-between bg-gradient-to-r from-[#1E2028] to-[#121318] text-white">
+                    <div>
+                      <p className="text-sm sm:text-base font-extrabold tracking-tight text-white">
+                        {String(user?.name || user?.username || "User")}
+                      </p>
+                      <span className="inline-block mt-0.5 text-[11px] font-medium text-white/70">
+                        People &amp; Culture Studio
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleSignOut}
+                      className="p-2.5 bg-white/10 hover:bg-rose-500 text-white rounded-2xl transition-colors cursor-pointer"
+                      title="Sign Out"
+                    >
+                      <LogOut className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="px-4 py-2.5 border-b border-stone-200/60 bg-white/70">
+                    <Link
+                      to="/erp"
+                      onClick={() => setShowUserMenu(false)}
+                      className="flex items-center justify-between px-3 py-2 rounded-xl bg-stone-100/80 hover:bg-stone-200/70 text-xs font-bold text-stone-800 transition-colors"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Home className="w-3.5 h-3.5 text-[#F25730]" />
+                        <span>Open ERP Workspace</span>
+                      </span>
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500">
+                        /erp
+                      </span>
+                    </Link>
+                  </div>
+
+                  <div className="px-4 py-3.5 border-b border-stone-200/60 bg-white/50 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={cn(
+                          "w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 transition-colors",
+                          isDark
+                            ? "bg-stone-800 border-stone-700 text-stone-200"
+                            : "bg-white border-stone-200/80 text-stone-700 shadow-2xs",
+                        )}
+                      >
+                        {isDark ? (
+                          <Moon className="w-4 h-4 stroke-[1.8]" />
+                        ) : (
+                          <Sun className="w-4 h-4 stroke-[1.8]" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-[#121318] tracking-tight">
+                          {isDark ? "Dark Mode" : "Light Mode"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isDark}
+                      aria-label={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                      onClick={(e) => toggleTheme(e)}
+                      className="theme-toggle-switch"
+                    >
+                      <span className="theme-toggle-thumb">
+                        {isDark ? (
+                          <Moon
+                            key="moon"
+                            className="w-3.5 h-3.5 stroke-[2] theme-toggle-icon-anim"
+                          />
+                        ) : (
+                          <Sun
+                            key="sun"
+                            className="w-3.5 h-3.5 stroke-[2] theme-toggle-icon-anim"
+                          />
+                        )}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="px-4 py-2.5 bg-white/60 border-b border-stone-200/60 flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-[#646876] flex items-center gap-1.5">
+                      <Bell className="w-3.5 h-3.5 text-[#F25730]" />
+                      <span>
+                        Notifications {historyCount > 0 && `(${historyCount})`}
+                      </span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {historyCount > 0 && (
+                        <button
+                          onClick={markAllAsRead}
+                          className="text-[11px] font-semibold text-emerald-600 hover:underline cursor-pointer flex items-center gap-1"
+                        >
+                          <CheckCheck className="w-3 h-3" />
+                          <span>Read All</span>
+                        </button>
+                      )}
+                      {notifications && notifications.length > 0 && (
+                        <button
+                          onClick={clearAll}
+                          className="text-[11px] font-semibold text-[#8E929F] hover:text-rose-600 cursor-pointer flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Clear</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 max-h-[280px] overflow-y-auto custom-scrollbar">
+                    {!notifications || notifications.length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-xs font-medium text-[#8E929F]">
+                          No new notifications
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {notifications.map((notif, index) => {
+                          if (!notif) return null;
+                          const safeId = notif.id || `notif-${index}`;
+                          const safeTitle =
+                            typeof notif.title === "string"
+                              ? notif.title
+                              : String(notif.title || "Notification");
+                          const safeMsg =
+                            typeof notif.message === "string"
+                              ? notif.message
+                              : String(notif.message || "");
+
+                          return (
+                            <div
+                              key={safeId}
+                              onClick={() => notif.id && markAsRead(notif.id)}
+                              className={cn(
+                                "p-3 rounded-2xl border transition-all flex gap-3 cursor-pointer",
+                                notif.isRead
+                                  ? "bg-transparent border-transparent opacity-60 hover:bg-white/60"
+                                  : "bg-white/90 border-white shadow-xs",
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  "w-8 h-8 rounded-xl flex items-center justify-center shrink-0",
+                                  notif.type === "SUCCESS"
+                                    ? "bg-emerald-50 text-emerald-600"
+                                    : notif.type === "ERROR"
+                                      ? "bg-rose-50 text-rose-600"
+                                      : notif.type === "CHAT"
+                                        ? "bg-amber-50 text-amber-600"
+                                        : "bg-[#FFF2EE] text-[#F25730]",
+                                )}
+                              >
+                                {notif.type === "SUCCESS" && (
+                                  <CheckCircle2 className="w-4 h-4" />
+                                )}
+                                {notif.type === "ERROR" && (
+                                  <AlertCircle className="w-4 h-4" />
+                                )}
+                                {notif.type === "CHAT" && (
+                                  <MessageSquare className="w-4 h-4" />
+                                )}
+                                {notif.type !== "SUCCESS" &&
+                                  notif.type !== "ERROR" &&
+                                  notif.type !== "CHAT" && (
+                                    <Info className="w-4 h-4" />
+                                  )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-[#121318] truncate">
+                                  {safeTitle}
+                                </p>
+                                <p className="text-[11px] text-[#646876] line-clamp-2 mt-0.5">
+                                  {safeMsg}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
-        {/* Main Application Area */}
-        <div className="flex-1 relative z-10 pt-4 pb-20 px-3 md:pt-8 md:pb-32 md:px-8">
-          <div className="max-w-[1200px] mx-auto w-full">{children}</div>
+        {/* Main Workspace Container */}
+        <div className="flex-1 relative z-10 pt-5 pb-36 px-4 sm:px-6 md:pt-8 md:pb-40 md:px-10">
+          <div className="max-w-[1440px] mx-auto w-full">{children}</div>
         </div>
       </main>
 
-      {/* Floating App Drawer Navigation */}
+      {/* =====================================================================
+          ENLARGED, ELEGANT 3-COLUMN FLOATING GLASS DOCK (WITH 3-COL POP-UP)
+          ===================================================================== */}
       <div
-        className={cn(
-          "fixed left-1/2 z-50 px-4 w-full max-w-[420px] transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] origin-bottom bottom-8",
-          !isVisible && !isFooterHovered && !isEditDrawerOpen
-            ? "-translate-x-1/2 translate-y-[150%] opacity-0 pointer-events-none scale-90"
-            : "-translate-x-1/2 translate-y-0 opacity-100 scale-100",
-        )}
-        onMouseEnter={() => setIsFooterHovered(true)}
-        onMouseLeave={() => setIsFooterHovered(false)}
+        ref={dockRef}
+        className="fixed left-1/2 -translate-x-1/2 bottom-5 sm:bottom-6 z-50 w-full max-w-[680px] px-3 sm:px-4"
       >
-        <nav
-          className={cn(
-            "bg-white/90 backdrop-blur-3xl p-3 shadow-[0_40px_80px_rgba(0,0,0,0.15)] border border-white mx-auto transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] overflow-hidden",
-            isFooterHovered || isEditDrawerOpen
-              ? "max-h-[500px] rounded-[3.5rem]"
-              : "max-h-[105px] rounded-[3.5rem]",
-          )}
-        >
-          {(isFooterHovered || isEditDrawerOpen) && (
-            <div className="flex items-center justify-center mb-3 mt-2 animate-in fade-in slide-in-from-top-2 duration-300 relative px-4">
-              <span className="text-[11px] font-black uppercase tracking-widest text-stone-400">
-                {isEditDrawerOpen ? "Reorder Modules" : "All Modules"}
-              </span>
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  setIsEditDrawerOpen(!isEditDrawerOpen);
-                }}
-                className={cn(
-                  "absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-colors",
-                  isEditDrawerOpen
-                    ? "bg-[#b02524] text-white"
-                    : "bg-stone-50 text-stone-500 hover:text-stone-900 border border-stone-100 shadow-sm",
-                )}
-              >
-                {isEditDrawerOpen ? (
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                ) : (
-                  <Pencil className="w-3.5 h-3.5" />
-                )}
-              </button>
-            </div>
-          )}
-
-          {isEditDrawerOpen ? (
-            <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto custom-scrollbar px-2 pb-2">
-              {tabsToDisplay.map((item, index) => (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 p-3 bg-stone-50 rounded-2xl border border-stone-100"
-                >
-                  <div className="text-stone-400 [&_svg]:w-5 [&_svg]:h-5">
-                    {item.icon}
-                  </div>
-                  <div className="flex-1 font-bold text-sm text-stone-700">
-                    {item.name}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => moveCustomItem(index, "up")}
-                      disabled={index === 0}
-                      className="p-2 bg-white rounded-xl shadow-sm text-stone-500 hover:text-stone-900 disabled:opacity-30 transition-colors"
-                    >
-                      <ArrowUp className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => moveCustomItem(index, "down")}
-                      disabled={index === tabsToDisplay.length - 1}
-                      className="p-2 bg-white rounded-xl shadow-sm text-stone-500 hover:text-stone-900 disabled:opacity-30 transition-colors"
-                    >
-                      <ArrowDown className="w-4 h-4" />
-                    </button>
-                  </div>
+        {/* 3-Column Pop-up All Modules Launcher (Layered Above the Dock) */}
+        <AnimatePresence>
+          {isGridOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 14, scale: 0.96 }}
+              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              className="mb-3 bg-white/82 backdrop-blur-3xl rounded-[32px] border border-white p-4 sm:p-5 shadow-[0_30px_80px_-15px_rgba(18,19,24,0.22),inset_0_1px_1px_rgba(255,255,255,1)]"
+            >
+              {/* Pop-up Header */}
+              <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-stone-200/60 px-1">
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold tracking-tight text-[#121318]">
+                    {isEditDrawerOpen
+                      ? "Customize Dock Order"
+                      : "All People Modules"}
+                  </h3>
+                  <p className="text-xs font-normal text-[#8E929F]">
+                    {isEditDrawerOpen
+                      ? "Top 3 modules appear directly on your main dock"
+                      : "Select any workspace module below"}
+                  </p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-3 w-full max-w-[360px] mx-auto">
-              {tabsToDisplay.map((item, index) => {
-                const isActive = currentTab === item.id;
 
-                return (
-                  <Link
-                    key={item.id}
-                    to={`/hr?tab=${item.id}`}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditDrawerOpen(!isEditDrawerOpen)}
                     className={cn(
-                      "relative group flex flex-col items-center justify-center pt-[14px] pb-2.5 rounded-[2rem] transition-all duration-300 outline-none h-[80px]",
-                      isActive
-                        ? "bg-[#b02524] text-white shadow-md shadow-red-900/20 transform scale-[1.02]"
-                        : "text-stone-600 hover:text-stone-900 hover:bg-stone-100/80",
+                      "px-3.5 py-2 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer",
+                      isEditDrawerOpen
+                        ? "bg-[#121318] text-white shadow-sm"
+                        : "bg-white/90 hover:bg-white text-[#32353E] border border-stone-200/80 shadow-2xs",
                     )}
                   >
-                    <div className="mb-1 group-hover:-translate-y-1 transition-transform duration-300">
-                      {item.icon}
+                    {isEditDrawerOpen ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Done</span>
+                      </>
+                    ) : (
+                      <>
+                        <Pencil className="w-3.5 h-3.5 text-[#F25730]" />
+                        <span>Reorder</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsGridOpen(false);
+                      setIsEditDrawerOpen(false);
+                    }}
+                    className="w-9 h-9 rounded-2xl bg-white/90 hover:bg-white text-[#646876] hover:text-[#121318] border border-stone-200/80 flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {isEditDrawerOpen ? (
+                /* Reorder Mode */
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
+                  {tabsToDisplay.map((item, index) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-3 p-3 bg-white/80 rounded-2xl border border-white shadow-2xs"
+                    >
+                      <div
+                        className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 [&_svg]:w-5 [&_svg]:h-5",
+                          item.accentBg,
+                          item.accentText,
+                        )}
+                      >
+                        {item.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-extrabold text-[#121318] truncate">
+                          {item.name}
+                        </div>
+                        <div className="text-[10px] font-medium text-[#8E929F]">
+                          {index < 3 ? `Primary Dock Slot #${index + 1}` : "Pop-up Grid"}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => moveCustomItem(index, "up")}
+                          disabled={index === 0}
+                          className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-xl text-[#32353E] disabled:opacity-30 transition-colors cursor-pointer"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveCustomItem(index, "down")}
+                          disabled={index === tabsToDisplay.length - 1}
+                          className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-xl text-[#32353E] disabled:opacity-30 transition-colors cursor-pointer"
+                        >
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-[11px] sm:text-[12px] font-bold text-center tracking-widest whitespace-nowrap overflow-hidden text-ellipsis w-full px-1">
-                      {item.name}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
+                  ))}
+                </div>
+              ) : (
+                /* 3-Column Pop-up Grid (Strictly 3 Columns) */
+                <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                  {tabsToDisplay.map((item) => {
+                    const isActive = currentTab === item.id;
+                    return (
+                      <Link
+                        key={item.id}
+                        to={`/hr?tab=${item.id}`}
+                        onClick={() => setIsGridOpen(false)}
+                        className={cn(
+                          "group relative flex flex-col sm:flex-row items-center sm:items-center gap-2.5 sm:gap-3.5 p-3 sm:p-3.5 rounded-2xl transition-all duration-200",
+                          isActive
+                            ? `bg-gradient-to-br ${item.activeGrad} text-white shadow-lg ${item.glow} scale-[1.01]`
+                            : "bg-white/75 hover:bg-white text-[#121318] border border-white/90 shadow-[0_4px_14px_rgba(18,19,24,0.03)] hover:shadow-[0_10px_24px_rgba(18,19,24,0.07)] hover:-translate-y-0.5",
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105",
+                            isActive
+                              ? "bg-white/20 text-white backdrop-blur-md"
+                              : cn(item.accentBg, item.accentText),
+                          )}
+                        >
+                          {item.icon}
+                        </div>
+                        <div className="text-center sm:text-left min-w-0">
+                          <div
+                            className={cn(
+                              "text-xs sm:text-sm font-extrabold tracking-tight truncate",
+                              isActive ? "text-white" : "text-[#121318]",
+                            )}
+                          >
+                            {item.name}
+                          </div>
+                          <div
+                            className={cn(
+                              "text-[10px] sm:text-[11px] font-medium truncate hidden sm:block mt-0.5",
+                              isActive ? "text-white/80" : "text-[#8E929F]",
+                            )}
+                          >
+                            {item.hint}
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.div>
           )}
+        </AnimatePresence>
+
+        {/* Soft Ambient Aurora Backlight Aura for Floating Dock */}
+        <div className="absolute inset-x-8 -top-2 -bottom-2 bg-gradient-to-r from-[#FF7852]/15 via-teal-400/15 to-emerald-400/15 dark:from-[#FF7852]/30 dark:via-teal-400/25 dark:to-emerald-400/30 rounded-full blur-2xl pointer-events-none -z-10" />
+
+        {/* Main Enlarged Floating Dock Bar: 3 Primary Menus (3 Columns) + All Modules Trigger */}
+        <nav className="bg-white/82 backdrop-blur-3xl p-2 sm:p-2.5 rounded-[30px] border border-white shadow-[0_24px_60px_-10px_rgba(18,19,24,0.16),0_4px_16px_rgba(18,19,24,0.06),inset_0_1px_1px_rgba(255,255,255,1)] flex items-center gap-2 sm:gap-2.5">
+          {/* 3-Column Primary Menu Grid */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-2.5 flex-1">
+            {primaryThreeTabs.map((item) => {
+              const isActive = currentTab === item.id;
+              return (
+                <Link
+                  key={item.id}
+                  to={`/hr?tab=${item.id}`}
+                  onClick={() => setIsGridOpen(false)}
+                  className={cn(
+                    "group relative flex items-center justify-center sm:justify-start gap-3 px-3 sm:px-4 h-[60px] sm:h-[64px] rounded-[22px] transition-all duration-300",
+                    isActive
+                      ? `bg-gradient-to-r ${item.activeGrad} text-white shadow-lg ${item.glow}`
+                      : "bg-white/60 hover:bg-white text-[#32353E] hover:text-[#121318] border border-white/80",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105",
+                      isActive
+                        ? "bg-white/20 text-white backdrop-blur-md"
+                        : cn(item.accentBg, item.accentText),
+                    )}
+                  >
+                    {item.icon}
+                  </div>
+                  <div className="min-w-0 hidden sm:block">
+                    <div
+                      className={cn(
+                        "text-sm font-extrabold tracking-tight truncate leading-tight",
+                        isActive ? "text-white" : "text-[#121318]",
+                      )}
+                    >
+                      {item.name}
+                    </div>
+                    <div
+                      className={cn(
+                        "text-[11px] font-medium truncate leading-tight mt-0.5",
+                        isActive ? "text-white/80" : "text-[#8E929F]",
+                      )}
+                    >
+                      {item.hint}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-10 bg-stone-200/80 shrink-0" />
+
+          {/* Enlarged 3-Column Pop-up Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setIsGridOpen((prev) => !prev)}
+            className={cn(
+              "h-[60px] sm:h-[64px] px-4 sm:px-5 rounded-[22px] flex items-center gap-2.5 font-extrabold text-sm transition-all duration-300 shrink-0 cursor-pointer",
+              isGridOpen
+                ? "bg-[#121318] text-white shadow-lg shadow-stone-900/20"
+                : "bg-white/80 hover:bg-white text-[#121318] border border-white shadow-xs",
+            )}
+            title="Open 3-Column Modules Menu"
+          >
+            <div
+              className={cn(
+                "w-10 h-10 rounded-2xl flex items-center justify-center transition-transform duration-300",
+                isGridOpen
+                  ? "bg-white/15 text-white rotate-90"
+                  : "bg-[#FFF2EE] text-[#F25730]",
+              )}
+            >
+              <LayoutGrid className="w-5 h-5" />
+            </div>
+            <span className="hidden md:inline tracking-tight">Modules</span>
+          </button>
         </nav>
       </div>
     </div>

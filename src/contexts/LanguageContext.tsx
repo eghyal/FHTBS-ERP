@@ -26,6 +26,7 @@ const dictionary: Record<string, Record<Language, string>> = {
   "Bill of Process (BoP)": { en: "Bill of Process (BoP)", id: "Alur Proses (BoP)" },
   Purchasing: { en: "Purchasing", id: "Pembelian" },
   "Sourcing & Pricing": { en: "Sourcing & Pricing", id: "Pengadaan & Harga" },
+  "Procurement Plan": { en: "Procurement Plan", id: "Procurement Plan" },
   "Purchase Orders": { en: "Purchase Orders", id: "Pesanan Pembelian" },
   Manufacturing: { en: "Manufacturing", id: "Manufaktur" },
   "Production Hub": { en: "Production Hub", id: "Pusat Produksi" },
@@ -35,13 +36,13 @@ const dictionary: Record<string, Record<Language, string>> = {
   Outbound: { en: "Outbound", id: "Barang Keluar" },
   "Delivery Manifests": { en: "Delivery Manifests", id: "Manifes Pengiriman" },
   "Account Receivables (Piutang)": {
-    en: "Account Receivables (Piutang)",
-    id: "Piutang Usaha",
+    en: "Accounts Receivable",
+    id: "Accounts Receivable",
   },
-  "Account Receivables": { en: "Account Receivables", id: "Piutang Usaha" },
+  "Account Receivables": { en: "Accounts Receivable", id: "Accounts Receivable" },
   "Account Payables (Hutang)": {
-    en: "Account Payables (Hutang)",
-    id: "Hutang Usaha",
+    en: "Accounts Payable",
+    id: "Accounts Payable",
   },
   Payroll: { en: "Payroll Disbursements", id: "Penggajian" },
   "General Ledger": { en: "General Ledger", id: "Buku Besar" },
@@ -126,18 +127,18 @@ const dictionary: Record<string, Record<Language, string>> = {
     en: "Payment Terms",
     id: "Syarat Pembayaran (Payment Terms)",
   },
-  "Tarif PPN (%)": { en: "VAT / PPN Rate (%)", id: "Tarif PPN (%)" },
-  "Tarif PPh (%)": { en: "Income Tax / PPh Rate (%)", id: "Tarif PPh (%)" },
+  "Tarif PPN (%)": { en: "VAT Rate (%)", id: "VAT Rate (%)" },
+  "Tarif PPh (%)": { en: "Withholding Tax Rate (%)", id: "Withholding Tax Rate (%)" },
   "Tujuan Rekening Bank": {
     en: "Destination Bank Account",
     id: "Tujuan Rekening Bank",
   },
   "Simulasi Perhitungan Faktur Pajak/Invoice": {
-    en: "Invoice / Tax Calculation Simulation",
+    en: "Invoice & Tax Calculation Preview",
     id: "Simulasi Perhitungan Faktur Pajak/Invoice",
   },
   "Subtotal DPP (Dasar Pengenaan Pajak):": {
-    en: "Tax Base Subtotal (DPP):",
+    en: "Taxable Base Subtotal:",
     id: "Subtotal DPP (Dasar Pengenaan Pajak):",
   },
   "Nilai Akhir Tagihan (Grand Total):": {
@@ -181,8 +182,8 @@ const dictionary: Record<string, Record<Language, string>> = {
     en: "Administrative Reference",
     id: "Referensi Administrasi",
   },
-  "NPWP Pelanggan:": { en: "Customer Tax ID (NPWP):", id: "NPWP Pelanggan:" },
-  "Surat Jalan Ref:": { en: "Delivery Note Ref:", id: "Surat Jalan Ref:" },
+  "NPWP Pelanggan:": { en: "Customer Tax ID:", id: "Customer Tax ID:" },
+  "Surat Jalan Ref:": { en: "Delivery Order Ref:", id: "Delivery Order Ref:" },
   "Syarat Pembayaran:": { en: "Payment Terms:", id: "Syarat Pembayaran:" },
   "Sistem Otoritas:": { en: "Authority System:", id: "Sistem Otoritas:" },
 
@@ -294,34 +295,66 @@ const dictionary: Record<string, Record<Language, string>> = {
   "Storage Info": { en: "Storage Info", id: "Info Penyimpanan" },
   Location: { en: "Location", id: "Lokasi" },
   Remarks: { en: "Remarks", id: "Catatan" },
-  "WAREHOUSE ADMIN": { en: "WAREHOUSE ADMIN", id: "ADMIN GUDANG" },
-  "Print Label (A4)": { en: "Print Label (A4)", id: "Cetak Label (A4)" },
+  "WAREHOUSE ADMIN": { en: "WAREHOUSE ADMIN", id: "WAREHOUSE ADMIN" },
+  "Print Label (A4)": { en: "Print Label (A4)", id: "Print Label (A4)" },
+  "Terbitkan Faktur Komersial (Otomatis)": {
+    en: "Issue Commercial Invoice (Automatic)",
+    id: "Issue Commercial Invoice (Automatic)",
+  },
+  "Pilih Surat Jalan / Delivery Note": {
+    en: "Select Delivery Note",
+    id: "Select Delivery Note",
+  },
+  "Substansi Pengiriman / Delivery Items": {
+    en: "Delivery Items",
+    id: "Delivery Items",
+  },
+  "Deskripsi Tagihan / Job Description": {
+    en: "Job / Billing Description",
+    id: "Job / Billing Description",
+  },
+  "Termin Pembayaran": {
+    en: "Payment Terms",
+    id: "Payment Terms",
+  },
+  "Rekening Bank Penerima": {
+    en: "Beneficiary Bank Account",
+    id: "Beneficiary Bank Account",
+  },
+  "Memproses...": {
+    en: "Processing...",
+    id: "Processing...",
+  },
+  "Terbitkan Faktur Otomatis": {
+    en: "Issue Commercial Invoice",
+    id: "Issue Commercial Invoice",
+  },
 };
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => {
-    try {
-      const stored = localStorage.getItem("app-language");
-      return stored === "id" || stored === "en" ? stored : "en";
-    } catch (_) {
-      return "en";
-    }
-  });
+  const [language, setLanguageState] = useState<Language>("en");
 
-  const setLanguage = useCallback((lang: Language) => {
-    setLanguageState(lang);
+  React.useEffect(() => {
     try {
-      localStorage.setItem("app-language", lang);
+      localStorage.setItem("app-language", "en");
+      localStorage.setItem("erp_lang", "en");
     } catch (_) {}
   }, []);
 
-  const t = useCallback((key: string, overrideLang?: Language) => {
-    const targetLang = overrideLang || language;
+  const setLanguage = useCallback((_lang: Language) => {
+    setLanguageState("en");
+    try {
+      localStorage.setItem("app-language", "en");
+      localStorage.setItem("erp_lang", "en");
+    } catch (_) {}
+  }, []);
+
+  const t = useCallback((key: string, _overrideLang?: Language) => {
     if (dictionary[key]) {
-      return dictionary[key][targetLang] || key;
+      return dictionary[key]["en"] || key;
     }
     return key;
-  }, [language]);
+  }, []);
 
   const value = useMemo(() => ({ language, setLanguage, t }), [language, setLanguage, t]);
 

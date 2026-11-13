@@ -142,7 +142,7 @@ export const EcoHistoryModal: React.FC<EcoHistoryModalProps> = ({
 
   const issueDateStr = useMemo(() => {
     const d = activeAuthAt ? new Date(activeAuthAt) : new Date();
-    return d.toLocaleDateString("id-ID", {
+    return d.toLocaleDateString("en-US", {
       day: "2-digit",
       month: "long",
       year: "numeric",
@@ -396,9 +396,9 @@ export const EcoHistoryModal: React.FC<EcoHistoryModalProps> = ({
         <PdfPreviewWrapper>
           <PrintTemplate
             ref={printDocRef}
-            documentTitleId="DOKUMEN RIWAYAT PERUBAHAN TEKNIS (ECO)"
+            documentTitleId="ENGINEERING CHANGE ORDER (ECO)"
             documentTitleEn="ENGINEERING CHANGE ORDER & REVISION RECORD"
-            documentNameId="riwayat perubahan teknis"
+            documentNameId="engineering change order record"
             documentNameEn="engineering change order record"
             date={issueDateStr}
             referenceNumber={docRefNo}
@@ -406,72 +406,69 @@ export const EcoHistoryModal: React.FC<EcoHistoryModalProps> = ({
             isDraft={false}
             signatureStatus="signed"
           >
-            {/* Metadata Header Grid (Dual Language) */}
+            {/* Metadata Header Grid */}
             <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-stone-200">
               <div>
                 <div className="text-[10px] text-stone-500 uppercase tracking-widest font-extrabold mb-1">
-                  SUBJEK PROYEK / PROJECT CONTEXT
+                  PROJECT CONTEXT
                 </div>
                 <div className="text-base font-black text-stone-900 uppercase">
                   {project.name || "PROJECT BOM REVISION"}
                 </div>
                 <div className="text-xs text-stone-600 mt-1 font-mono font-bold">
-                  ID PROYEK / PROJECT ID: <span className="text-stone-900">{project.id}</span>
+                  PROJECT ID: <span className="text-stone-900">{project.id}</span>
                 </div>
               </div>
 
               <div className="text-right">
                 <div className="text-[10px] text-stone-500 uppercase tracking-widest font-extrabold mb-1">
-                  STATUS REVISI / REVISION STATUS
+                  REVISION STATUS
                 </div>
                 <div className="inline-block px-3 py-1 border border-stone-900 text-stone-900 font-mono font-bold text-[10px] uppercase tracking-wider mb-2">
-                  {`REVISI ${activeRevisionNumber} / REVISION ${activeRevisionNumber}`}
+                  {`REVISION ${activeRevisionNumber}`}
                 </div>
                 <div className="text-xs text-stone-500 font-medium">
-                  TANGGAL TERBIT / ISSUE DATE: <span className="font-bold text-stone-800">{issueDateStr}</span>
+                  ISSUE DATE: <span className="font-bold text-stone-800">{issueDateStr}</span>
                 </div>
               </div>
             </div>
 
-            {/* Change Justification Box (Dual Language) */}
+            {/* Change Justification Box */}
             <div className="mb-6 p-4 bg-stone-50/80 border-l-4 border-stone-900 border-y border-r border-stone-200">
               <div className="text-[10px] font-extrabold text-stone-900 uppercase tracking-widest mb-1">
-                ALASAN PERUBAHAN TEKNIS / ENGINEERING CHANGE ORDER JUSTIFICATION
+                ENGINEERING CHANGE ORDER JUSTIFICATION
               </div>
               <p className="text-xs font-semibold text-stone-800 leading-relaxed">
                 "{activeReason}"
               </p>
             </div>
 
-            {/* BOM Comparison Table (Dual Language) */}
+            {/* BOM Comparison Table */}
             <div className="mb-6">
               <div className="text-xs font-black text-stone-900 uppercase tracking-widest mb-3">
-                KOMPARASI STRUKTUR BOM (SEBELUM VS SESUDAH)
-                <span className="text-stone-500 font-normal ml-1">
-                  / BOM STRUCTURE COMPARISON MATRIX
-                </span>
+                BOM STRUCTURE COMPARISON MATRIX (BEFORE VS AFTER)
               </div>
 
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr>
                     <th className="py-3 px-3 font-bold text-stone-900 uppercase tracking-wider text-[11px] border-r border-stone-200/60 w-32">
-                      KODE ITEM / CODE
+                      ITEM CODE
                     </th>
                     <th className="py-3 px-3 font-bold text-stone-900 uppercase tracking-wider text-[11px] border-r border-stone-200/60">
-                      DESKRIPSI MATERIAL / SPECS
+                      MATERIAL DESCRIPTION / SPECS
                     </th>
                     <th className="py-3 px-3 font-bold text-stone-900 uppercase tracking-wider text-[11px] border-r border-stone-200/60 text-left w-32">
                       STATUS / TYPE
                     </th>
                     <th className="py-3 px-3 font-bold text-stone-900 uppercase tracking-wider text-[11px] border-r border-stone-200/60 text-right w-28">
-                      SEBELUM / PREV QTY
+                      PREV QTY
                     </th>
                     <th className="py-3 px-3 font-bold text-stone-900 uppercase tracking-wider text-[11px] border-r border-stone-200/60 text-right w-28">
-                      SESUDAH / NEW QTY
+                      NEW QTY
                     </th>
                     <th className="py-3 px-3 font-bold text-stone-900 uppercase tracking-wider text-[11px] text-right w-40">
-                      DAMPAK BIAYA / COST IMPACT
+                      COST IMPACT
                     </th>
                   </tr>
                 </thead>
@@ -518,43 +515,28 @@ export const EcoHistoryModal: React.FC<EcoHistoryModalProps> = ({
               </table>
             </div>
 
-            {/* Financial Impact Summary Block (Dual Language without Indonesian/English labels) */}
+            {/* Financial Impact Summary Block */}
             <div className="mb-6 pt-6 pb-2 border-t border-b border-stone-300">
               <div className="text-[10px] font-black text-stone-900 uppercase tracking-widest mb-3 flex items-center justify-between">
-                <span>RANGKUMAN DAMPAK ANGGARAN & MATERIAL / FINANCIAL & MATERIAL IMPACT SUMMARY</span>
+                <span>FINANCIAL & MATERIAL IMPACT SUMMARY</span>
                 <span className="font-mono text-stone-500 font-normal">FORM-ENG-ECO-REV01</span>
               </div>
 
               <div className="text-[13px] text-stone-800 leading-relaxed text-justify space-y-2">
                 <p>
-                  Total anggaran material proyek sebelumnya diestimasi sebesar{" "}
-                  <span className="font-mono font-bold text-stone-900">{formatIDR(comparison.totalPrevCost)}</span> ({comparison.prevItemCount} komponen). 
-                  Setelah diterapkannya revisi teknis (ECO), total anggaran menjadi{" "}
-                  <span className="font-mono font-bold text-stone-900">{formatIDR(comparison.totalNewCost)}</span> ({comparison.newItemCount} komponen). 
-                  Perubahan ini menghasilkan{" "}
+                  Baseline material budget was estimated at{" "}
+                  <span className="font-mono font-bold text-stone-900">{formatIDR(comparison.totalPrevCost)}</span> ({comparison.prevItemCount} components). 
+                  Following the authorized ECO revision, the revised budget stands at{" "}
+                  <span className="font-mono font-bold text-stone-900">{formatIDR(comparison.totalNewCost)}</span> ({comparison.newItemCount} components), 
+                  representing an overall cost impact of{" "}
                   <span className="font-bold text-stone-900">
                     {comparison.totalCostDelta > 0
-                      ? `penambahan biaya sebesar ${formatIDR(comparison.totalCostDelta)}`
+                      ? `+${formatIDR(comparison.totalCostDelta)} (cost increase)`
                       : comparison.totalCostDelta < 0
-                      ? `efisiensi biaya sebesar ${formatIDR(Math.abs(comparison.totalCostDelta))}`
-                      : "selisih anggaran Net Zero (tanpa perubahan biaya total)"}
+                      ? `-${formatIDR(Math.abs(comparison.totalCostDelta))} (cost savings)`
+                      : "Net Zero (no budget variance)"}
                   </span>
-                  . Struktur revisi mencakup {comparison.addedCount} penambahan, {comparison.removedCount} penghapusan, {comparison.modifiedCount} penyesuaian, dan {comparison.unchangedCount} komponen tetap.
-                </p>
-                <p className="text-stone-600 text-xs italic">
-                  Baseline material budget was estimated at{" "}
-                  <span className="font-mono font-bold text-stone-800">{formatIDR(comparison.totalPrevCost)}</span> ({comparison.prevItemCount} components). 
-                  Following the authorized ECO revision, the revised budget stands at{" "}
-                  <span className="font-mono font-bold text-stone-800">{formatIDR(comparison.totalNewCost)}</span> ({comparison.newItemCount} components), 
-                  representing an overall cost impact of{" "}
-                  <span className="font-bold text-stone-800">
-                    {comparison.totalCostDelta > 0
-                      ? `+${formatIDR(comparison.totalCostDelta)}`
-                      : comparison.totalCostDelta < 0
-                      ? `-${formatIDR(Math.abs(comparison.totalCostDelta))}`
-                      : "Net Zero (no variance)"}
-                  </span>
-                  .
+                  . This revision structure comprises {comparison.addedCount} additions, {comparison.removedCount} removals, {comparison.modifiedCount} adjustments, and {comparison.unchangedCount} unchanged components.
                 </p>
               </div>
             </div>
@@ -563,7 +545,7 @@ export const EcoHistoryModal: React.FC<EcoHistoryModalProps> = ({
             <div className="mt-8 pt-4 border-t border-stone-200 flex justify-end">
               <div className="w-64 text-center">
                 <div className="text-xs font-black uppercase tracking-wider text-stone-900 mb-0.5">
-                  Hormat Kami <span className="text-stone-500 font-normal">/ Best Regards</span>
+                  Best Regards
                 </div>
                 <div className="text-[10px] text-stone-500 uppercase font-bold mb-1">
                   Engineering Division
@@ -600,9 +582,10 @@ export const EcoHistoryModal: React.FC<EcoHistoryModalProps> = ({
           Close
         </Button>
         <Button
+          variant="dark"
           onClick={handleExportPdf}
           disabled={isExporting}
-          className="px-7 py-2.5 rounded-xl text-xs font-bold shadow-md flex items-center gap-2 bg-black hover:bg-stone-800 text-white cursor-pointer"
+          className="px-7 py-2.5 text-xs font-bold shadow-xs flex items-center gap-2 cursor-pointer"
         >
           <Download className="w-4 h-4" />
           {isExporting ? "Exporting PDF..." : "Export PDF (A4)"}

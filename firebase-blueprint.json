@@ -9,9 +9,9 @@
         "username": { "type": "string" },
         "name": { "type": "string" },
         "email": { "type": "string" },
-        "role": { "type": "string", "enum": ["FC", "ENGINEERING", "PURCHASING", "WAREHOUSE", "PRODUCTION", "SALES", "HR"] },
-        "level": { "type": "string", "enum": ["STAFF", "MANAGER"] },
-        "status": { "type": "string", "enum": ["ONLINE", "OFFLINE"] },
+        "role": { "type": "string", "enum": ["FC", "ADMIN", "SUPERADMIN", "ENGINEERING", "PURCHASING", "WAREHOUSE", "PRODUCTION", "SALES", "FINANCE", "HR", "AUDITOR"] },
+        "level": { "type": "string", "enum": ["STAFF", "SUPERVISOR", "MANAGER"] },
+        "status": { "type": "string", "enum": ["ACTIVE", "PENDING_APPROVAL", "INACTIVE", "SUSPENDED", "REJECTED", "ONLINE", "OFFLINE"] },
         "created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "username", "role", "level", "name"]
@@ -136,6 +136,105 @@
       },
       "required": ["id", "po_number", "supplier_name", "status", "total_amount"]
     },
+    "WorkspaceDocument": {
+      "title": "WorkspaceDocument",
+      "description": "Cross-department enterprise documents, letters, memos, and SOPs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "doc_number": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "department": { "type": "string" },
+        "status": { "type": "string" },
+        "version": { "type": "number" },
+        "created_by_name": { "type": "string" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["id", "doc_number", "title", "status"]
+    },
+    "GeneralRequest": {
+      "title": "GeneralRequest",
+      "description": "Cross-functional Non-FG operational requests with ERP e-Approval and end-to-end Procurement PR/PO/GRN tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "request_code": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "requester_name": { "type": "string" },
+        "target_department": { "type": "string" },
+        "department": { "type": "string" },
+        "priority": { "type": "string", "enum": ["NORMAL", "URGENT", "CRITICAL"] },
+        "status": {
+          "type": "string",
+          "enum": [
+            "DRAFT",
+            "SUBMITTED",
+            "REVISION",
+            "APPROVED",
+            "STOCK_READY",
+            "PR_GENERATED",
+            "PO_ISSUED",
+            "PO_AUTHORIZED",
+            "PARTIAL_RECEIVED",
+            "COMPLETED",
+            "REJECTED"
+          ]
+        },
+        "estimated_total_cost": { "type": "number" },
+        "pr_id": { "type": "string" },
+        "pr_number": { "type": "string" },
+        "po_id": { "type": "string" },
+        "po_number": { "type": "string" },
+        "supplier_name": { "type": "string" },
+        "grn_id": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "code", "title", "status"]
+    },
+    "CmsSettings": {
+      "title": "CmsSettings",
+      "description": "Public website, Career portal, and B2C Shop CMS configuration",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "value_json": { "type": "string" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["key", "value_json"]
+    },
+    "ShopOrder": {
+      "title": "ShopOrder",
+      "description": "B2C retail e-commerce orders and fulfillment state",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "order_number": { "type": "string" },
+        "customer_name": { "type": "string" },
+        "status": { "type": "string" },
+        "payment_status": { "type": "string" },
+        "grand_total": { "type": "number" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "order_number", "customer_name", "status", "grand_total"]
+    },
+    "WorkflowMatrix": {
+      "title": "WorkflowMatrix",
+      "description": "Configurable multi-step approval routing and SLA thresholds",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "module_key": { "type": "string" },
+        "module_name": { "type": "string" },
+        "step_order": { "type": "number" },
+        "approver_role": { "type": "string" },
+        "approver_level": { "type": "string" },
+        "sla_hours": { "type": "number" }
+      },
+      "required": ["id", "module_key", "step_order", "approver_role"]
+    },
     "AuditLog": {
       "title": "AuditLog",
       "description": "System activity logs across ERP transactions",
@@ -165,6 +264,72 @@
         "error_log": { "type": "string" }
       },
       "required": ["id", "table_name", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "ERP user directory and RBAC/PBAC credentials"
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Manufacturing and commercial project master records"
+    },
+    "/bill_of_processes/{bopId}": {
+      "schema": { "$ref": "#/entities/BillOfProcess" },
+      "description": "Project process routing steps"
+    },
+    "/production_lots/{lotId}": {
+      "schema": { "$ref": "#/entities/ProductionLot" },
+      "description": "Shop floor production lot tickets"
+    },
+    "/production_manpower/{manpowerId}": {
+      "schema": { "$ref": "#/entities/ProductionManpower" },
+      "description": "Workstation operators and technicians"
+    },
+    "/items/{itemId}": {
+      "schema": { "$ref": "#/entities/InventoryItem" },
+      "description": "Master item and SKU catalog"
+    },
+    "/stock_movements/{movementId}": {
+      "schema": { "$ref": "#/entities/StockMovement" },
+      "description": "Material ledger movements"
+    },
+    "/quotations/{quotationId}": {
+      "schema": { "$ref": "#/entities/Quotation" },
+      "description": "Commercial sales quotations"
+    },
+    "/purchase_orders/{poId}": {
+      "schema": { "$ref": "#/entities/PurchaseOrder" },
+      "description": "Supplier purchase orders"
+    },
+    "/workspace_documents/{docId}": {
+      "schema": { "$ref": "#/entities/WorkspaceDocument" },
+      "description": "Enterprise document workspace records"
+    },
+    "/general_requests/{reqId}": {
+      "schema": { "$ref": "#/entities/GeneralRequest" },
+      "description": "Cross-department general requests"
+    },
+    "/cms_settings/{settingKey}": {
+      "schema": { "$ref": "#/entities/CmsSettings" },
+      "description": "Public website, Career, and Shop CMS settings"
+    },
+    "/shop_orders/{orderId}": {
+      "schema": { "$ref": "#/entities/ShopOrder" },
+      "description": "B2C online retail orders"
+    },
+    "/workflow_matrices/{matrixId}": {
+      "schema": { "$ref": "#/entities/WorkflowMatrix" },
+      "description": "Approval workflow matrix definitions"
+    },
+    "/audit_trail/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable system audit trail"
+    },
+    "/migration_logs/{batchId}": {
+      "schema": { "$ref": "#/entities/MigrationLog" },
+      "description": "Database migration batch logs"
     }
   }
 }

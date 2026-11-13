@@ -3,6 +3,9 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useToast } from "@/contexts/ToastContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { canViewDocFinancials } from "@/utils/rbacFinancials";
+import { ConfidentialBadge } from "@/components/shared/ConfidentialBadge";
 import { generatePDF } from "@/lib/pdfGenerator";
 import { Download, QrCode, FolderKanban, ShieldCheck, Printer, Calculator } from "lucide-react";
 import { formatIDR, formatIDRWithDecimals } from "@/lib/utils";
@@ -19,6 +22,7 @@ interface QuotationPreviewModalProps {
   onOpenReceipt?: (quotation: any) => void;
   isPrintModeHidden?: boolean;
   exportPdfRef?: React.MutableRefObject<any>;
+  maskFinancials?: boolean;
 }
 
 // Precise business helper to calculate offset with Saturday & Sunday skipping
@@ -39,7 +43,7 @@ export const calculateWorkingDaysLimit = (
       daysToAdd--;
     }
   }
-  return date.toLocaleDateString("id-ID", {
+  return date.toLocaleDateString("en-US", {
     day: "2-digit",
     month: "long",
     year: "numeric",
@@ -55,9 +59,15 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
   onOpenReceipt,
   isPrintModeHidden,
   exportPdfRef,
+  maskFinancials,
 }) => {
   const { language } = useLanguage();
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const canViewPrices =
+    maskFinancials !== undefined
+      ? !maskFinancials
+      : canViewDocFinancials(user, "QUOTATION");
   const internalPrintDocRef = useRef<HTMLDivElement>(null);
   const printDocRef = exportPdfRef || internalPrintDocRef;
   const [isExporting, setIsExporting] = useState(false);
@@ -84,20 +94,20 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
       status: "Status",
     },
     id: {
-      quotation: "SURAT PENAWARAN RESMI",
-      validity: "Masa berlaku",
-      preparedFor: "DITUJUKAN KEPADA",
-      date: "Tanggal Terbit",
-      refNo: "Referensi Penawaran",
-      subject: "DESKRIPSI PEKERJAAN",
-      grandTotal: "Total Nominal (IDR)",
-      officialHeader: "Dokumen Resmi - Tervalidasi sistem online",
+      quotation: "OFFICIAL QUOTATION",
+      validity: "Validity",
+      preparedFor: "PREPARED FOR",
+      date: "Issue Date",
+      refNo: "Quotation Reference",
+      subject: "PROJECT TITLE",
+      grandTotal: "Grand Total (IDR)",
+      officialHeader: "Official Document - Validated online",
       officialFooter:
-        "Dokumen ini adalah penawaran harga resmi. Informasi rahasia untuk penerima.",
-      terms: "Ketentuan & Syarat Tambahan",
-      businessDays: "hari kerja",
-      termsTitle: "SYARAT & KETENTUAN UMUM",
-      validityDays: "Validitas",
+        "This document is an official price quotation. Confidential information for recipient.",
+      terms: "Terms & Additional Remarks",
+      businessDays: "working days",
+      termsTitle: "GENERAL TERMS & CONDITIONS",
+      validityDays: "Validity",
       status: "Status",
     },
   };
@@ -147,12 +157,12 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
   const roundingFactor = breakdown.roundingFactor;
   const formattedAmount = formatIDRWithDecimals(breakdown.grandTotal, 2);
   const issueDateStr = quotation.created_at
-    ? new Date(quotation.created_at).toLocaleDateString("id-ID", {
+    ? new Date(quotation.created_at).toLocaleDateString("en-US", {
         day: "2-digit",
         month: "long",
         year: "numeric",
       })
-    : new Date().toLocaleDateString("id-ID", {
+    : new Date().toLocaleDateString("en-US", {
         day: "2-digit",
         month: "long",
         year: "numeric",
@@ -166,9 +176,9 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
     <PdfPreviewWrapper>
       <PrintTemplate
         ref={printDocRef}
-            documentTitleId="SURAT PENAWARAN RESMI"
+            documentTitleId="OFFICIAL QUOTATION"
             documentTitleEn="OFFICIAL QUOTATION"
-            documentNameId="penawaran harga resmi"
+            documentNameId="official price quotation"
             documentNameEn="official price quotation"
             date={issueDateStr}
             referenceNumber={quotation.quotation_number}
@@ -180,10 +190,7 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
             <div className="grid grid-cols-2 gap-6 mb-5">
               <div>
                 <div className="text-sm text-stone-900 uppercase tracking-widest font-black mb-1.5">
-                  Ditujukan Kepada{" "}
-                  <span className="text-stone-500 font-normal">
-                    / Prepared For
-                  </span>
+                  Prepared For
                 </div>
                 <div className="text-xl font-black text-stone-900 uppercase">
                   {quotation.customer_name}
@@ -194,7 +201,7 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
                 {(quotation.customer_npwp || quotation.npwp_tax_id) && (
                   <div className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-mono font-bold text-stone-800 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
                     <span className="font-sans text-[9px] uppercase tracking-wider text-stone-500 font-black">
-                      NPWP:
+                      Tax ID:
                     </span>
                     {quotation.customer_npwp || quotation.npwp_tax_id}
                   </div>
@@ -203,20 +210,19 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
               <div className="text-right space-y-2">
                 <div>
                   <div className="text-sm text-stone-900 uppercase tracking-widest font-black mb-1">
-                    Masa Berlaku{" "}
-                    <span className="text-stone-500 font-normal">/ Validity</span>
+                    Validity
                   </div>
                   <div className="text-base font-black text-stone-900">
                     {validityLimit}
                   </div>
                   <div className="text-xs text-stone-600 uppercase tracking-wider font-bold">
-                    ({quotation.validity_days || 20} Hari Kerja / Business Days)
+                    ({quotation.validity_days || 20} Business Days)
                   </div>
                 </div>
                 {(quotation.payment_terms || quotation.payment_method) && (
                   <div className="pt-1">
                     <div className="text-[10px] text-stone-500 uppercase tracking-widest font-black">
-                      Metode Pembayaran / Terms
+                      Payment Method / Terms
                     </div>
                     <div className="text-xs font-black text-stone-900 uppercase">
                       {quotation.payment_terms || quotation.payment_method}
@@ -229,10 +235,7 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
             {/* Subject Area */}
             <div className="mb-4 p-3 bg-white rounded-lg border border-stone-200">
               <div className="text-sm text-stone-900 uppercase tracking-widest font-black mb-1">
-                Deskripsi Pekerjaan{" "}
-                <span className="text-stone-500 font-normal">
-                  / Project Title
-                </span>
+                Project Title / Job Description
               </div>
               <div className="text-base font-black text-stone-900 tracking-tight leading-tight uppercase">
                 {quotation.title}
@@ -242,43 +245,25 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
             {/* Items Table */}
             <div className="flex-1">
               <div className="text-xl text-stone-900 uppercase tracking-widest font-black mb-4 ml-1">
-                Cakupan Pengiriman Proyek{" "}
-                <span className="text-sm text-stone-500 font-normal">
-                  / Scope of Project Delivery
-                </span>
+                Scope of Project Delivery
               </div>
               <table className="w-full text-left">
                 <thead>
                   <tr className="border-b border-stone-300 bg-white">
                     <th className="py-3 px-3 font-extrabold text-stone-900 uppercase tracking-wider text-sm">
-                      Deskripsi
-                      <div className="text-[10px] font-bold text-stone-500 tracking-widest mt-1">
-                        DESCRIPTION
-                      </div>
+                      Description
                     </th>
                     <th className="py-3 px-3 font-extrabold text-stone-900 text-center uppercase tracking-wider text-sm w-16">
-                      Jml
-                      <div className="text-[10px] font-bold text-stone-500 tracking-widest mt-1">
-                        QTY
-                      </div>
+                      Qty
                     </th>
                     <th className="py-3 px-3 font-extrabold text-stone-900 text-center uppercase tracking-wider text-sm w-20">
-                      Sat
-                      <div className="text-[10px] font-bold text-stone-500 tracking-widest mt-1">
-                        UOM
-                      </div>
+                      UOM
                     </th>
                     <th className="py-3 px-3 font-extrabold text-stone-900 text-right uppercase tracking-wider text-sm w-32">
-                      Harga / Unit
-                      <div className="text-[10px] font-bold text-stone-500 tracking-widest mt-1">
-                        PRICE / UNIT
-                      </div>
+                      Price / Unit
                     </th>
                     <th className="py-3 px-3 font-extrabold text-stone-900 text-right uppercase tracking-wider text-sm w-36">
                       Subtotal
-                      <div className="text-[10px] font-bold text-stone-500 tracking-widest mt-1">
-                        AMOUNT
-                      </div>
                     </th>
                   </tr>
                 </thead>
@@ -299,10 +284,26 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
                           {item.uom || "Unit"}
                         </td>
                         <td className="py-4 px-3 text-right text-stone-800 font-mono font-bold text-sm whitespace-nowrap">
-                          {itemPrice > 0 ? formatIDR(itemPrice) : "Rp\u00A00"}
+                          {canViewPrices ? (
+                            itemPrice > 0 ? (
+                              formatIDR(itemPrice)
+                            ) : (
+                              "Rp\u00A00"
+                            )
+                          ) : (
+                            <ConfidentialBadge />
+                          )}
                         </td>
                         <td className="py-4 px-3 text-right text-stone-900 font-mono font-black text-sm whitespace-nowrap">
-                          {itemSubtotal > 0 ? formatIDR(itemSubtotal) : "Rp\u00A00"}
+                          {canViewPrices ? (
+                            itemSubtotal > 0 ? (
+                              formatIDR(itemSubtotal)
+                            ) : (
+                              "Rp\u00A00"
+                            )
+                          ) : (
+                            <ConfidentialBadge />
+                          )}
                         </td>
                       </tr>
                     );
@@ -324,13 +325,14 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
                 <div className="w-[450px] space-y-2">
                   <div className="flex justify-between items-center text-xs uppercase tracking-wider px-3 font-bold gap-2">
                     <span className="text-stone-900 whitespace-nowrap">
-                      Subtotal Gross{" "}
-                      <span className="font-semibold text-[10px] text-stone-500">
-                        / Subtotal
-                      </span>
+                      Gross Subtotal
                     </span>
                     <span className="font-mono text-stone-950 font-bold whitespace-nowrap">
-                      {formatIDRWithDecimals(baseSubtotal, 2)}
+                      {canViewPrices ? (
+                        formatIDRWithDecimals(baseSubtotal, 2)
+                      ) : (
+                        <ConfidentialBadge />
+                      )}
                     </span>
                   </div>
                   {quotation.discount_rate > 0 && (
@@ -339,65 +341,76 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
                         DISCOUNT ({quotation.discount_rate}%)
                       </span>
                       <span className="font-mono text-rose-600 font-bold whitespace-nowrap">
-                        - {formatIDRWithDecimals(discountDisp, 2)}
+                        {canViewPrices ? (
+                          `- ${formatIDRWithDecimals(discountDisp, 2)}`
+                        ) : (
+                          <ConfidentialBadge />
+                        )}
                       </span>
                     </div>
                   )}
                   <div className="flex justify-between items-center text-xs uppercase tracking-wider px-3 font-bold gap-2">
                     <span className="text-stone-900 font-bold whitespace-nowrap">
-                      DASAR PENGENAAN PAJAK (DPP)
+                      TAXABLE BASE
                     </span>
                     <span className="font-mono text-stone-950 font-bold whitespace-nowrap">
-                      {formatIDRWithDecimals(subtotalDisp, 2)}
+                      {canViewPrices ? (
+                        formatIDRWithDecimals(subtotalDisp, 2)
+                      ) : (
+                        <ConfidentialBadge />
+                      )}
                     </span>
                   </div>
 
                   {breakdown.isDppNilaiLain && (
                     <div className="flex justify-between items-center text-xs uppercase tracking-wider px-3 font-bold gap-2 bg-stone-100/70 py-1 rounded">
                       <span className="text-stone-800 font-bold whitespace-nowrap text-[10px]">
-                        Other Tax Base / DPP Nilai Lain (11/12)
+                        Other Tax Base (11/12)
                       </span>
                       <span className="font-mono text-stone-900 font-bold whitespace-nowrap">
-                        {formatIDRWithDecimals(dppNilaiLainDisp, 2)}
+                        {canViewPrices ? (
+                          formatIDRWithDecimals(dppNilaiLainDisp, 2)
+                        ) : (
+                          <ConfidentialBadge />
+                        )}
                       </span>
                     </div>
                   )}
 
                   <div className="flex justify-between items-center text-xs uppercase tracking-wider px-3 font-bold gap-2">
                     <span className="text-stone-900 whitespace-nowrap">
-                      VAT / PPN {quotation.tax_rate ?? 12}%{" "}
-                      <span className="font-semibold text-[10px] text-stone-500">
-                        / VAT
-                      </span>
+                      VAT ({quotation.tax_rate ?? 12}%)
                     </span>
                     <span className="font-mono text-stone-950 font-bold whitespace-nowrap">
-                      + {formatIDRWithDecimals(taxDisp, 2)}
+                      {canViewPrices ? (
+                        `+ ${formatIDRWithDecimals(taxDisp, 2)}`
+                      ) : (
+                        <ConfidentialBadge />
+                      )}
                     </span>
                   </div>
 
                   {roundingFactor !== 0 && (
                     <div className="flex justify-between items-center text-xs uppercase tracking-wider px-3 font-bold gap-2">
                       <span className="text-stone-900 font-bold whitespace-nowrap">
-                        FAKTOR PEMBULATAN{" "}
-                        <span className="font-semibold text-[10px] text-stone-500">
-                          / ROUNDING
-                        </span>
+                        ROUNDING ADJUSTMENT
                       </span>
                       <span className="font-mono text-stone-950 font-bold whitespace-nowrap">
-                        {roundingFactor > 0 ? "+" : ""}{formatIDRWithDecimals(roundingFactor, 2)}
+                        {canViewPrices ? (
+                          `${roundingFactor > 0 ? "+" : ""}${formatIDRWithDecimals(roundingFactor, 2)}`
+                        ) : (
+                          <ConfidentialBadge />
+                        )}
                       </span>
                     </div>
                   )}
 
                   <div className="flex justify-between items-center bg-white text-stone-900 p-3.5 rounded-xl border border-stone-200 mt-2 shadow-xs font-bold gap-3">
                     <span className="text-xs font-black uppercase tracking-wider text-stone-900 whitespace-nowrap">
-                      GRAND TOTAL{" "}
-                      <span className="font-bold text-[10px] text-stone-500 font-normal">
-                        / TOTAL PENAWARAN
-                      </span>
+                      GRAND TOTAL
                     </span>
                     <span className="text-base font-black tracking-tight font-mono text-stone-900 whitespace-nowrap">
-                      {formattedAmount}
+                      {canViewPrices ? formattedAmount : <ConfidentialBadge size="sm" />}
                     </span>
                   </div>
 
@@ -405,18 +418,26 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
                     <div className="mt-2 p-2.5 bg-stone-50 border border-stone-200 rounded-lg space-y-1 text-xs">
                       <div className="flex justify-between items-center text-stone-600">
                         <span className="text-[11px] font-semibold">
-                          Potongan PPh 23 ({quotation.pph_rate ?? 0}% Withholding):
+                          Withholding Tax ({quotation.pph_rate ?? 0}%):
                         </span>
                         <span className="font-mono font-bold text-amber-700">
-                          - {formatIDRWithDecimals(pphDisp, 2)}
+                          {canViewPrices ? (
+                            `- ${formatIDRWithDecimals(pphDisp, 2)}`
+                          ) : (
+                            <ConfidentialBadge />
+                          )}
                         </span>
                       </div>
                       <div className="flex justify-between items-center pt-1 border-t border-stone-200 text-stone-900 font-black">
                         <span className="text-[11px] uppercase tracking-wider">
-                          Estimasi Bersih Diterima (Net Cash):
+                          Estimated Net Cash Received:
                         </span>
                         <span className="font-mono text-sm text-emerald-700">
-                          {formatIDRWithDecimals(breakdown.netPayable, 2)}
+                          {canViewPrices ? (
+                            formatIDRWithDecimals(breakdown.netPayable, 2)
+                          ) : (
+                            <ConfidentialBadge />
+                          )}
                         </span>
                       </div>
                     </div>
@@ -430,10 +451,7 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
               <div className="grid grid-cols-2 gap-6 mt-2">
                 <div>
                   <div className="text-sm text-stone-900 uppercase tracking-widest font-black mb-1.5">
-                    Syarat & Ketentuan Umum{" "}
-                    <span className="text-stone-500 font-normal">
-                      / General Terms & Conditions
-                    </span>
+                    General Terms & Conditions
                   </div>
                   <div className="text-xs text-stone-800 font-semibold space-y-1.5 uppercase leading-relaxed tracking-tight">
                     <div>
@@ -443,28 +461,19 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
                     </div>
                     <div>
                       <span className="text-stone-900 block font-bold">
-                        • Harga sudah termasuk pengiriman standar ke lokasi gudang.
-                      </span>
-                      <span className="text-stone-500 font-semibold text-[10.5px] block">
-                        / Prices include standard delivery to warehouse site.
+                        • Prices include standard delivery to warehouse site.
                       </span>
                     </div>
                     <div>
                       <span className="text-stone-900 block font-bold">
-                        • Perhitungan garis waktu dimulai setelah otorisasi SPK/NTP.
-                      </span>
-                      <span className="text-stone-500 font-semibold text-[10.5px] block">
-                        / All timeline calculations begin after NTP authorization.
+                        • All timeline calculations begin after Work Order / NTP authorization.
                       </span>
                     </div>
                   </div>
                 </div>
                 <div>
                   <div className="text-sm text-stone-900 uppercase tracking-widest font-black mb-1.5">
-                    Keterangan Tambahan{" "}
-                    <span className="text-stone-500 font-normal">
-                      / Additional Remarks
-                    </span>
+                    Additional Remarks
                   </div>
                   <div className="text-xs text-stone-800 font-bold italic leading-relaxed border-l-2 border-stone-300 pl-3 bg-white py-2 rounded-r-lg">
                     {quotation.remarks ? (
@@ -472,10 +481,7 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
                     ) : (
                       <div>
                         <span className="text-stone-900 block">
-                          Syarat komersial baku berlaku.
-                        </span>
-                        <span className="text-stone-500 font-semibold text-xs block mt-0.5">
-                          / Standard commercial terms apply.
+                          Standard commercial terms apply.
                         </span>
                       </div>
                     )}
@@ -506,62 +512,51 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
       <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
         {printContent}
       </div>
-      <div className="p-6 border-t border-stone-100 bg-white flex justify-center gap-4">
+      <div className="p-6 border-t border-stone-100 bg-white flex flex-wrap justify-center gap-3">
         {onAuthorize && (quotation?.status === "PENDING" || quotation?.status === "DRAFT") && (
           <Button
-            variant="primary"
+            variant="info"
             onClick={() => {
               onAuthorize(quotation);
             }}
-            className="px-6 py-2.5 rounded-xl text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-md flex items-center gap-2"
+            leftIcon={<ShieldCheck className="w-4 h-4" />}
           >
-            <ShieldCheck className="w-4 h-4" />
-            {language === "id" ? "Otorisasi Quotation" : "Authorize Quotation"}
+            Authorize Quotation
           </Button>
         )}
         {onCreateProject && (quotation?.status === "APPROVED" || quotation?.status === "AUTHORIZED") && (
           <Button
-            variant="primary"
+            variant="success"
             onClick={() => {
               onCreateProject(quotation);
             }}
-            className="px-6 py-2.5 rounded-xl text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-md flex items-center gap-2"
+            leftIcon={<FolderKanban className="w-4 h-4" />}
           >
-            <FolderKanban className="w-4 h-4" />
-            {language === "id" ? "Buat Proyek (Create Project)" : "Create Project"}
+            Create Project
           </Button>
         )}
-        {onOpenReceipt && (quotation?.receipt_number || quotation?.sales_channel === "DIRECT_RETAIL" || quotation?.settlement_type === "IMMEDIATE") && (
+        {canViewPrices && onOpenReceipt && (quotation?.receipt_number || quotation?.sales_channel === "DIRECT_RETAIL" || quotation?.settlement_type === "IMMEDIATE") && (
           <Button
-            variant="secondary"
+            variant="emerald_soft"
             onClick={() => onOpenReceipt(quotation)}
-            className="px-5 py-2.5 rounded-xl text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 flex items-center gap-2"
+            leftIcon={<Printer className="w-4 h-4 text-emerald-600" />}
           >
-            <Printer className="w-4 h-4 text-emerald-600" />
-            <span>{language === "id" ? "Cetak Struk (POS)" : "Print Receipt"}</span>
+            <span>Print Receipt</span>
           </Button>
         )}
         <Button
           variant="secondary"
           onClick={onClose}
-          className="px-6 py-2.5 rounded-xl text-sm"
         >
-          {language === "id" ? "Tutup" : "Close"}
+          Close
         </Button>
         <Button
-          variant="primary"
+          variant="dark"
           onClick={handleExportPdf}
           isLoading={isExporting}
-          className="px-6 py-2.5 rounded-xl text-sm shadow-md"
+          leftIcon={!isExporting ? <Download className="w-4 h-4" /> : undefined}
         >
-          {!isExporting && <Download className="w-4 h-4" />}
-          {language === "id"
-            ? isExporting
-              ? "Mengekspor..."
-              : "Ekspor PDF (A4)"
-            : isExporting
-              ? "Generating..."
-              : "Export PDF (A4)"}
+          {isExporting ? "Generating..." : "Export PDF (A4)"}
         </Button>
       </div>
     </Modal>

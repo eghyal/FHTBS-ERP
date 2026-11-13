@@ -1,1078 +1,1303 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { apiFetch } from "@/utils/api";
+import { ClipboardList } from "lucide-react";
+import { generatePDF } from "@/lib/pdfGenerator";
+import { cn, isFinishGoodItem } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import { useShare } from "@/contexts/ShareContext";
+import { Select } from "@/components/ui/Select";
+import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { cn } from "@/lib/utils";
-import { ClipboardList, Plus, History, Trash2, Info, Boxes, Send } from "lucide-react";
-
-interface BomItemRow {
-  id: string;
-  item_id?: string;
-  item_code?: string;
-  item_name: string;
-  specification?: string;
-  part_number?: string;
-  qty: number;
-  uom: string;
-  estimated_unit_price: number;
-  remarks?: string;
-  current_free_stock?: number;
-  shortage_qty?: number;
-}
-
-interface GeneralRequestData {
-  id: string;
-  request_code: string;
-  title: string;
-  category: "MAINTENANCE" | "TOOLING" | "RND" | "CONSUMABLE" | "INFRASTRUCTURE" | "SPECIAL_DESIGN";
-  department: string;
-  requester_name: string;
-  requester_username: string;
-  priority: "NORMAL" | "URGENT" | "CRITICAL";
-  justification?: string;
-  drawing_reference?: string;
-  technical_specs?: string;
-  target_delivery_date?: string;
-  status: "DRAFT" | "SUBMITTED" | "APPROVED" | "PR_GENERATED" | "REJECTED";
-  estimated_total_cost: number;
-  approved_by?: string;
-  approved_at?: string;
-  pr_id?: string;
-  pr_number?: string;
-  item_count?: number;
-  created_at: string;
-  items?: BomItemRow[];
-  linkedPr?: any;
-}
-
-const CATEGORY_MAP: Record<string, { labelId: string; labelEn: string }> = {
-  MAINTENANCE: { labelId: "Pemeliharaan & Mesin", labelEn: "Maintenance & Plant" },
-  TOOLING: { labelId: "Cetakan & Moulding", labelEn: "Tooling & Moulds" },
-  RND: { labelId: "R&D & Uji Coba", labelEn: "R&D & Lab Trial" },
-  CONSUMABLE: { labelId: "Konsumabel & Safety", labelEn: "Consumables & Safety" },
-  INFRASTRUCTURE: { labelId: "Sarana & Forklift", labelEn: "Infrastructure & GA" },
-  SPECIAL_DESIGN: { labelId: "Desain Khusus / Prototipe", labelEn: "Custom Design / Prototype" },
-};
-
+import { useAutoSave } from "@/hooks/useAutoSave";
 import {
   ERP_DEPARTMENT_OPTIONS,
   getDepartmentLabel,
-  canUserApproveDepartment,
   normalizeDepartmentToRole,
 } from "@/constants/rbac";
+import { OngoingRequestsSection } from "@/components/erp/production/general/OngoingRequestsSection";
+import { GeneralRequestModals } from "@/components/erp/production/general/GeneralRequestModals";
+import {
+  GeneralRequestMaterialSection,
+  type GeneralRequestBomRow as BomRow,
+} from "@/components/erp/production/general/GeneralRequestMaterialSection";
+
+const CATEGORY_MAP: Record<string, { labelId: string; labelEn: string }> = {
+  MAINTENANCE: { labelId: "Maintenance & Plant", labelEn: "Maintenance & Plant" },
+  TOOLING: { labelId: "Tooling & Moulds", labelEn: "Tooling & Moulds" },
+  RND: { labelId: "R&D & Lab Trial", labelEn: "R&D & Lab Trial" },
+  CONSUMABLE: { labelId: "Consumables & Safety", labelEn: "Consumables & Safety" },
+  INFRASTRUCTURE: { labelId: "Infrastructure & GA", labelEn: "Infrastructure & GA" },
+  SPECIAL_DESIGN: { labelId: "Custom Design / Prototype", labelEn: "Custom Design / Prototype" },
+};
+
+function defaultExpectedDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  return d.toISOString().split("T")[0];
+}
 
 export default function GeneralRequest() {
-  const { user } = useAuth();
-  const { language } = useLanguage();
-  const { showToast } = useToast();
-
-  const isId = language === "id";
-
-  // Unified single-page view - no tab switching
-
-  // Data States
-  const [requests, setRequests] = useState<GeneralRequestData[]>([]);
-  const [inventoryList, setInventoryList] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>({
-    total: 0,
-    pending_review: 0,
-    ready_for_pr: 0,
-    pr_generated: 0,
-    urgent_open: 0,
-    total_budget_est: 0,
-  });
+  const printRef = useRef<HTMLDivElement>(null);
+  const searchTimerRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const [prs, setPrs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form State
-  const [formTitle, setFormTitle] = useState("");
-  const [formCategory, setFormCategory] = useState<string>("MAINTENANCE");
-  const [formDepartment, setFormDepartment] = useState("PRODUCTION");
-  const [formPriority, setFormPriority] = useState<"NORMAL" | "URGENT" | "CRITICAL">("NORMAL");
-  const [formTargetDate, setFormTargetDate] = useState("");
-  const [formDrawingRef, setFormDrawingRef] = useState("");
-  const [formJustification, setFormJustification] = useState("");
-  const [formBomItems, setFormBomItems] = useState<BomItemRow[]>([
+  // Confirm Modal States
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    action: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    action: () => {},
+  });
+
+  // Form Generation States (Auto-saved like Design Requests)
+  const {
+    data: selectedDepartment,
+    setData: setSelectedDepartment,
+  } = useAutoSave<string>("general_req_department", "PRODUCTION");
+  const {
+    data: selectedCategory,
+    setData: setSelectedCategory,
+  } = useAutoSave<string>("general_req_category", "MAINTENANCE");
+  const {
+    data: requestTitle,
+    setData: setRequestTitle,
+    clearDraft: clearRequestTitle,
+  } = useAutoSave<string>("general_req_title", "");
+  const {
+    data: drawingReference,
+    setData: setDrawingReference,
+    clearDraft: clearDrawingReference,
+  } = useAutoSave<string>("general_req_drawing_ref", "");
+  const {
+    data: bomRows,
+    setData: setBomRows,
+    clearDraft: clearBomDraft,
+  } = useAutoSave<BomRow[]>("general_req_bom_rows", [
     {
       id: "row-1",
+      item_id: "",
       item_code: "",
-      item_name: "",
-      specification: "",
-      part_number: "",
-      qty: 1,
+      name: "",
+      dimension: "",
+      spec: "",
+      qty: "1",
       uom: "PCS",
-      estimated_unit_price: 0,
-      remarks: "",
-      current_free_stock: 0,
-      shortage_qty: 0,
+      unit_price: "0",
+      free_stock: 0,
+      shortage_qty: 1,
+      qty_to_order: 1,
+      expected_date: defaultExpectedDate(),
+      notFound: false,
+      is_custom: true,
     },
   ]);
 
-  // Stock Validity Check State
-  const [hasValidatedStock, setHasValidatedStock] = useState(false);
-  const [stockValidationSummary, setStockValidationSummary] = useState<{
-    totalItems: number;
-    inStockItems: number;
-    shortageItems: number;
-  }>({ totalItems: 0, inStockItems: 0, shortageItems: 0 });
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+  const [urgency, setUrgency] = useState<"NORMAL" | "URGENT" | "CRITICAL">("NORMAL");
+  const [isChecking, setIsChecking] = useState(false);
+  const [hasChecked, setHasChecked] = useState(false);
+  const [showPrModal, setShowPrModal] = useState(false);
 
-  // Detail Modal & Search
-  const [selectedDetail, setSelectedDetail] = useState<GeneralRequestData | null>(null);
-  const [historySearch, setHistorySearch] = useState("");
-  const [historyCategory, setHistoryCategory] = useState("ALL");
-  const [historyStatus, setHistoryStatus] = useState("ALL");
+  // BOM-style Registry Search Modal States
+  const [searchModal, setSearchModal] = useState<{
+    isOpen: boolean;
+    rowId: string | null;
+  }>({ isOpen: false, rowId: null });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
-  const fetchData = async () => {
+  // e-Approval & Revision Modal States
+  const [showAuthorizeModal, setShowAuthorizeModal] = useState(false);
+  const [showReviseModal, setShowReviseModal] = useState(false);
+  const [selectedPrToAuth, setSelectedPrToAuth] = useState<any>(null);
+  const [revisingPr, setRevisingPr] = useState<any>(null);
+  const [previewPrData, setPreviewPrData] = useState<any>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"FORM" | "ONGOING">("FORM");
+
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const { shareToForum } = useShare();
+
+  const nonFgInventoryItems = useMemo(() => {
+    return inventoryItems.filter((item) => !isFinishGoodItem(item));
+  }, [inventoryItems]);
+
+  const fetchPrs = async () => {
     setIsLoading(true);
     try {
-      const [reqRes, statsRes, invRes] = await Promise.all([
-        apiFetch("/api/general-requests", {}, user?.username),
-        apiFetch("/api/general-requests/stats", {}, user?.username),
-        apiFetch("/api/inventory", {}, user?.username),
-      ]);
-
-      if (reqRes.ok && Array.isArray(reqRes.data)) {
-        setRequests(reqRes.data);
-      }
-      if (statsRes.ok && statsRes.data?.stats) {
-        setStats(statsRes.data.stats);
-      }
-      if (invRes.ok && Array.isArray(invRes.data)) {
-        setInventoryList(invRes.data);
+      const res = await apiFetch("/api/purchasing/prs?scope=GENERAL", {}, user?.username);
+      if (res.ok) {
+        setPrs(Array.isArray(res.data) ? res.data : []);
+      } else {
+        showToast(res.error || "Failed to fetch General PRs", "error");
       }
     } catch (err) {
       console.error(err);
-      showToast(isId ? "Gagal memuat data permintaan pengadaan" : "Error synchronizing general requisitions", "error");
+      showToast("Error fetching General PRs", "error");
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Fetch Master Warehouse Items SSOT (/api/items with /api/inventory fallback)
+  const fetchInventory = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/items", {}, user?.username);
+      if (res.ok && Array.isArray(res.data)) {
+        setInventoryItems(res.data);
+        return;
+      }
+      const invRes = await apiFetch("/api/inventory", {}, user?.username);
+      if (invRes.ok && Array.isArray(invRes.data)) {
+        setInventoryItems(invRes.data);
+      }
+    } catch (err) {
+      console.error("GeneralRequest: Failed to fetch warehouse items", err);
+    }
+  }, [user?.username]);
+
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchPrs();
+    fetchInventory();
+  }, [fetchInventory]);
 
-  // Validate Stock Availability
-  const handleValidateStock = () => {
-    if (formBomItems.length === 0 || formBomItems.some((b) => !b.item_name.trim())) {
-      showToast(
-        isId ? "Isi nama barang terlebih dahulu sebelum memvalidasi stok." : "Please enter item names before validating stock.",
-        "info"
-      );
-      return;
-    }
-
-    let inStock = 0;
-    let shortage = 0;
-
-    const updated = formBomItems.map((item) => {
-      let matchedInv: any = null;
-      if (item.item_id) {
-        matchedInv = inventoryList.find((i) => i.id === item.item_id);
-      } else if (item.item_code) {
-        matchedInv = inventoryList.find((i) => i.item_code?.toLowerCase() === item.item_code?.toLowerCase());
-      } else if (item.item_name) {
-        matchedInv = inventoryList.find((i) => i.name?.toLowerCase() === item.item_name?.toLowerCase());
+  // Auto-refresh Non-FG catalog when returning from Warehouse / Inventory Master tab or window (identical to Engineering BOM)
+  useEffect(() => {
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchInventory();
       }
+    };
+    window.addEventListener("focus", handleFocusOrVisibility);
+    document.addEventListener("visibilitychange", handleFocusOrVisibility);
+    return () => {
+      window.removeEventListener("focus", handleFocusOrVisibility);
+      document.removeEventListener("visibilitychange", handleFocusOrVisibility);
+    };
+  }, [fetchInventory]);
 
-      const freeStock = Number(matchedInv?.free_stock || matchedInv?.quantity || item.current_free_stock || 0);
-      const reqQty = Number(item.qty) || 1;
-      const shortfall = Math.max(0, reqQty - freeStock);
+  // Auto-enrich and lock rows with Master Warehouse item details whenever nonFgInventoryItems are available or updated
+  useEffect(() => {
+    if (nonFgInventoryItems.length === 0 || bomRows.length === 0) return;
+    setBomRows((prevRows) => {
+      let hasChanges = false;
+      const updated = prevRows.map((r) => {
+        if (!r.item_code || r.item_code.trim() === "") return r;
+        const cleanCode = r.item_code.trim().toUpperCase();
+        const matched = nonFgInventoryItems.find(
+          (i) =>
+            (r.item_id && (i.id === r.item_id || i.item_id === r.item_id)) ||
+            (i.item_code && i.item_code.trim().toUpperCase() === cleanCode),
+        );
+        if (matched) {
+          const masterId = matched.id || matched.item_id;
+          const masterCode = matched.item_code || r.item_code;
+          const masterName = matched.name || matched.item_name || "";
+          const masterDim = matched.dimension || "";
+          const masterSpec = matched.spec || "";
+          const masterUom = matched.uom || "PCS";
+          const ssotPrice = String(
+            matched.ssot_unit_price ?? matched.unit_price ?? r.unit_price ?? 0,
+          );
+          const freeStock = Number(matched.free_stock ?? matched.quantity ?? 0);
+          const reqQty = Math.max(1, Number(r.qty) || 1);
+          const shortage = Math.max(0, reqQty - freeStock);
 
-      if (shortfall === 0) {
-        inStock++;
-      } else {
-        shortage++;
-      }
-
-      return {
-        ...item,
-        current_free_stock: freeStock,
-        shortage_qty: shortfall,
-      };
-    });
-
-    setFormBomItems(updated);
-    setHasValidatedStock(true);
-    setStockValidationSummary({
-      totalItems: formBomItems.length,
-      inStockItems: inStock,
-      shortageItems: shortage,
-    });
-
-    showToast(
-      shortage === 0
-        ? isId
-          ? "Validasi Stok Selesai: Seluruh item tersedia di stok gudang."
-          : "Stock Validation Complete: All items available in warehouse stock."
-        : isId
-        ? `Validasi Stok Selesai: ${shortage} item memerlukan pembuatan PO Pengadaan.`
-        : `Stock Validation Complete: ${shortage} item(s) require procurement PO.`,
-      shortage === 0 ? "success" : "info"
-    );
-  };
-
-  // Add Item Row
-  const handleAddBomRow = () => {
-    setFormBomItems((prev) => [
-      ...prev,
-      {
-        id: "row-" + Math.random().toString(36).substring(2, 9),
-        item_code: "",
-        item_name: "",
-        specification: "",
-        part_number: "",
-        qty: 1,
-        uom: "PCS",
-        estimated_unit_price: 0,
-        remarks: "",
-        current_free_stock: 0,
-        shortage_qty: 0,
-      },
-    ]);
-    setHasValidatedStock(false);
-  };
-
-  // Remove Item Row
-  const handleRemoveBomRow = (id: string) => {
-    if (formBomItems.length <= 1) {
-      showToast(isId ? "Minimal 1 baris BOM harus diisi." : "At least one BOM item is required.", "info");
-      return;
-    }
-    setFormBomItems((prev) => prev.filter((r) => r.id !== id));
-    setHasValidatedStock(false);
-  };
-
-  // Update BOM Row
-  const handleUpdateBomItem = (id: string, field: keyof BomItemRow, value: any) => {
-    setFormBomItems((prev) =>
-      prev.map((r) => {
-        if (r.id !== id) return r;
-
-        // Auto-match if changing item_code
-        if (field === "item_code") {
-          const matched = inventoryList.find((i) => i.item_code?.toLowerCase() === String(value).toLowerCase());
-          if (matched) {
+          if (
+            r.item_id !== masterId ||
+            r.item_code !== masterCode ||
+            r.name !== masterName ||
+            r.dimension !== masterDim ||
+            r.spec !== masterSpec ||
+            r.uom !== masterUom ||
+            r.unit_price !== ssotPrice ||
+            r.free_stock !== freeStock ||
+            r.shortage_qty !== shortage ||
+            r.notFound
+          ) {
+            hasChanges = true;
             return {
               ...r,
-              item_code: value,
-              item_id: matched.id,
-              item_name: matched.name || r.item_name,
-              specification: matched.dimension || matched.spec || r.specification,
-              part_number: matched.spec || r.part_number,
-              uom: matched.uom || r.uom || "PCS",
-              estimated_unit_price: Number(matched.unit_price) || r.estimated_unit_price,
-              current_free_stock: Number(matched.free_stock || matched.quantity || 0),
+              item_id: masterId,
+              item_code: masterCode,
+              name: masterName,
+              dimension: masterDim,
+              spec: masterSpec,
+              uom: masterUom,
+              unit_price: ssotPrice,
+              free_stock: freeStock,
+              shortage_qty: shortage,
+              qty_to_order: shortage,
+              notFound: false,
             };
           }
         }
+        return r;
+      });
+      return hasChanges ? updated : prevRows;
+    });
+  }, [nonFgInventoryItems, setBomRows]);
 
-        return { ...r, [field]: value };
-      })
+  // Registry Search Modal Effect (instant local filter + backend search fallback, strictly Non-FG SSOT)
+  useEffect(() => {
+    if (!searchModal.isOpen) return;
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) {
+      // Show top 30 Non-FG items by default when modal opens so user can browse immediately
+      setSearchResults(nonFgInventoryItems.slice(0, 30));
+      return;
+    }
+
+    // Instant local match by SKU code, name, dimension, or spec
+    const localMatches = nonFgInventoryItems.filter((item) => {
+      const code = String(item.item_code || "").toLowerCase();
+      const name = String(item.name || item.item_name || "").toLowerCase();
+      const dim = String(item.dimension || "").toLowerCase();
+      const spec = String(item.spec || "").toLowerCase();
+      return (
+        code.includes(q) ||
+        name.includes(q) ||
+        dim.includes(q) ||
+        spec.includes(q)
+      );
+    });
+    setSearchResults(localMatches.slice(0, 50));
+
+    if (q.length < 2) return;
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await apiFetch(
+          `/api/items/search?q=${encodeURIComponent(searchTerm.trim())}`,
+          {},
+          user?.username,
+        );
+        const list = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res)
+            ? res
+            : [];
+        if (list.length > 0) {
+          const nonFgList = list.filter((i: any) => !isFinishGoodItem(i));
+          setSearchResults(nonFgList);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, searchModal.isOpen, nonFgInventoryItems, user?.username]);
+
+  const selectItemFromSearch = (item: any) => {
+    if (!searchModal.rowId) return;
+    if (isFinishGoodItem(item)) {
+      showToast(
+        "General Request hanya diperuntukkan bagi item Non-Finished Goods (SSOT).",
+        "error",
+      );
+      return;
+    }
+    const freeStock = Number(item.free_stock ?? item.quantity ?? 0);
+    const ssotPrice = Number(item.ssot_unit_price ?? item.unit_price ?? 0);
+
+    setBomRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== searchModal.rowId) return r;
+        const reqQty = Math.max(1, Number(r.qty) || 1);
+        const shortage = Math.max(0, reqQty - freeStock);
+        return {
+          ...r,
+          item_id: item.id || item.item_id,
+          item_code: item.item_code || "",
+          name: item.name || item.item_name || "",
+          dimension: item.dimension || "",
+          spec: item.spec || "",
+          uom: item.uom || "PCS",
+          unit_price: String(ssotPrice),
+          free_stock: freeStock,
+          shortage_qty: shortage,
+          qty_to_order: shortage,
+          expected_date: r.expected_date || defaultExpectedDate(),
+          notFound: false,
+        };
+      }),
     );
-    setHasValidatedStock(false);
+    setHasChecked(false);
+    setSearchModal({ isOpen: false, rowId: null });
+    setSearchTerm("");
   };
 
-  // Total Estimated Budget
-  const totalEstimatedCost = useMemo(() => {
-    return formBomItems.reduce((acc, it) => acc + (Number(it.qty) || 0) * (Number(it.estimated_unit_price) || 0), 0);
-  }, [formBomItems]);
-
-  // Submit and Issue Purchase Request (PR)
-  const handleSubmitAndIssuePr = async () => {
-    if (!formTitle.trim()) {
-      showToast(isId ? "Judul permintaan wajib diisi." : "Requisition title is required.", "info");
-      return;
-    }
-    if (formBomItems.some((b) => !b.item_name.trim())) {
-      showToast(isId ? "Setiap item BOM wajib memiliki nama barang." : "All BOM table items must have an item name.", "info");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const createRes = await apiFetch(
-        "/api/general-requests",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            title: formTitle.trim(),
-            category: formCategory,
-            department: formDepartment,
-            priority: formPriority,
-            target_delivery_date: formTargetDate || undefined,
-            drawing_reference: formDrawingRef.trim() || undefined,
-            justification: formJustification.trim() || undefined,
-            items: formBomItems.map((b) => ({
-              item_id: b.item_id || undefined,
-              item_code: b.item_code || undefined,
-              item_name: b.item_name.trim(),
-              specification: b.specification?.trim() || undefined,
-              part_number: b.part_number?.trim() || undefined,
-              qty: Number(b.qty) || 1,
-              uom: (b.uom || "PCS").toUpperCase(),
-              estimated_unit_price: Number(b.estimated_unit_price) || 0,
-              remarks: b.remarks?.trim() || undefined,
-            })),
+  // BOM-style updateRow handler with instant local SKU match + debounced API lookup
+  const updateRow = useCallback(
+    (id: string, field: keyof BomRow, value: string) => {
+      if (field === "qty") {
+        setBomRows((prev) =>
+          prev.map((r) => {
+            if (r.id !== id) return r;
+            const nextQty = Math.max(1, Number(value) || 1);
+            const freeStock = Number(r.free_stock || 0);
+            const shortage = Math.max(0, nextQty - freeStock);
+            return {
+              ...r,
+              qty: value,
+              shortage_qty: shortage,
+              qty_to_order: shortage,
+            };
           }),
-        },
-        user?.username
-      );
-
-      if (!createRes.ok || !createRes.data?.id) {
-        throw new Error(createRes.error || "Gagal membuat pengajuan permintaan.");
+        );
+        setHasChecked(false);
+        return;
       }
 
-      const requestId = createRes.data.id;
+      if (field !== "item_code") {
+        setBomRows((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
+        );
+        return;
+      }
 
-      const prRes = await apiFetch(
-        `/api/general-requests/${requestId}/generate-pr`,
-        { method: "POST" },
-        user?.username
+      const val = value.toUpperCase();
+      const cleanCode = val.trim().toUpperCase();
+
+      if (searchTimerRef.current[id]) {
+        clearTimeout(searchTimerRef.current[id]);
+        delete searchTimerRef.current[id];
+      }
+
+      // 1. Instant local match against preloaded Non-FG warehouse items
+      const matchedItem = nonFgInventoryItems.find(
+        (i) => i.item_code && i.item_code.trim().toUpperCase() === cleanCode,
       );
 
-      if (prRes.ok && prRes.data?.success) {
-        showToast(
-          isId
-            ? `Berhasil Diterbitkan! Purchase Request ${prRes.data.pr_number} masuk ke antrean Pengadaan.`
-            : `Requisition Issued! Purchase Request ${prRes.data.pr_number} sent to Procurement.`,
-          "success"
+      if (matchedItem) {
+        const freeStock = Number(matchedItem.free_stock ?? matchedItem.quantity ?? 0);
+        const ssotPrice = Number(
+          matchedItem.ssot_unit_price ?? matchedItem.unit_price ?? 0,
+        );
+        setBomRows((prev) =>
+          prev.map((r) => {
+            if (r.id !== id) return r;
+            const reqQty = Math.max(1, Number(r.qty) || 1);
+            const shortage = Math.max(0, reqQty - freeStock);
+            return {
+              ...r,
+              item_code: matchedItem.item_code,
+              item_id: matchedItem.id || matchedItem.item_id,
+              name: matchedItem.name || matchedItem.item_name || "",
+              dimension: matchedItem.dimension || "",
+              spec: matchedItem.spec || "",
+              uom: matchedItem.uom || "PCS",
+              unit_price: String(ssotPrice),
+              free_stock: freeStock,
+              shortage_qty: shortage,
+              qty_to_order: shortage,
+              notFound: false,
+            };
+          }),
+        );
+        setHasChecked(false);
+        return;
+      }
+
+      // 2. If no instant match, set typed item_code and clear linked fields
+      setBomRows((prev) =>
+        prev.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                item_code: val,
+                item_id: undefined,
+                name: "",
+                dimension: "",
+                spec: "",
+                unit_price: "0",
+                free_stock: 0,
+                shortage_qty: Math.max(1, Number(r.qty) || 1),
+                qty_to_order: Math.max(1, Number(r.qty) || 1),
+                notFound: false,
+              }
+            : r,
+        ),
+      );
+      setHasChecked(false);
+
+      if (cleanCode.length < 2) return;
+
+      // 3. Debounced network fallback query (/api/items/code/:code)
+      searchTimerRef.current[id] = setTimeout(async () => {
+        try {
+          const res = await apiFetch(
+            `/api/items/code/${encodeURIComponent(cleanCode)}`,
+            {},
+            user?.username,
+          );
+          if (res.ok && res.data?.id && !isFinishGoodItem(res.data)) {
+            const item = res.data;
+            const freeStock = Number(item.free_stock ?? 0);
+            const ssotPrice = Number(item.ssot_unit_price ?? item.unit_price ?? 0);
+            setInventoryItems((prev) => {
+              if (!prev.some((x) => x.id === item.id)) return [...prev, item];
+              return prev;
+            });
+
+            setBomRows((prev) =>
+              prev.map((r) => {
+                if (r.id === id && r.item_code.trim().toUpperCase() === cleanCode) {
+                  const reqQty = Math.max(1, Number(r.qty) || 1);
+                  const shortage = Math.max(0, reqQty - freeStock);
+                  return {
+                    ...r,
+                    item_id: item.id,
+                    item_code: item.item_code,
+                    name: item.name,
+                    dimension: item.dimension || "",
+                    spec: item.spec || "",
+                    uom: item.uom || "PCS",
+                    unit_price: String(ssotPrice),
+                    free_stock: freeStock,
+                    shortage_qty: shortage,
+                    qty_to_order: shortage,
+                    notFound: false,
+                  };
+                }
+                return r;
+              }),
+            );
+          } else {
+            setBomRows((prev) =>
+              prev.map((r) => {
+                if (r.id === id && r.item_code.trim().toUpperCase() === cleanCode) {
+                  return { ...r, notFound: true };
+                }
+                return r;
+              }),
+            );
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      }, 300);
+    },
+    [nonFgInventoryItems, user?.username, setBomRows],
+  );
+
+  const handleAddMaterialRow = useCallback(() => {
+    setBomRows((prev) => [
+      ...prev,
+      {
+        id: "row-" + Math.random().toString(36).substring(2, 9),
+        item_id: "",
+        item_code: "",
+        name: "",
+        dimension: "",
+        spec: "",
+        qty: "1",
+        uom: "PCS",
+        unit_price: "0",
+        free_stock: 0,
+        shortage_qty: 1,
+        qty_to_order: 1,
+        expected_date: defaultExpectedDate(),
+        notFound: false,
+        is_custom: true,
+      },
+    ]);
+    setHasChecked(false);
+  }, [setBomRows]);
+
+  const handleRefreshCatalog = useCallback(() => {
+    fetchInventory();
+    showToast("Master SKU catalog refreshed.", "info");
+  }, [fetchInventory, showToast]);
+
+  const handleOpenSearchModal = useCallback((rowId: string, initialSearchTerm = "") => {
+    setSearchTerm(initialSearchTerm);
+    setSearchModal({ isOpen: true, rowId });
+  }, []);
+
+  const handleRemoveMaterialRow = useCallback(
+    (rowId: string, rowIndex: number) => {
+      const targetRow = bomRows[rowIndex];
+      if (!targetRow) return;
+
+      const hasContent = Boolean(
+        targetRow.item_id ||
+        (targetRow.item_code && targetRow.item_code.trim()) ||
+        (targetRow.name && targetRow.name.trim())
+      );
+
+      const performRemove = () => {
+        setBomRows((prev) => {
+          if (prev.length <= 1) {
+            return [
+              {
+                id: "row-" + Math.random().toString(36).substring(2, 9),
+                item_id: "",
+                item_code: "",
+                name: "",
+                dimension: "",
+                spec: "",
+                qty: "1",
+                uom: "PCS",
+                unit_price: "0",
+                free_stock: 0,
+                shortage_qty: 1,
+                qty_to_order: 1,
+                expected_date: defaultExpectedDate(),
+                notFound: false,
+                is_custom: true,
+              },
+            ];
+          }
+          return prev.filter((_, i) => i !== rowIndex);
+        });
+        setHasChecked(false);
+        showToast("Baris item berhasil dihapus", "info");
+      };
+
+      if (hasContent) {
+        setConfirmModal({
+          isOpen: true,
+          title: "Hapus Komponen?",
+          message: `Apakah Anda yakin ingin menghapus "${targetRow.name || targetRow.item_code || "komponen ini"}" dari daftar General Request?`,
+          action: () => {
+            performRemove();
+            setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+          },
+        });
+      } else {
+        performRemove();
+      }
+    },
+    [bomRows, setBomRows, showToast, setConfirmModal],
+  );
+
+  const handleCheckStock = async () => {
+    if (bomRows.length === 0 || bomRows.some((r) => !r.item_id || r.notFound)) {
+      showToast(
+        "Pastikan seluruh baris menggunakan Master SKU Non-FG yang terdaftar sebelum validasi stok.",
+        "error",
+      );
+      return;
+    }
+
+    setIsChecking(true);
+    try {
+      const invRes = await apiFetch("/api/items", {}, user?.username);
+      const latestInv: any[] =
+        invRes.ok && Array.isArray(invRes.data) ? invRes.data : inventoryItems;
+      if (invRes.ok && Array.isArray(invRes.data)) {
+        setInventoryItems(invRes.data);
+      }
+
+      const updated = bomRows.map((row) => {
+        const matched = latestInv.find(
+          (i: any) =>
+            (row.item_id && (i.id === row.item_id || i.item_id === row.item_id)) ||
+            (row.item_code &&
+              String(i.item_code || "").toLowerCase() === row.item_code.toLowerCase()),
         );
 
-        // Reset
-        setFormTitle("");
-        setFormDrawingRef("");
-        setFormJustification("");
-        setFormTargetDate("");
-        setFormBomItems([
+        const freeStock = Number(matched?.free_stock ?? matched?.quantity ?? row.free_stock ?? 0);
+        const reqQty = Math.max(1, Number(row.qty) || 1);
+        const shortage = Math.max(0, reqQty - freeStock);
+        const ssotPrice = Number(
+          matched?.ssot_unit_price ?? matched?.unit_price ?? row.unit_price ?? 0,
+        );
+
+        return {
+          ...row,
+          item_id: matched?.id || matched?.item_id || row.item_id,
+          item_code: matched?.item_code || row.item_code,
+          name: matched?.name || matched?.item_name || row.name,
+          dimension: matched?.dimension || row.dimension || "",
+          spec: matched?.spec || row.spec || "",
+          uom: matched?.uom || row.uom || "PCS",
+          unit_price: String(ssotPrice),
+          free_stock: freeStock,
+          shortage_qty: shortage,
+          qty_to_order: shortage,
+          expected_date: row.expected_date || defaultExpectedDate(),
+          notFound: false,
+        };
+      });
+
+      setBomRows(updated);
+      setHasChecked(true);
+      showToast("Warehouse Free Stock & SSOT Price check completed", "success");
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to validate warehouse stock", "error");
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  const handleSubmitPr = async () => {
+    setIsSubmitting(true);
+    try {
+      if (revisingPr) {
+        const customItems = bomRows
+          .filter(
+            (r) =>
+              (r.qty_to_order !== undefined ? r.qty_to_order : r.shortage_qty || 0) > 0,
+          )
+          .map((r) => ({
+            id: r.id,
+            item_id: r.item_id,
+            item_code: r.item_code,
+            name: r.name,
+            uom: r.uom,
+            dimension: r.dimension,
+            spec: r.spec,
+            unit_price: Number(r.unit_price) || 0,
+            qty_to_order:
+              r.qty_to_order !== undefined ? r.qty_to_order : r.shortage_qty || 0,
+            expected_delivery_date: r.expected_date,
+          }));
+
+        if (
+          customItems.length > 0 &&
+          customItems.some((item) => !item.expected_delivery_date)
+        ) {
+          showToast("Please specify an expected delivery date for all items.", "error");
+          setIsSubmitting(false);
+          return;
+        }
+
+        const payload = {
+          urgency,
+          department: selectedDepartment,
+          category: selectedCategory,
+          title: requestTitle || revisingPr.title || revisingPr.project_name,
+          drawing_reference: drawingReference || revisingPr.drawing_reference,
+          expected_delivery_date:
+            bomRows[0]?.expected_date || revisingPr.expected_delivery_date,
+          remarks: requestTitle || drawingReference || revisingPr.remarks,
+          items: customItems,
+        };
+
+        const res = await apiFetch(
+          `/api/purchasing/pr/${revisingPr.id}`,
           {
-            id: "row-1",
-            item_code: "",
-            item_name: "",
-            specification: "",
-            part_number: "",
-            qty: 1,
-            uom: "PCS",
-            estimated_unit_price: 0,
-            remarks: "",
-            current_free_stock: 0,
-            shortage_qty: 0,
+            method: "PUT",
+            body: JSON.stringify(payload),
           },
-        ]);
-        setHasValidatedStock(false);
-        fetchData();
+          user?.username,
+        );
+
+        if (res.ok) {
+          showToast("PR Revised successfully", "success");
+          setShowPrModal(false);
+          setRevisingPr(null);
+          fetchPrs();
+        } else {
+          showToast(res.error || "Failed to revise PR", "error");
+        }
       } else {
-        showToast(prRes.error || "Gagal menerbitkan Purchase Request.", "error");
-        fetchData();
+        const customItems = bomRows
+          .filter(
+            (r) =>
+              (r.qty_to_order !== undefined ? r.qty_to_order : r.shortage_qty || 0) > 0,
+          )
+          .map((r) => ({
+            item_id: r.item_id,
+            item_code: r.item_code,
+            name: r.name,
+            uom: r.uom,
+            dimension: r.dimension,
+            spec: r.spec,
+            unit_price: Number(r.unit_price) || 0,
+            qty_to_order:
+              r.qty_to_order !== undefined ? r.qty_to_order : r.shortage_qty || 0,
+            expected_delivery_date: r.expected_date,
+          }));
+
+        if (
+          customItems.length > 0 &&
+          customItems.some((item) => !item.expected_delivery_date)
+        ) {
+          showToast("Please specify an expected delivery date for all items.", "error");
+          setIsSubmitting(false);
+          return;
+        }
+
+        const payload = {
+          department: selectedDepartment,
+          category: selectedCategory,
+          title:
+            requestTitle.trim() ||
+            `${CATEGORY_MAP[selectedCategory]?.labelEn || selectedCategory} - ${getDepartmentLabel(selectedDepartment)}`,
+          remarks: requestTitle.trim() || drawingReference.trim(),
+          drawing_reference: drawingReference.trim() || "Attached in System",
+          expected_delivery_date:
+            bomRows[0]?.expected_date || defaultExpectedDate(),
+          urgency,
+          items: customItems,
+        };
+
+        const res = await apiFetch(
+          "/api/purchasing/generate-general-pr",
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+          },
+          user?.username,
+        );
+
+        if (res.ok) {
+          const data = res.data;
+          showToast(
+            data && data.pr_created
+              ? `PR Created: ${data.pr_number}`
+              : "No PR needed (Stock fulfilled)",
+            "success",
+          );
+          setShowPrModal(false);
+          fetchPrs();
+          clearRequestTitle();
+          clearDrawingReference();
+          clearBomDraft();
+          setBomRows([
+            {
+              id: "row-1",
+              item_id: "",
+              item_code: "",
+              name: "",
+              dimension: "",
+              spec: "",
+              qty: "1",
+              uom: "PCS",
+              unit_price: "0",
+              free_stock: 0,
+              shortage_qty: 1,
+              qty_to_order: 1,
+              expected_date: defaultExpectedDate(),
+              notFound: false,
+              is_custom: true,
+            },
+          ]);
+          setHasChecked(false);
+          if (data && data.pr_created && data.pr_id) {
+            handleViewPr(data.pr_id);
+          }
+        } else {
+          showToast(res.error || "Failed to generate PR", "error");
+        }
       }
-    } catch (err: any) {
-      showToast(err.message || "Terjadi kesalahan sistem", "error");
+    } catch (err) {
+      console.error(err);
+      showToast(
+        revisingPr ? "Failed to revise PR" : "Failed to generate PR",
+        "error",
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Open Detail View
-  const openDetail = async (id: string) => {
+  const handleAuthorizePr = async (pin: string) => {
+    if (!selectedPrToAuth) return;
+    setIsSubmitting(true);
     try {
-      const res = await apiFetch(`/api/general-requests/${id}`, {}, user?.username);
-      if (res.ok && res.data) {
-        setSelectedDetail(res.data);
+      const digitalSignature = `Digitally Authorized by ${user?.name || user?.username} (${user?.role}) on ${new Date().toISOString()}`;
+      const res = await apiFetch(
+        "/api/purchasing/authorize-pr",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            pr_id: selectedPrToAuth.id,
+            authorized_doc: digitalSignature,
+            pin,
+          }),
+        },
+        user?.username,
+      );
+      if (res.ok) {
+        setShowAuthorizeModal(false);
+        fetchPrs();
+        showToast(
+          res.data?.message || "PR digitally authorized and sent to Procurement queue",
+          "success",
+        );
       } else {
-        showToast(res.error || "Gagal memuat detail permintaan", "error");
+        showToast(res.error || "Failed to authorize PR", "error");
       }
     } catch (err) {
-      showToast("Gagal memuat detail", "error");
+      console.error(err);
+      showToast("Error authorizing PR", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Filtered History
-  const filteredHistory = useMemo(() => {
-    return requests.filter((r) => {
-      if (historyCategory !== "ALL" && r.category !== historyCategory) return false;
-      if (historyStatus !== "ALL" && r.status !== historyStatus) return false;
-      if (historySearch.trim()) {
-        const q = historySearch.toLowerCase();
-        const mCode = r.request_code.toLowerCase().includes(q);
-        const mTitle = r.title.toLowerCase().includes(q);
-        const mReq = r.requester_name.toLowerCase().includes(q);
-        const mPr = (r.pr_number || "").toLowerCase().includes(q);
-        if (!mCode && !mTitle && !mReq && !mPr) return false;
+  const handleRevisePr = async (note: string) => {
+    if (!note.trim() || !selectedPrToAuth) {
+      showToast("Validation Failed: Revision note is required.", "error");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const res = await apiFetch(
+        "/api/purchasing/revise-pr",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            pr_id: selectedPrToAuth.id,
+            revision_note: note,
+          }),
+        },
+        user?.username,
+      );
+      if (res.ok) {
+        setShowReviseModal(false);
+        fetchPrs();
+        showToast("PR marked for revision", "success");
+      } else {
+        showToast(res.error || "Failed to mark PR for revision", "error");
       }
-      return true;
+    } catch (err) {
+      console.error(err);
+      showToast("Error revising PR", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelPr = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Cancel Purchase Request?",
+      message:
+        "Are you sure you want to cancel this PR? This will revert items inside to unauthorized state.",
+      action: async () => {
+        try {
+          const res = await apiFetch(
+            `/api/purchasing/pr/${id}/cancel`,
+            { method: "POST" },
+            user?.username,
+          );
+          if (res.ok) {
+            fetchPrs();
+            showToast("PR cancelled successfully", "success");
+          } else {
+            showToast(res.error || "Failed to cancel PR", "error");
+          }
+        } catch (err) {
+          console.error(err);
+          showToast("Error cancelling PR", "error");
+        }
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+      },
     });
-  }, [requests, historyCategory, historyStatus, historySearch]);
+  };
+
+  const handleDeletePr = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete Purchase Request?",
+      message:
+        "Are you sure you want to delete this PR? This will remove it from the active queue.",
+      action: async () => {
+        try {
+          const res = await apiFetch(
+            `/api/purchasing/pr/${id}`,
+            { method: "DELETE" },
+            user?.username,
+          );
+          if (res.ok) {
+            fetchPrs();
+            showToast("PR deleted successfully", "success");
+          } else {
+            showToast(res.error || "Failed to delete PR", "error");
+          }
+        } catch (err) {
+          console.error(err);
+          showToast("Error deleting PR", "error");
+        }
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const handleArchiveFinishedPrs = async () => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Archive Finished Purchase Requests?",
+      message:
+        "This will archive all ORDERED, RECEIVED, and CANCELLED Purchase Requests from your active queue. Archived items remain safely stored in the database for comprehensive audits.",
+      action: async () => {
+        try {
+          const res = await apiFetch(
+            "/api/purchasing/clear-prs",
+            { method: "POST" },
+            user?.username,
+          );
+          if (res.ok) {
+            fetchPrs();
+            showToast(
+              "Requests successfully archived and removed from active view.",
+              "success",
+            );
+          } else {
+            showToast(res.error || "Failed to archive requests", "error");
+          }
+        } catch (err) {
+          console.error(err);
+          showToast("Error archiving requests", "error");
+        }
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const handleExportPDF = async () => {
+    if (!printRef.current) return;
+    setIsSubmitting(true);
+    try {
+      const fileName = previewPrData
+        ? `PR_${previewPrData.pr_number}.pdf`
+        : "Document.pdf";
+      await generatePDF(printRef.current, fileName);
+    } catch (error) {
+      console.error("PDF Generation failed", error);
+      showToast("Failed to generate PDF. Please try again.", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleViewPr = async (prId: string) => {
+    try {
+      const res = await apiFetch(
+        `/api/purchasing/pr/${prId}`,
+        {},
+        user?.username,
+      );
+      if (res.ok) {
+        const data = res.data;
+        setPreviewPrData({
+          id: data.id,
+          pr_number: data.pr_number,
+          project_id: data.project_id,
+          project_name: data.title || data.project_name,
+          department: data.department || "PRODUCTION",
+          category: data.category || "MAINTENANCE",
+          drawing_reference: data.drawing_reference,
+          created_at: data.created_at,
+          status: data.status,
+          authorized_doc: data.authorized_doc,
+          created_by: data.created_by || data.requested_by,
+          urgency: data.urgency,
+          expected_delivery_date: data.expected_delivery_date,
+          items: (data.items || []).map((item: any) => ({
+            item_code: item.item_code,
+            name: item.item_name,
+            dimension: item.dimension,
+            spec: item.spec,
+            shortage_qty: item.qty,
+            uom: item.uom,
+            unit_price: item.unit_price,
+            expected_delivery_date:
+              item.expected_delivery_date || data.expected_delivery_date || "",
+          })),
+        });
+        setShowPreviewModal(true);
+      } else {
+        showToast(res.error || "Failed to view PR", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Error viewing PR", "error");
+    }
+  };
+
+  const handleRevisePrSetup = async (prId: string) => {
+    try {
+      const res = await apiFetch(
+        `/api/purchasing/pr/${prId}`,
+        {},
+        user?.username,
+      );
+      if (res.ok) {
+        const data = res.data;
+        setRevisingPr(data);
+        setUrgency(data.urgency || "NORMAL");
+        if (data.department)
+          setSelectedDepartment(normalizeDepartmentToRole(data.department));
+        if (data.category) setSelectedCategory(data.category);
+        if (data.title) setRequestTitle(data.title);
+        if (data.drawing_reference) setDrawingReference(data.drawing_reference);
+        setBomRows(
+          (data.items || []).map((item: any) => ({
+            id: item.id || Math.random().toString(),
+            item_id: item.item_id,
+            item_code: item.item_code || "",
+            name: item.item_name || "",
+            dimension: item.dimension || "",
+            spec: item.spec || "",
+            qty: String(item.qty || 1),
+            uom: item.uom || "PCS",
+            unit_price: String(item.unit_price || 0),
+            free_stock: Number(item.free_stock || 0),
+            shortage_qty: Number(item.qty || 1),
+            qty_to_order: Number(item.qty || 1),
+            expected_date:
+              item.expected_delivery_date ||
+              data.expected_delivery_date ||
+              defaultExpectedDate(),
+            notFound: false,
+            is_custom: true,
+          })),
+        );
+        setShowPrModal(true);
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("Failed to fetch PR details for revision", "error");
+    }
+  };
+
+  const filteredPrs = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return prs;
+    return prs.filter(
+      (pr) =>
+        String(pr.pr_number || "").toLowerCase().includes(q) ||
+        String(pr.project_name || pr.title || "").toLowerCase().includes(q) ||
+        String(pr.department || "").toLowerCase().includes(q) ||
+        String(pr.category || "").toLowerCase().includes(q) ||
+        String(pr.po_numbers || "").toLowerCase().includes(q),
+    );
+  }, [prs, searchQuery]);
 
   return (
-    <div className="space-y-6 pb-20 bg-stone-50 min-h-screen text-stone-900 p-6 rounded-3xl">
-      {/* 1. Page Header (Standard Clean Stone ERP) */}
+    <div className="space-y-6 pb-12">
       <PageHeader
-        title={isId ? "General Requests" : "General Requests"}
-        subtitle={
-          isId
-            ? "Permintaan material internal, spesifikasi BOM & verifikasi ketersediaan stok"
-            : "Internal Material Requisitions, BOM Specifications & Warehouse Stock Validation"
-        }
-        icon={<ClipboardList className="w-5 h-5 text-amber-700" />}
-        iconBgClassName="bg-amber-50 border border-amber-200/80 text-amber-700"
+        title="General Requests"
+        subtitle="Departmental material requisitions"
+        icon={<ClipboardList className="w-5 h-5" />}
       />
 
-      {/* 2. Top Summary KPI Cards (Stone Palette) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white border border-stone-200 p-5 rounded-2xl shadow-xs">
-          <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-            {isId ? "Total Permintaan" : "Total Requisitions"}
-          </div>
-          <div className="text-2xl font-black text-stone-900 tracking-tight mt-1">{stats.total}</div>
-          <div className="text-[10px] text-stone-500 font-medium mt-1">
-            {isId ? "Permintaan aktif" : "Active requisitions"}
-          </div>
-        </div>
-
-        <div className="bg-white border border-stone-200 p-5 rounded-2xl shadow-xs">
-          <div className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">
-            {isId ? "Menunggu Review" : "Pending Review"}
-          </div>
-          <div className="text-2xl font-black text-stone-800 tracking-tight mt-1">{stats.pending_review}</div>
-          <div className="text-[10px] text-stone-500 font-medium mt-1">
-            {isId ? "Review otorisasi" : "Awaiting authorization"}
-          </div>
-        </div>
-
-        <div className="bg-white border border-stone-200 p-5 rounded-2xl shadow-xs">
-          <div className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">
-            {isId ? "Kekurangan Stok" : "Stock Shortage"}
-          </div>
-          <div className="text-2xl font-black text-stone-800 tracking-tight mt-1">{stats.urgent_open}</div>
-          <div className="text-[10px] text-stone-500 font-medium mt-1">
-            {isId ? "Butuh PO Pengadaan" : "Requires procurement PO"}
-          </div>
-        </div>
-
-        <div className="bg-white border border-stone-200 p-5 rounded-2xl shadow-xs">
-          <div className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">
-            {isId ? "PR Terbit" : "PR Issued"}
-          </div>
-          <div className="text-2xl font-black text-stone-900 tracking-tight mt-1">{stats.pr_generated}</div>
-          <div className="text-[10px] text-stone-500 font-medium mt-1">
-            {isId ? "Terhubung ke Procurement" : "Routed to purchasing"}
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Single Unified View: Form Header & Routing (Left 35%) & BOM Components Table (Right 65%) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column (35%): Header Card Utama */}
-        <div className="lg:col-span-4 bg-white border border-stone-200 rounded-2xl p-5 shadow-xs space-y-4">
-          <div className="pb-3 border-b border-stone-100 flex items-center gap-2">
-            <h3 className="text-xs font-black text-stone-900 uppercase tracking-wider">
-              {isId ? "Header & Otorisasi" : "Header & Authorization"}
-            </h3>
-            <div className="relative group">
-              <Info className="w-3.5 h-3.5 text-stone-400 hover:text-stone-600 cursor-pointer" />
-              <div className="absolute left-0 top-full mt-1.5 hidden group-hover:block z-30 w-64 p-2.5 bg-stone-900 text-stone-100 text-[10px] font-normal rounded-xl shadow-xl leading-relaxed">
-                {isId
-                  ? "Otorisasi akan diteruskan langsung ke Penanggung Jawab Departemen terkait. Setelah disetujui, siap dikonversi ke Purchase Order (PO)."
-                  : "Approvals will be routed directly to selected Department Head. Upon approval, ready for PO execution."}
-              </div>
-            </div>
-          </div>
-
-          {/* Inline Stock Validation Feedback Badge */}
-          {hasValidatedStock && (
-            <div
-              className={cn(
-                "p-2.5 rounded-xl border text-[11px] font-semibold flex items-center justify-between",
-                stockValidationSummary.shortageItems === 0
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                  : "bg-amber-50 border-amber-200 text-amber-800"
-              )}
-            >
-              <span>
-                {stockValidationSummary.shortageItems === 0
-                  ? isId
-                    ? "✓ Stok 100% Tersedia di Gudang"
-                    : "✓ 100% Stock Available in Warehouse"
-                  : isId
-                  ? `⚠️ ${stockValidationSummary.shortageItems} Item Perlu Pengadaan PO`
-                  : `⚠️ ${stockValidationSummary.shortageItems} Item Shortage`}
-              </span>
-              <button
-                type="button"
-                onClick={handleValidateStock}
-                className="text-[10px] underline font-mono cursor-pointer hover:opacity-80"
-              >
-                {isId ? "Cek Ulang" : "Re-check"}
-              </button>
-            </div>
+      {/* 2-Tab Menu Switcher */}
+      <div className="flex items-center gap-1 p-1 bg-stone-100 border border-stone-200/80 rounded-xl w-fit">
+        <button
+          type="button"
+          onClick={() => setActiveTab("FORM")}
+          className={cn(
+            "px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer",
+            activeTab === "FORM"
+              ? "bg-white text-stone-900 shadow-2xs"
+              : "text-stone-500 hover:text-stone-900",
           )}
-
-          {/* Form Header Fields */}
-          <div className="space-y-3.5 text-xs">
-            <div>
-              <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                {isId ? "Judul Permintaan Pengadaan *" : "Requisition Title *"}
-              </label>
-              <input
-                type="text"
-                required
-                placeholder={
-                  isId ? "Contoh: Penggantian Seal Hidrolik Mesin Unit 2" : "e.g. Hydraulic Cylinder Seal Replacement"
-                }
-                value={formTitle}
-                onChange={(e) => setFormTitle(e.target.value)}
-                className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                {isId ? "Kategori *" : "Category *"}
-              </label>
-              <select
-                value={formCategory}
-                onChange={(e) => setFormCategory(e.target.value)}
-                className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-              >
-                {Object.entries(CATEGORY_MAP).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {isId ? v.labelId : v.labelEn}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                {isId ? "Departemen Pemohon / Tujuan Otorisasi *" : "Department & Approval Routing *"}
-              </label>
-              <select
-                value={formDepartment}
-                onChange={(e) => setFormDepartment(e.target.value)}
-                className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-              >
-                {ERP_DEPARTMENT_OPTIONS.map((d) => (
-                  <option key={d.value} value={d.value}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[10px] text-amber-800 bg-amber-50/80 border border-amber-200/60 rounded-lg p-2 mt-1.5 font-medium leading-normal">
-                {isId
-                  ? `Otorisasi akan diteruskan langsung ke Penanggung Jawab Departemen ${getDepartmentLabel(formDepartment)}. Setelah disetujui, siap dikonversi ke Purchase Order (PO).`
-                  : `Approvals will be routed directly to ${getDepartmentLabel(formDepartment)} Head. Upon approval, ready for PO execution.`}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                  {isId ? "Prioritas" : "Urgency"}
-                </label>
-                <select
-                  value={formPriority}
-                  onChange={(e) => setFormPriority(e.target.value as any)}
-                  className="w-full text-xs p-2 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-                >
-                  <option value="NORMAL">{isId ? "Normal" : "Normal"}</option>
-                  <option value="URGENT">{isId ? "Mendesak" : "Urgent"}</option>
-                  <option value="CRITICAL">{isId ? "Kritis" : "Critical"}</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                  {isId ? "Target Tanggal" : "Target Date"}
-                </label>
-                <input
-                  type="date"
-                  value={formTargetDate}
-                  onChange={(e) => setFormTargetDate(e.target.value)}
-                  className="w-full text-xs p-2 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                {isId ? "Ref. Gambar CAD / Manual Spesifikasi" : "CAD / Drawing Reference"}
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. DWG-MTC-2026-08"
-                value={formDrawingRef}
-                onChange={(e) => setFormDrawingRef(e.target.value)}
-                className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                {isId ? "Catatan Justifikasi Teknis" : "Technical Justification"}
-              </label>
-              <textarea
-                rows={2}
-                placeholder={isId ? "Alasan kebutuhan operasional..." : "Technical justification for requisition..."}
-                value={formJustification}
-                onChange={(e) => setFormJustification(e.target.value)}
-                className="w-full text-xs p-2.5 bg-stone-50 border border-stone-200 rounded-xl font-medium focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Bottom Action Buttons (1 Line): Stock Validity (Text Only) & Submit Request (Icon Only) */}
-          <div className="pt-3 border-t border-stone-100 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleValidateStock}
-              className={cn(
-                "flex-1 py-2.5 px-3 rounded-xl border font-bold text-xs transition-all text-center cursor-pointer shadow-2xs hover:scale-[1.01] active:scale-[0.99] truncate",
-                hasValidatedStock
-                  ? stockValidationSummary.shortageItems === 0
-                    ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200"
-                    : "bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200"
-                  : "bg-stone-50 hover:bg-stone-100 text-stone-800 border-stone-200"
-              )}
-            >
-              {hasValidatedStock
-                ? stockValidationSummary.shortageItems === 0
-                  ? isId
-                    ? "Stok Gudang 100% Tersedia"
-                    : "100% Warehouse Stock Available"
-                  : isId
-                  ? `${stockValidationSummary.shortageItems} Item Memerlukan PO`
-                  : `${stockValidationSummary.shortageItems} Items Shortage`
-                : isId
-                ? "Validasi Stok Gudang"
-                : "Validate Warehouse Stock"}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSubmitAndIssuePr}
-              disabled={isSubmitting}
-              className="p-2.5 rounded-xl bg-stone-900 hover:bg-black text-white border border-stone-900 transition-all flex items-center justify-center cursor-pointer shadow-2xs hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 shrink-0"
-              title={isId ? "Terbitkan Purchase Request (PR)" : "Submit & Issue Purchase Request (PR)"}
-            >
-              {isSubmitting ? (
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
-              ) : (
-                <Send className="w-4 h-4 shrink-0" />
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Right Column (65%): Tabel BOM */}
-        <div className="lg:col-span-8 space-y-4">
-          <datalist id="warehouse-item-codes-datalist">
-            {inventoryList.map((item) => (
-              <option key={item.id} value={item.item_code}>
-                {item.name} {item.dimension ? `(${item.dimension})` : ""} {item.spec ? `[${item.spec}]` : ""}
-              </option>
-            ))}
-          </datalist>
-
-          <div className="border border-stone-200 rounded-2xl bg-white shadow-sm overflow-hidden">
-            {/* Table Header matching Engineering Material Component Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-stone-100/50 px-6 py-3.5 border-b border-stone-200 gap-3">
-              <div className="flex items-center gap-3">
-                <h3 className="text-xs font-bold text-stone-700 uppercase tracking-wider">
-                  Material Components ({formBomItems.length})
-                </h3>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleAddBomRow}
-                  variant="secondary"
-                  className="text-xs font-bold py-1.5 px-3 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200"
-                >
-                  Add Component
-                </Button>
-              </div>
-            </div>
-
-            {/* List of Component Rows */}
-            <div className="divide-y divide-stone-100">
-              {formBomItems.map((item, index) => (
-                <div key={item.id} className="px-6 py-5 hover:bg-stone-50 transition-colors group relative flex gap-4 items-start">
-                  {/* Index */}
-                  <div className="text-[10px] font-bold text-stone-400 w-8 pt-3 text-center shrink-0 font-mono">
-                    {String(index + 1).padStart(2, "0")}
-                  </div>
-
-                  <div className="flex-1 space-y-4">
-                    {/* Row 1: Primary Identification */}
-                    <div className="grid grid-cols-12 gap-4">
-                      <div className="col-span-4 space-y-1">
-                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1">
-                          Item Code
-                        </label>
-                        <input
-                          type="text"
-                          list="warehouse-item-codes-datalist"
-                          value={item.item_code || ""}
-                          onChange={(e) => handleUpdateBomItem(item.id, "item_code", e.target.value)}
-                          className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs uppercase outline-none focus:border-stone-900 focus:ring-2 focus:ring-stone-900/5 transition-all font-bold tracking-tight text-stone-950"
-                          placeholder="SKU-XXXXX"
-                        />
-                      </div>
-
-                      <div className="col-span-8 space-y-1">
-                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1">
-                          Component Name & Description
-                        </label>
-                        <input
-                          type="text"
-                          value={item.item_name}
-                          onChange={(e) => handleUpdateBomItem(item.id, "item_name", e.target.value)}
-                          className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-stone-900 focus:ring-2 focus:ring-stone-900/5 font-bold text-stone-900"
-                          placeholder="Internal System Component Name"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Row 2: Specifications & Logistics */}
-                    <div className="grid grid-cols-12 gap-3 py-2.5 px-3 bg-stone-50/50 rounded-xl border border-stone-100/50">
-                      <div className="col-span-3 space-y-1">
-                        <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
-                          Dimensions
-                        </label>
-                        <input
-                          type="text"
-                          value={item.specification || ""}
-                          onChange={(e) => handleUpdateBomItem(item.id, "specification", e.target.value)}
-                          className="w-full bg-white border border-stone-100 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-stone-400 font-medium text-stone-900"
-                          placeholder="L x W x H"
-                        />
-                      </div>
-
-                      <div className="col-span-3 space-y-1">
-                        <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
-                          Technical Spec
-                        </label>
-                        <input
-                          type="text"
-                          value={item.part_number || ""}
-                          onChange={(e) => handleUpdateBomItem(item.id, "part_number", e.target.value)}
-                          className="w-full bg-white border border-stone-100 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-stone-400 font-medium text-stone-900"
-                          placeholder="Standard Config"
-                        />
-                      </div>
-
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
-                          Quantity
-                        </label>
-                        <input
-                          type="number"
-                          value={item.qty}
-                          min="1"
-                          onChange={(e) => handleUpdateBomItem(item.id, "qty", parseFloat(e.target.value) || 0)}
-                          className="w-full bg-white border border-stone-100 rounded-lg px-2 py-1.5 text-xs text-stone-950 outline-none focus:border-stone-900 font-bold text-center"
-                        />
-                      </div>
-
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
-                          Uom
-                        </label>
-                        <input
-                          type="text"
-                          value={item.uom}
-                          onChange={(e) => handleUpdateBomItem(item.id, "uom", e.target.value.toUpperCase())}
-                          className="w-full bg-white border border-stone-100 rounded-lg px-2 py-1.5 text-xs text-stone-900 outline-none focus:border-stone-400 font-bold text-center uppercase"
-                          placeholder="PCS"
-                        />
-                      </div>
-
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1 text-center block">
-                          Stock
-                        </label>
-                        <div className="w-full border rounded-lg px-2 py-1.5 text-center text-xs font-bold font-mono bg-stone-100 border-stone-200 text-stone-700">
-                          {item.current_free_stock || 0}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Row 3: Financials & Reference */}
-                    <div className="grid grid-cols-12 gap-4 px-1">
-                      <div className="col-span-4 space-y-1 opacity-80">
-                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1">
-                          Matrix Unit Price (IDR)
-                        </label>
-                        <input
-                          type="number"
-                          value={item.estimated_unit_price}
-                          onChange={(e) =>
-                            handleUpdateBomItem(item.id, "estimated_unit_price", parseFloat(e.target.value) || 0)
-                          }
-                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs font-bold text-stone-900 outline-none focus:border-stone-900"
-                        />
-                      </div>
-
-                      <div className="col-span-8 space-y-1">
-                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1">
-                          Reference / Remarks
-                        </label>
-                        <input
-                          type="text"
-                          value={item.remarks || ""}
-                          onChange={(e) => handleUpdateBomItem(item.id, "remarks", e.target.value)}
-                          className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-stone-900 focus:ring-2 focus:ring-stone-900/5 font-bold text-stone-900 placeholder:text-stone-400"
-                          placeholder="Drawing Ref, Revision, or Note"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Delete Action Button */}
-                  <div className="w-9 shrink-0 pt-8 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveBomRow(item.id)}
-                      disabled={formBomItems.length <= 1}
-                      className="w-9 h-9 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/80 transition-all flex items-center justify-center cursor-pointer shadow-2xs hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:bg-rose-50 disabled:cursor-not-allowed"
-                      title={isId ? "Hapus Item Baris Ini" : "Delete Item Row"}
-                    >
-                      <Trash2 className="w-4 h-4 text-rose-600" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Bottom Row Button */}
-            <div className="px-5 py-3 bg-stone-50 border-t border-stone-200">
-              <button
-                type="button"
-                onClick={handleAddBomRow}
-                className="w-full flex items-center justify-center gap-2 py-2.5 text-xs uppercase bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold rounded-xl"
-              >
-                Add Component
-              </button>
-            </div>
-          </div>
-
-          {/* Footer Summary Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-stone-200 shadow-xs">
-            <div className="text-xs text-stone-500 font-medium">
-              {isId ? "Jumlah Item BOM:" : "BOM Items Listed:"}{" "}
-              <span className="font-bold text-stone-900">{formBomItems.length} items</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-stone-500 uppercase tracking-wider text-[10px]">
-                {isId ? "Total Estimasi Anggaran:" : "Total Estimated Cost:"}
-              </span>
-              <span className="text-lg font-black text-stone-900 font-mono">
-                Rp {totalEstimatedCost.toLocaleString("id-ID")}
-              </span>
-            </div>
-          </div>
-        </div>
+        >
+          Form Generation
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("ONGOING")}
+          className={cn(
+            "px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center gap-2",
+            activeTab === "ONGOING"
+              ? "bg-white text-stone-900 shadow-2xs"
+              : "text-stone-500 hover:text-stone-900",
+          )}
+        >
+          <span>Ongoing Requests</span>
+          <span className="font-mono tabular-nums text-[10px] text-stone-400">
+            ({filteredPrs.length})
+          </span>
+        </button>
       </div>
 
-          {/* Ongoing Requisitions Log */}
-          <div id="history-section" className="bg-white border border-stone-200 rounded-2xl p-6 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-black text-stone-900 tracking-tight uppercase">
-                  <span>{isId ? "Daftar Permintaan Berjalan" : "Ongoing Requisitions Log"}</span>
-                </h3>
+      {/* Tab 1: Form Generation */}
+      {activeTab === "FORM" && (
+        <section className="space-y-4">
+          <div className="bg-white border border-stone-200/80 rounded-2xl p-6 shadow-2xs space-y-6">
+            {/* Department & Metadata Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pb-6 border-b border-stone-100">
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold text-stone-400 tracking-widest uppercase">
+                  Target Department
+                </label>
+                <Select
+                  value={normalizeDepartmentToRole(selectedDepartment)}
+                  onChange={(e) => setSelectedDepartment(e.target.value)}
+                >
+                  {ERP_DEPARTMENT_OPTIONS.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
+                </Select>
               </div>
 
-              <div className="flex items-center gap-2">
-                <input
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold text-stone-400 tracking-widest uppercase">
+                  Operational Category
+                </label>
+                <Select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                >
+                  {Object.entries(CATEGORY_MAP).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v.labelEn}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold text-stone-400 tracking-widest uppercase">
+                  Requisition Title / Purpose
+                </label>
+                <Input
                   type="text"
-                  placeholder={isId ? "Cari kode / judul..." : "Search code / title..."}
-                  value={historySearch}
-                  onChange={(e) => setHistorySearch(e.target.value)}
-                  className="w-full sm:w-64 px-3 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-none"
+                  placeholder="e.g. Hydraulic Seal & Bearing Replacement"
+                  value={requestTitle}
+                  onChange={(e) => setRequestTitle(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold text-stone-400 tracking-widest uppercase">
+                  Reference Drawing / Spec Doc
+                </label>
+                <Input
+                  type="text"
+                  placeholder="e.g. DWG-MTC-2026-08 / Attached in System"
+                  value={drawingReference}
+                  onChange={(e) => setDrawingReference(e.target.value)}
                 />
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-stone-200 rounded-xl">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[10px]">
-                    <th className="p-3 pl-4">{isId ? "Kode & Permintaan" : "Requisition Code & Title"}</th>
-                    <th className="p-3">{isId ? "Kategori & Dept" : "Category & Dept"}</th>
-                    <th className="p-3">{isId ? "Pemohon" : "Requester"}</th>
-                    <th className="p-3 text-center">{isId ? "Jumlah Item" : "Items"}</th>
-                    <th className="p-3 text-right">{isId ? "Est. Biaya" : "Est Cost"}</th>
-                    <th className="p-3 text-center">{isId ? "Status" : "Status"}</th>
-                    <th className="p-3 pr-4 text-center">{isId ? "Aksi" : "Action"}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {filteredHistory.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-stone-400 text-xs italic">
-                        {isId ? "Tidak ada data permintaan." : "No requisitions found."}
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredHistory.map((req) => (
-                      <tr key={req.id} className="hover:bg-stone-50/50">
-                        <td className="p-3 pl-4">
-                          <div className="font-mono font-bold text-stone-900 text-xs">{req.request_code}</div>
-                          <div className="font-bold text-stone-800 text-xs mt-0.5 line-clamp-1">{req.title}</div>
-                        </td>
+            {/* Material Requirements List - Clean & Elegant BOM Table Structure */}
+            <GeneralRequestMaterialSection
+              bomRows={bomRows}
+              nonFgInventoryItems={nonFgInventoryItems}
+              onRefreshCatalog={handleRefreshCatalog}
+              updateRow={updateRow}
+              onOpenSearchModal={handleOpenSearchModal}
+              onRemoveMaterialRow={handleRemoveMaterialRow}
+              onAddMaterialRow={handleAddMaterialRow}
+            />
 
-                        <td className="p-3">
-                          <span className="font-bold text-stone-800">{req.category}</span>
-                          <span className="block text-[10px] text-stone-400">{getDepartmentLabel(req.department)}</span>
-                        </td>
-
-                        <td className="p-3">
-                          <div className="font-bold text-stone-800">{req.requester_name}</div>
-                          <div className="text-[10px] text-stone-400">Target: {req.target_delivery_date || "-"}</div>
-                        </td>
-
-                        <td className="p-3 text-center font-black font-mono">{req.item_count || 0}</td>
-
-                        <td className="p-3 text-right font-mono font-bold text-stone-900">
-                          Rp {req.estimated_total_cost.toLocaleString("id-ID")}
-                        </td>
-
-                        <td className="p-3 text-center">
-                          {req.status === "PR_GENERATED" ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-stone-100 text-stone-800 border border-stone-200">
-                              PR Terbit ({req.pr_number})
-                            </span>
-                          ) : req.status === "APPROVED" ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-stone-100 text-stone-800 border border-stone-200">
-                              Approved
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-stone-100 text-stone-600 border border-stone-200">
-                              Pending Review
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="p-3 pr-4 text-center">
-                          <Button
-                            onClick={() => openDetail(req.id)}
-                            variant="outline"
-                            size="xs"
-                            className="rounded-xl text-[10px] font-bold border-stone-200 bg-stone-50 hover:bg-stone-100"
-                          >
-                            Detail BOM
-                          </Button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+          {/* Footer Action Bar */}
+          <div className="flex justify-between items-center bg-stone-50/70 p-4 rounded-2xl border border-stone-200/80 gap-3 flex-wrap">
+            <div className="text-[11px] text-stone-500 font-medium">
+              Need a new SKU? Register it in{" "}
+              <strong className="text-stone-800">
+                Warehouse &gt; Inventory Master &amp; Balances
+              </strong>
+              .
+            </div>
+            <div className="flex justify-end gap-2.5 ml-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCheckStock}
+                disabled={
+                  isChecking ||
+                  bomRows.length === 0 ||
+                  bomRows.some((r) => !r.item_id || r.notFound)
+                }
+                isLoading={isChecking}
+              >
+                {isChecking ? "Processing stock..." : "Validate Stock"}
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setShowPrModal(true);
+                }}
+                disabled={
+                  bomRows.length === 0 ||
+                  !hasChecked ||
+                  bomRows.some((r) => !r.item_id || r.notFound)
+                }
+              >
+                Generate Document
+              </Button>
             </div>
           </div>
-
-      {/* 4. Detail Modal */}
-      <Modal
-        isOpen={!!selectedDetail}
-        onClose={() => setSelectedDetail(null)}
-        maxWidth="4xl"
-        title={
-          selectedDetail && (
-            <div className="flex items-center justify-between w-full pr-8">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs font-black bg-stone-100 text-stone-800 px-2.5 py-0.5 rounded-lg border border-stone-200">
-                  {selectedDetail.request_code}
-                </span>
-                <span className="font-bold text-stone-900 text-sm">{selectedDetail.title}</span>
-              </div>
-
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border bg-stone-100 text-stone-800 border-stone-200">
-                {selectedDetail.status}
-              </span>
-            </div>
-          )
-        }
-      >
-        {selectedDetail && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-4 gap-3 p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs">
-              <div>
-                <span className="text-[9px] font-bold text-stone-400 uppercase block">{isId ? "Departemen" : "Department"}</span>
-                <span className="font-bold text-stone-800">{getDepartmentLabel(selectedDetail.department)}</span>
-              </div>
-              <div>
-                <span className="text-[9px] font-bold text-stone-400 uppercase block">{isId ? "Kategori" : "Category"}</span>
-                <span className="font-bold text-stone-800">{selectedDetail.category}</span>
-              </div>
-              <div>
-                <span className="text-[9px] font-bold text-stone-400 uppercase block">{isId ? "Pemohon" : "Requester"}</span>
-                <span className="font-bold text-stone-800">{selectedDetail.requester_name}</span>
-              </div>
-              <div>
-                <span className="text-[9px] font-bold text-stone-400 uppercase block">{isId ? "Target Tanggal" : "Target Date"}</span>
-                <span className="font-bold text-stone-800">{selectedDetail.target_delivery_date || "-"}</span>
-              </div>
-            </div>
-
-            {selectedDetail.pr_number && (
-              <div className="p-3 bg-stone-100 border border-stone-200 rounded-xl flex items-center justify-between text-xs">
-                <span className="font-bold text-stone-900">
-                  {isId ? "Purchase Request Terbit:" : "Linked Purchase Request:"}{" "}
-                  <span className="font-mono font-black">{selectedDetail.pr_number}</span>
-                </span>
-                <Link to="/procurement" className="text-stone-800 font-bold hover:underline">
-                  <span>{isId ? "Buka Modul Procurement" : "Go to Procurement"}</span>
-                </Link>
-              </div>
-            )}
-
-            <div className="overflow-x-auto border border-stone-200 rounded-xl">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[10px]">
-                    <th className="p-2.5 pl-4">#</th>
-                    <th className="p-2.5">{isId ? "Nama Part / Material" : "Item Name"}</th>
-                    <th className="p-2.5">{isId ? "Spesifikasi" : "Specification"}</th>
-                    <th className="p-2.5 text-center">{isId ? "Qty" : "Qty"}</th>
-                    <th className="p-2.5 text-right">{isId ? "Harga Satuan" : "Est Price"}</th>
-                    <th className="p-2.5 pr-4 text-right">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {selectedDetail.items?.map((it, idx) => (
-                    <tr key={it.id}>
-                      <td className="p-2.5 pl-4 font-mono text-stone-400">{idx + 1}</td>
-                      <td className="p-2.5 font-bold text-stone-900">{it.item_name}</td>
-                      <td className="p-2.5 text-stone-600">{it.specification || "-"}</td>
-                      <td className="p-2.5 text-center font-black font-mono">
-                        {it.qty} {it.uom}
-                      </td>
-                      <td className="p-2.5 text-right font-mono">Rp {(it.estimated_unit_price || 0).toLocaleString("id-ID")}</td>
-                      <td className="p-2.5 pr-4 text-right font-black font-mono text-stone-900">
-                        Rp {((it.qty || 0) * (it.estimated_unit_price || 0)).toLocaleString("id-ID")}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-stone-100 text-xs">
-              <span className="text-stone-500 font-bold">{isId ? "Total Estimasi Biaya:" : "Total Est Cost:"}</span>
-              <span className="text-base font-black text-stone-900 font-mono">
-                Rp {selectedDetail.estimated_total_cost.toLocaleString("id-ID")}
-              </span>
-            </div>
           </div>
-        )}
-      </Modal>
+        </section>
+      )}
+
+      {/* Tab 2: Ongoing Requests */}
+      {activeTab === "ONGOING" && (
+        <OngoingRequestsSection
+          user={user}
+          isLoading={isLoading}
+          filteredPrs={filteredPrs}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          fetchPrs={fetchPrs}
+          handleArchiveFinishedPrs={handleArchiveFinishedPrs}
+          handleViewPr={handleViewPr}
+          shareToForum={shareToForum}
+          setSelectedPrToAuth={setSelectedPrToAuth}
+          setShowAuthorizeModal={setShowAuthorizeModal}
+          setShowReviseModal={setShowReviseModal}
+          handleRevisePrSetup={handleRevisePrSetup}
+          handleCancelPr={handleCancelPr}
+          handleDeletePr={handleDeletePr}
+        />
+      )}
+
+      <GeneralRequestModals
+        printRef={printRef}
+        searchModal={searchModal}
+        setSearchModal={setSearchModal}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        isSearching={isSearching}
+        searchResults={searchResults}
+        selectItemFromSearch={selectItemFromSearch}
+        showAuthorizeModal={showAuthorizeModal}
+        setShowAuthorizeModal={setShowAuthorizeModal}
+        selectedPrToAuth={selectedPrToAuth}
+        isSubmitting={isSubmitting}
+        handleAuthorizePr={handleAuthorizePr}
+        showReviseModal={showReviseModal}
+        setShowReviseModal={setShowReviseModal}
+        handleRevisePr={handleRevisePr}
+        showPreviewModal={showPreviewModal}
+        setShowPreviewModal={setShowPreviewModal}
+        previewPrData={previewPrData}
+        handleExportPDF={handleExportPDF}
+        showPrModal={showPrModal}
+        setShowPrModal={setShowPrModal}
+        revisingPr={revisingPr}
+        setRevisingPr={setRevisingPr}
+        selectedDepartment={selectedDepartment}
+        urgency={urgency}
+        setUrgency={setUrgency}
+        bomRows={bomRows}
+        setBomRows={setBomRows}
+        handleSubmitPr={handleSubmitPr}
+        confirmModal={confirmModal}
+        setConfirmModal={setConfirmModal}
+      />
     </div>
   );
 }

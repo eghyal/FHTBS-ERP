@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { apiFetch } from "@/utils/api";
 import { formatIDR } from "@/lib/utils";
+import {
+  getNextProjectSequence,
+  generateSmartProjectId,
+} from "@/utils/autoCoding";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/shared/ConfirmModal";
-import { FolderKanban, Trash2, ShieldCheck, AlertCircle } from "lucide-react";
+import { FolderKanban, RotateCcw, ShieldCheck, AlertCircle } from "lucide-react";
 import { AuthorizeDocModal } from "@/components/erp/AuthorizeDocModal";
 
 interface CreateProjectModalProps {
@@ -15,6 +19,8 @@ interface CreateProjectModalProps {
   onClose: () => void;
   onSuccess: (ntpData?: any, projectData?: any) => void;
   initialQuotationId?: string;
+  initialCtpDate?: string;
+  initialNetMtoQty?: number;
 }
 
 export function CreateProjectModal({
@@ -22,6 +28,8 @@ export function CreateProjectModal({
   onClose,
   onSuccess,
   initialQuotationId,
+  initialCtpDate,
+  initialNetMtoQty,
 }: CreateProjectModalProps) {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -35,6 +43,7 @@ export function CreateProjectModal({
   const [showAuthorizeModal, setShowAuthorizeModal] = useState(false);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [pendingQuoWarning, setPendingQuoWarning] = useState<any>(null);
+  const [atpCtpInfo, setAtpCtpInfo] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     id: "",
@@ -64,25 +73,56 @@ export function CreateProjectModal({
     }>
   >([{ id: "", name: "", remarks: "" }]);
 
+  const currentYear = new Date().getFullYear();
+  const nextProjectSeq = useMemo(
+    () => getNextProjectSequence(projects, currentYear),
+    [projects, currentYear],
+  );
+
   useEffect(() => {
     if (isOpen) {
-      // Generate initial random Project ID
-      const generatedId =
-        "PRJ-" +
-        new Date().getFullYear().toString().slice(-2) +
-        "-" +
-        Math.random().toString(36).substring(2, 7).toUpperCase();
-
-      fetchData(generatedId);
+      fetchData();
+    } else {
+      setAtpCtpInfo(null);
     }
   }, [isOpen]);
 
-  const fetchData = async (generatedId: string) => {
+  useEffect(() => {
+    if (!isOpen || !formData.quotation_id) {
+      setAtpCtpInfo(null);
+      return;
+    }
+    let active = true;
+    apiFetch(`/api/quotations/${formData.quotation_id}/atp-ctp`, {}, user?.username)
+      .then((res) => {
+        if (active && res.ok && res.data) {
+          setAtpCtpInfo(res.data);
+          if (initialCtpDate) {
+            setFormData((prev) => ({
+              ...prev,
+              due_date: initialCtpDate,
+              qty: initialNetMtoQty && initialNetMtoQty > 0 ? initialNetMtoQty : prev.qty,
+            }));
+          } else if (res.data.ctp_promise_date) {
+            setFormData((prev) => ({
+              ...prev,
+              due_date: res.data.ctp_promise_date,
+            }));
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isOpen, formData.quotation_id, initialCtpDate, initialNetMtoQty]);
+
+  const fetchData = async () => {
     setIsLoading(true);
     try {
       const [quoRes, prjRes] = await Promise.all([
         apiFetch("/api/quotations", {}, user?.username),
-        apiFetch("/api/projects", {}, user?.username),
+        apiFetch("/api/projects?archived=all", {}, user?.username),
       ]);
 
       let quoList = [];
@@ -93,11 +133,16 @@ export function CreateProjectModal({
         setQuotations(quoList);
       }
 
+      let prjList: any[] = [];
       if (prjRes.ok) {
-        setProjects(
-          Array.isArray(prjRes.data) ? prjRes.data : prjRes.data?.data || [],
-        );
+        prjList = Array.isArray(prjRes.data)
+          ? prjRes.data
+          : prjRes.data?.data || [];
+        setProjects(prjList);
       }
+
+      const calculatedSeq = getNextProjectSequence(prjList, currentYear);
+      const generatedId = generateSmartProjectId(calculatedSeq, currentYear);
 
       // Handle default/initial quotation selection with strict authorization check
       const targetQuoId = initialQuotationId || "";
@@ -112,7 +157,7 @@ export function CreateProjectModal({
 
       if (initialQuo) {
         setPendingQuoWarning(null);
-        applyQuotationToForm(initialQuo, generatedId);
+        applyQuotationToForm(initialQuo, generatedId, calculatedSeq);
       } else if (pendingInitialQuo) {
         // If quotation exists but is not yet authorized, provide clear warning & direct authorization
         setPendingQuoWarning(pendingInitialQuo);
@@ -125,7 +170,7 @@ export function CreateProjectModal({
         }));
       } else if (authorizedQuos.length > 0 && !targetQuoId) {
         setPendingQuoWarning(null);
-        applyQuotationToForm(authorizedQuos[0], generatedId);
+        applyQuotationToForm(authorizedQuos[0], generatedId, calculatedSeq);
       } else {
         setPendingQuoWarning(null);
         setFormData((prev) => ({
@@ -136,7 +181,7 @@ export function CreateProjectModal({
           name: "",
         }));
         setBulkMode(false);
-        setBulkProjects([{ id: "", name: "", remarks: "" }]);
+        setBulkProjects([{ id: generatedId, name: "", remarks: "" }]);
       }
     } catch (err) {
       console.error(err);
@@ -146,12 +191,18 @@ export function CreateProjectModal({
     }
   };
 
-  const applyQuotationToForm = (selectedQuo: any, currentProjId?: string) => {
+  const applyQuotationToForm = (
+    selectedQuo: any,
+    currentProjId?: string,
+    startSeq?: number,
+  ) => {
     const quoId = selectedQuo.id;
     const qItems = selectedQuo.items || [];
     const isBulk = qItems.length > 1;
 
-    const baseProjId = currentProjId || formData.id || "PRJ-" + Math.random().toString(36).substring(2, 7).toUpperCase();
+    const seqToUse = startSeq ?? nextProjectSeq;
+    const baseProjId =
+      currentProjId || generateSmartProjectId(seqToUse, currentYear);
 
     if (isBulk) {
       setFormData((prev) => ({
@@ -164,7 +215,7 @@ export function CreateProjectModal({
       setBulkMode(true);
       setBulkProjects(
         qItems.map((it: any, i: number) => ({
-          id: `${baseProjId}-${i + 1}`,
+          id: generateSmartProjectId(seqToUse + i, currentYear),
           name: it.title || `${selectedQuo.title} - Item ${i + 1}`,
           remarks: `Derived from quotation item: ${it.title}`,
           qty: Number(it.qty) > 0 ? Number(it.qty) : 1,
@@ -196,7 +247,7 @@ export function CreateProjectModal({
       }));
       setBulkProjects([
         {
-          id: "",
+          id: baseProjId,
           name: "",
           remarks: "",
           qty: singleQty,
@@ -221,7 +272,7 @@ export function CreateProjectModal({
       );
 
       if (res.ok) {
-        showToast("Quotation berhasil diotorisasi!", "success");
+        showToast("Quotation authorized successfully!", "success");
         setShowAuthorizeModal(false);
         setPendingQuoWarning(null);
         // Refresh quotations list
@@ -238,10 +289,10 @@ export function CreateProjectModal({
         }
         setSelectedQuoToAuth(null);
       } else {
-        showToast(res.error || "Gagal mengotorisasi quotation", "error");
+        showToast(res.error || "Failed to authorize quotation", "error");
       }
     } catch (err: any) {
-      showToast("Kesalahan jaringan saat otorisasi quotation", "error");
+      showToast("Network error while authorizing quotation", "error");
     } finally {
       setIsAuthorizing(false);
     }
@@ -332,13 +383,18 @@ export function CreateProjectModal({
         onClose={onClose}
         maxWidth="4xl"
         title={
-          <div>
-            <h3 className="text-xl font-bold text-stone-900 tracking-tighter uppercase leading-none">
-              Initialize Project
-            </h3>
-            <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mt-1.5">
-              Sales Quotation to Project Conversion
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center justify-center text-amber-700 shrink-0 shadow-2xs">
+              <FolderKanban className="w-5 h-5 text-amber-700" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-stone-900 tracking-tighter uppercase leading-none">
+                Initialize Project
+              </h3>
+              <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mt-1.5">
+                Sales Quotation to Project Conversion
+              </p>
+            </div>
           </div>
         }
         contentClassName="p-0 flex flex-col h-[90vh]"
@@ -353,22 +409,18 @@ export function CreateProjectModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest ml-1">
-                  Project ID *
+                  Project ID (Auto-Generated by System)
                 </label>
                 <div className="relative group">
-                  <FolderKanban className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 group-focus-within:text-stone-900 transition-colors" />
+                  <FolderKanban className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 transition-colors" />
                   <input
                     type="text"
-                    required
-                    value={formData.id}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        id: e.target.value.toUpperCase(),
-                      })
+                    readOnly
+                    value={
+                      formData.id ||
+                      generateSmartProjectId(nextProjectSeq, currentYear)
                     }
-                    placeholder="PRJ-26-XXXX"
-                    className="w-full pl-11 pr-4 py-4 bg-white border border-stone-200 rounded-2xl text-sm font-bold text-stone-900 focus:border-stone-900 focus:ring-4 focus:ring-stone-100 outline-none transition-all shadow-sm"
+                    className="w-full pl-11 pr-4 h-[52px] bg-stone-100 border border-stone-200 rounded-2xl text-sm font-mono font-bold text-stone-700 outline-none cursor-not-allowed select-all shadow-none"
                   />
                 </div>
               </div>
@@ -380,10 +432,10 @@ export function CreateProjectModal({
                       <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                       <div>
                         <div className="text-xs font-black text-amber-900 uppercase tracking-wider">
-                          Quotation Belum Terotorisasi (Status: PENDING)
+                          Quotation Not Yet Authorized (Status: PENDING)
                         </div>
                         <p className="text-xs text-amber-800 font-medium mt-0.5">
-                          Quotation <strong>[{pendingQuoWarning.quotation_number}] {pendingQuoWarning.title}</strong> belum diotorisasi. Konversi ke Proyek & SPK mewajibkan Quotation yang berstatus <strong>APPROVED / AUTHORIZED</strong>.
+                          Quotation <strong>[{pendingQuoWarning.quotation_number}] {pendingQuoWarning.title}</strong> is not yet authorized. Conversion to a Project & Work Order requires an <strong>APPROVED / AUTHORIZED</strong> Quotation.
                         </p>
                       </div>
                     </div>
@@ -398,7 +450,7 @@ export function CreateProjectModal({
                       className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm"
                     >
                       <ShieldCheck className="w-4 h-4" />
-                      Otorisasi Sekarang
+                      Authorize Now
                     </Button>
                   </div>
                 )}
@@ -406,12 +458,12 @@ export function CreateProjectModal({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between ml-1">
                     <label className="text-[10px] font-bold text-stone-600 uppercase tracking-widest">
-                      Referenced Sales Quotation (Quotation Terotorisasi) *
+                      Referenced Sales Quotation (Authorized Quotation) *
                     </label>
                     {quotations.filter((q) => q.status === "APPROVED" || q.status === "AUTHORIZED").length > 0 && (
                       <span className="text-[10px] text-emerald-700 font-black flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                        {quotations.filter((q) => q.status === "APPROVED" || q.status === "AUTHORIZED").length} Quotation Terotorisasi Tersedia
+                        {quotations.filter((q) => q.status === "APPROVED" || q.status === "AUTHORIZED").length} Authorized Quotations Available
                       </span>
                     )}
                   </div>
@@ -446,11 +498,11 @@ export function CreateProjectModal({
                         setBulkProjects([{ id: "", name: "", remarks: "" }]);
                       }
                     }}
-                    className="w-full px-5 py-4 bg-white border border-stone-200 rounded-2xl text-sm font-bold text-stone-900 focus:border-stone-900 focus:ring-4 focus:ring-stone-100 outline-none transition-all shadow-sm cursor-pointer"
+                    className="w-full px-5 h-[52px] bg-white border border-stone-200 rounded-2xl text-sm font-bold text-stone-900 focus:border-stone-900 focus:ring-4 focus:ring-stone-100 outline-none transition-all shadow-sm cursor-pointer"
                   >
-                    <option value="">-- Pilih Quotation Terotorisasi (Select Authorized Quotation) --</option>
+                    <option value="">-- Select Authorized Quotation --</option>
                     {quotations.filter((q) => q.status === "APPROVED" || q.status === "AUTHORIZED").length > 0 && (
-                      <optgroup label="Quotation Terotorisasi (Approved / Authorized)">
+                      <optgroup label="Authorized Quotations (Approved / Authorized)">
                         {quotations
                           .filter((q) => q.status === "APPROVED" || q.status === "AUTHORIZED")
                           .map((q) => (
@@ -461,12 +513,12 @@ export function CreateProjectModal({
                       </optgroup>
                     )}
                     {quotations.filter((q) => q.status === "PENDING").length > 0 && (
-                      <optgroup label="Belum Terotorisasi (Perlu Otorisasi Terlebih Dahulu)">
+                      <optgroup label="Pending Authorization (Requires Authorization First)">
                         {quotations
                           .filter((q) => q.status === "PENDING")
                           .map((q) => (
                             <option key={q.id} value={q.id}>
-                              [{q.quotation_number}] {q.title} - {q.customer_name} (PENDING - Butuh Otorisasi)
+                              [{q.quotation_number}] {q.title} - {q.customer_name} (PENDING - Needs Authorization)
                             </option>
                           ))}
                       </optgroup>
@@ -475,7 +527,7 @@ export function CreateProjectModal({
 
                   {quotations.filter((q) => q.status === "APPROVED" || q.status === "AUTHORIZED").length === 0 && (
                     <div className="p-3 bg-stone-100 border border-stone-200 rounded-xl text-xs text-stone-600 flex items-center justify-between gap-2 mt-2">
-                      <span>Belum ada Quotation yang berstatus Terotorisasi (APPROVED).</span>
+                      <span>No Authorized (APPROVED) Quotations found yet.</span>
                       {quotations.filter((q) => q.status === "PENDING").length > 0 && (
                         <button
                           type="button"
@@ -488,15 +540,70 @@ export function CreateProjectModal({
                           }}
                           className="text-xs font-bold text-blue-700 hover:text-blue-900 underline shrink-0"
                         >
-                          Otorisasi Quotation ({quotations.filter((q) => q.status === "PENDING").length} Pending)
+                          Authorize Quotation ({quotations.filter((q) => q.status === "PENDING").length} Pending)
                         </button>
                       )}
                     </div>
                   )}
 
                   <p className="text-[9px] text-blue-700 font-bold mt-1.5 uppercase tracking-wider ml-1">
-                    Memilih Quotation terotorisasi secara otomatis mengisi data pelanggan, subjek proyek, kuantitas resmi, dan rincian item SPK.
+                    Selecting an authorized Quotation automatically populates customer details, project title, official quantity, and work order line items.
                   </p>
+
+                  {atpCtpInfo && (
+                    <div className="mt-3 p-3.5 rounded-xl bg-white border border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-0.5 text-xs">
+                        <div className="flex items-center gap-2 font-semibold text-stone-800">
+                          <span>ATP/CTP Capacity Engine</span>
+                          <span aria-hidden="true">·</span>
+                          <span className="font-mono font-bold text-indigo-700">
+                            Mode: {atpCtpInfo.recommended_mode}
+                          </span>
+                          <span aria-hidden="true">·</span>
+                          <span className="font-mono text-stone-600 tabular-nums">
+                            FF: {atpCtpInfo.capacity_telemetry?.factory_factor_wma ?? 85}%
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-stone-600 font-mono tabular-nums">
+                          ATP Free Stock: {atpCtpInfo.summary?.total_atp_qty ?? 0} · Net MTO Required:{" "}
+                          <strong>{atpCtpInfo.summary?.total_net_mto_qty ?? 0}</strong> · Est. CTP Date:{" "}
+                          <strong className="text-emerald-700">{atpCtpInfo.ctp_promise_date}</strong>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            due_date: atpCtpInfo.ctp_promise_date || prev.due_date,
+                            qty:
+                              atpCtpInfo.summary?.total_net_mto_qty > 0
+                                ? atpCtpInfo.summary.total_net_mto_qty
+                                : prev.qty,
+                          }));
+                          if (bulkMode && Array.isArray(atpCtpInfo.items)) {
+                            setBulkProjects((prevBulk) =>
+                              prevBulk.map((bp, i) => {
+                                const match = atpCtpInfo.items[i];
+                                if (!match) return bp;
+                                return {
+                                  ...bp,
+                                  qty: match.net_mto_qty > 0 ? match.net_mto_qty : bp.qty,
+                                };
+                              })
+                            );
+                          }
+                          showToast(
+                            `Applied CTP Promise Date (${atpCtpInfo.ctp_promise_date}) & Net MTO Qty`,
+                            "success"
+                          );
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-[11px] font-bold shrink-0 cursor-pointer transition-colors"
+                      >
+                        Apply CTP Date &amp; Net MTO
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -510,7 +617,7 @@ export function CreateProjectModal({
                   type="text"
                   value={formData.name}
                   placeholder="Inherited from selected Quotation"
-                  className="w-full px-4 py-4 bg-stone-100 border border-stone-200 rounded-2xl text-sm font-bold text-stone-500 outline-none cursor-not-allowed shadow-none"
+                  className="w-full px-5 h-[52px] bg-stone-100 border border-stone-200 rounded-2xl text-sm font-bold text-stone-500 outline-none cursor-not-allowed shadow-none"
                 />
               </div>
 
@@ -524,7 +631,7 @@ export function CreateProjectModal({
                   type="text"
                   value={formData.customer || ""}
                   placeholder="Inherited from selected Quotation"
-                  className="w-full px-5 py-4 bg-stone-100 border border-stone-250 rounded-2xl text-sm font-bold text-stone-500 outline-none cursor-not-allowed shadow-none"
+                  className="w-full px-5 h-[52px] bg-stone-100 border border-stone-250 rounded-2xl text-sm font-bold text-stone-500 outline-none cursor-not-allowed shadow-none"
                 />
               </div>
 
@@ -540,7 +647,7 @@ export function CreateProjectModal({
                       parent_project_id: e.target.value,
                     })
                   }
-                  className="w-full px-5 py-4 bg-white border border-stone-200 rounded-2xl text-sm font-bold text-stone-900 focus:border-stone-900 outline-none transition-all shadow-sm cursor-pointer"
+                  className="w-full px-5 !h-[52px] bg-white border border-stone-200 rounded-2xl text-sm font-bold text-stone-900 focus:border-stone-900 outline-none transition-all shadow-sm cursor-pointer"
                 >
                   <option value="">No Parent Reference</option>
                   {projects.map((p) => (
@@ -563,7 +670,7 @@ export function CreateProjectModal({
                     onChange={(e) =>
                       setFormData({ ...formData, due_date: e.target.value })
                     }
-                    className="w-full px-5 py-4 bg-white border border-stone-200 rounded-2xl text-xs font-bold text-stone-900 focus:border-stone-900 outline-none transition-all shadow-sm"
+                    className="w-full px-5 h-[52px] bg-white border border-stone-200 rounded-2xl text-xs font-bold text-stone-900 focus:border-stone-900 outline-none transition-all shadow-sm"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -578,7 +685,7 @@ export function CreateProjectModal({
                         urgency: e.target.value as any,
                       })
                     }
-                    className="w-full px-5 py-4 bg-white border border-stone-200 rounded-2xl text-xs font-bold text-stone-900 focus:border-stone-900 outline-none transition-all shadow-sm cursor-pointer"
+                    className="w-full px-5 !h-[52px] bg-white border border-stone-200 rounded-2xl text-xs font-bold text-stone-900 focus:border-stone-900 outline-none transition-all shadow-sm cursor-pointer"
                   >
                     <option value="NORMAL">Normal Priority</option>
                     <option value="URGENT">Urgent Priority</option>
@@ -614,17 +721,19 @@ export function CreateProjectModal({
                       >
                         <div className="w-full md:w-1/4">
                           <label className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">
-                            Project ID
+                            Project ID (By System)
                           </label>
                           <input
                             type="text"
-                            value={p.id}
-                            onChange={(e) => {
-                              const nb = [...bulkProjects];
-                              nb[idx].id = e.target.value;
-                              setBulkProjects(nb);
-                            }}
-                            className="w-full text-xs font-bold border-b border-stone-200 focus:border-stone-900 outline-none py-1 bg-transparent"
+                            readOnly
+                            value={
+                              p.id ||
+                              generateSmartProjectId(
+                                nextProjectSeq + idx,
+                                currentYear,
+                              )
+                            }
+                            className="w-full text-xs font-mono font-bold border-b border-stone-200 text-stone-600 outline-none py-1 bg-transparent cursor-not-allowed select-all"
                           />
                         </div>
                         <div className="w-full md:w-1/3">
@@ -696,9 +805,9 @@ export function CreateProjectModal({
                 setBulkMode(false);
                 setBulkProjects([{ id: "", name: "", remarks: "" }]);
               }}
-              className="px-4 py-2 text-stone-400 hover:text-rose-600 rounded-xl transition-all font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 group"
+              className="px-4 py-2 text-stone-400 hover:text-stone-700 rounded-xl transition-all font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 group cursor-pointer"
             >
-              <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />{" "}
+              <RotateCcw className="w-4 h-4 group-hover:rotate-180 transition-transform" />{" "}
               Reset Form
             </button>
             <div className="flex gap-3">

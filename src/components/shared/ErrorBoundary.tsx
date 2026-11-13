@@ -62,8 +62,14 @@ export class ErrorBoundary extends Component<Props, State> {
             </span>
           </p>
           <button
-            onClick={() => window.location.reload()}
-            className="flex items-center gap-2 px-6 py-2.5 bg-stone-800 text-white font-semibold rounded-xl hover:bg-stone-900 transition-colors shadow-sm"
+            onClick={() => {
+              try {
+                sessionStorage.removeItem("chunk_failed_reload_" + window.location.pathname);
+                sessionStorage.removeItem("chunk_lazy_retry_" + window.location.pathname);
+              } catch {}
+              window.location.reload();
+            }}
+            className="flex items-center gap-2 px-6 py-2.5 bg-stone-900 text-white font-semibold rounded-lg hover:bg-stone-800 transition-colors shadow-sm cursor-pointer"
           >
             <RefreshCw className="w-4 h-4" />
             Reload Application

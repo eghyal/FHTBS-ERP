@@ -175,7 +175,7 @@ export function ProductDetailModal({
                 <div>
                   <div className="flex items-center gap-1.5 mb-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
                     <ImageIcon className="w-3 h-3 text-stone-400" />
-                    <span>Galeri Foto ({allImages.length} Refrensi)</span>
+                    <span>Photo Gallery ({allImages.length})</span>
                   </div>
                   <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
                     {allImages.map((imgUrl, idx) => (
@@ -205,7 +205,7 @@ export function ProductDetailModal({
             {/* Quality Note */}
             <div className="mt-4 pt-3 border-t border-stone-200/60 hidden md:flex items-center gap-2 text-[11px] text-stone-500">
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Foto asli produksi dan fasilitas pabrik CV Batu Emas</span>
+              <span>Authentic production photos from CV Batu Emas</span>
             </div>
           </div>
 
@@ -243,14 +243,14 @@ export function ProductDetailModal({
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         <span className="text-xl sm:text-2xl font-black text-amber-900 font-sans tracking-tight">
-                          Made to Order
+                          Custom Order
                         </span>
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
-                          Pesan Khusus
+                          Made to Order
                         </span>
                       </div>
                       <span className="text-[11px] text-stone-500 font-medium">
-                        Produksi khusus pabrik. Hubungi Tim Sales untuk penawaran harga &amp; spesifikasi proyek
+                        Contact our sales team for project quotations and specifications
                       </span>
                     </div>
                   )}
@@ -260,7 +260,7 @@ export function ProductDetailModal({
                         {formatIDR(product.unit_price)}
                       </span>
                       <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                        Hemat {Math.round(((product.unit_price - product.promo_price) / product.unit_price) * 100)}%
+                        Save {Math.round(((product.unit_price - product.promo_price) / product.unit_price) * 100)}%
                       </span>
                     </div>
                   )}
@@ -268,7 +268,7 @@ export function ProductDetailModal({
 
                 <div className="text-right">
                   <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
-                    Berat Satuan
+                    Unit Weight
                   </span>
                   <span className="text-xs font-mono font-bold text-stone-700">
                     {product.weight_kg || 2.5} kg / {product.uom}
@@ -280,18 +280,18 @@ export function ProductDetailModal({
               <div className="mt-4 space-y-2 text-xs">
                 {product.dimension && (
                   <div className="flex justify-between py-1 border-b border-stone-100">
-                    <span className="text-stone-500 font-medium">Dimensi / Ukuran</span>
+                    <span className="text-stone-500 font-medium">Dimensions</span>
                     <span className="font-bold text-stone-800">{product.dimension}</span>
                   </div>
                 )}
                 {product.spec && (
                   <div className="flex justify-between py-1 border-b border-stone-100">
-                    <span className="text-stone-500 font-medium">Spesifikasi</span>
+                    <span className="text-stone-500 font-medium">Specification</span>
                     <span className="font-bold text-stone-800">{product.spec}</span>
                   </div>
                 )}
                 <div className="flex justify-between py-1 border-b border-stone-100">
-                  <span className="text-stone-500 font-medium">Status Ketersediaan</span>
+                  <span className="text-stone-500 font-medium">Availability</span>
                   <span
                     className={`font-bold ${
                       isB2B
@@ -302,10 +302,10 @@ export function ProductDetailModal({
                     }`}
                   >
                     {isB2B
-                      ? "Produksi Cepat Pabrik"
+                      ? "Made to Order"
                       : product.available_qty > 0
-                      ? "Ready Stock"
-                      : "Back in Stock"}
+                      ? "In Stock"
+                      : "In Production"}
                   </span>
                 </div>
               </div>
@@ -361,7 +361,7 @@ export function ProductDetailModal({
 
                 <div className="text-right">
                   <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
-                    {isB2B ? "Kuantitas Proyek" : `Total (${totalWeight.toLocaleString()} kg)`}
+                    {isB2B ? "Project Quantity" : `Total (${totalWeight.toLocaleString()} kg)`}
                   </span>
                   <span className={`text-lg sm:text-xl font-black font-mono ${isB2B ? "text-amber-900 font-sans" : "text-stone-900"}`}>
                     {isB2B ? "Made to Order" : formatIDR(totalPrice)}
@@ -383,7 +383,7 @@ export function ProductDetailModal({
                   className="w-full py-3 px-3.5 rounded-xl bg-amber-800 hover:bg-amber-900 active:bg-amber-950 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer active:scale-98"
                 >
                   <ShoppingBag className="w-4 h-4 text-amber-200" />
-                  <span>Minta Penawaran / Hubungi Kontak Sales</span>
+                  <span>Request Quotation</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               ) : (
@@ -393,14 +393,14 @@ export function ProductDetailModal({
                     className="py-3 px-3.5 rounded-xl border border-stone-300 hover:border-stone-400 hover:bg-stone-50 text-stone-800 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98 shadow-xs"
                   >
                     <ShoppingBag className="w-3.5 h-3.5 text-stone-600" />
-                    <span>Tambah Keranjang</span>
+                    <span>Add to Cart</span>
                   </button>
 
                   <button
                     onClick={handleBuyNow}
                     className="py-3 px-3.5 rounded-xl bg-[#b02524] hover:bg-[#961f1e] active:bg-[#7e1a19] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-98"
                   >
-                    <span>Beli Sekarang</span>
+                    <span>Buy Now</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -410,11 +410,11 @@ export function ProductDetailModal({
               <div className="mt-3.5 pt-2.5 flex items-center justify-between text-[11px] text-stone-500 border-t border-stone-100">
                 <span className="flex items-center gap-1 font-medium">
                   <Truck className="w-3.5 h-3.5 text-stone-400" />
-                  Kirim armada / ambil di pabrik
+                  Fleet delivery or factory pickup
                 </span>
                 <span className="flex items-center gap-1 font-medium">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  Standar Mutu SNI
+                  SNI Quality Standard
                 </span>
               </div>
             </div>

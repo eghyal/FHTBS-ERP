@@ -45,15 +45,15 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
   };
 
   return (
-    <div className={`flex flex-col gap-1 w-full ${className}`}>
+    <div className={`flex flex-col gap-1.5 w-full ${className}`}>
       {label && (
-        <label className="text-[10px] font-bold uppercase tracking-wider text-stone-600">
+        <label className="text-[10px] font-bold uppercase tracking-wider text-stone-600 select-none">
           {label}
         </label>
       )}
       <div className="relative flex items-center w-full">
         {prefix && (
-          <span className="absolute left-3 text-stone-400 font-mono text-xs font-bold pointer-events-none select-none">
+          <span className="absolute left-3 text-stone-400 font-mono text-[11px] font-bold pointer-events-none select-none">
             {prefix}
           </span>
         )}
@@ -64,15 +64,15 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
           value={displayValue}
           onChange={handleChange}
           placeholder={placeholder}
-          className={`w-full ${prefix ? "pl-9" : "px-3"} pr-3 py-2 bg-stone-50 border rounded-xl text-xs font-mono font-bold text-stone-900 outline-none transition-all disabled:opacity-50 ${
+          className={`input-elegant w-full h-9 ${prefix ? "!pl-9" : "px-3.5"} pr-3.5 py-1.5 bg-white border rounded-xl text-xs font-mono tabular-nums font-bold text-stone-900 outline-none transition-all disabled:opacity-50 ${
             error
-              ? "border-rose-400 focus:border-rose-600 focus:ring-1 focus:ring-rose-500/20"
-              : "border-stone-200 focus:bg-white focus:border-stone-900 focus:ring-1 focus:ring-stone-900/10"
+              ? "border-rose-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/10"
+              : "border-stone-200 focus:bg-white focus:border-stone-500"
           }`}
         />
       </div>
-      {error && <p className="text-[10px] font-medium text-rose-600">{error}</p>}
-      {!error && helperText && <p className="text-[10px] text-stone-500">{helperText}</p>}
+      {error && <p className="text-[10.5px] font-medium text-rose-600">{error}</p>}
+      {!error && helperText && <p className="text-[10.5px] text-stone-400 font-medium">{helperText}</p>}
     </div>
   );
 };

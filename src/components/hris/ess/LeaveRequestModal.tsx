@@ -1,5 +1,8 @@
 import React from "react";
 import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { CalendarDays, ShieldCheck } from "lucide-react";
 
 interface LeaveRequestModalProps {
@@ -34,10 +37,11 @@ export const LeaveRequestModal: React.FC<LeaveRequestModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       maxWidth="lg"
-      contentClassName="p-6 space-y-4"
+      uiTheme="hris"
+      contentClassName="p-5 sm:p-6 space-y-4"
       title={
         <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-[#b02524] text-white rounded-lg">
+          <div className="p-2 bg-stone-900 text-white rounded-lg">
             <CalendarDays className="w-4 h-4" />
           </div>
           <h3 className="font-black text-stone-900 text-sm uppercase tracking-wider">
@@ -47,81 +51,64 @@ export const LeaveRequestModal: React.FC<LeaveRequestModalProps> = ({
       }
     >
       <form onSubmit={handleRequestLeave} className="space-y-4 font-bold">
-        <div className="space-y-1.5 flex flex-col">
-          <label className="text-[10px] font-black text-stone-500 uppercase tracking-widest block ml-1">
-            Leave Category
-          </label>
-          <select
-            value={leaveType}
-            onChange={(e) => setLeaveType(e.target.value)}
-            className="w-full px-4 py-3 bg-stone-50 border border-stone-250 rounded-xl outline-none focus:border-stone-800 text-xs font-bold text-stone-800"
-          >
-            <option value="Annual Paid Leave">Annual Paid Leave</option>
-            <option value="Sick Leave">Sick Leave</option>
-            <option value="Maternity / Paternity">
-              Maternity / Paternity Leave
-            </option>
-            <option value="Unpaid Leave">Unpaid Leave</option>
-          </select>
-        </div>
+        <Select
+          label="Leave Category"
+          value={leaveType}
+          onChange={(e) => setLeaveType(e.target.value)}
+        >
+          <option value="Annual Paid Leave">Annual Paid Leave</option>
+          <option value="Sick Leave">Sick Leave</option>
+          <option value="Maternity / Paternity">
+            Maternity / Paternity Leave
+          </option>
+          <option value="Unpaid Leave">Unpaid Leave</option>
+        </Select>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5 flex flex-col">
-            <label className="text-[10px] font-black text-stone-500 uppercase tracking-widest block ml-1">
-              Start Date
-            </label>
-            <input
-              type="date"
-              required
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-4 py-3 bg-stone-50 border border-stone-250 rounded-xl outline-none focus:border-stone-800 text-xs text-stone-800 font-bold"
-            />
-          </div>
-          <div className="space-y-1.5 flex flex-col">
-            <label className="text-[10px] font-black text-stone-500 uppercase tracking-widest block ml-1">
-              End Date
-            </label>
-            <input
-              type="date"
-              required
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-4 py-3 bg-stone-50 border border-stone-250 rounded-xl outline-none focus:border-stone-800 text-xs text-stone-800 font-bold"
-            />
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input
+            type="date"
+            label="Start Date"
+            required
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="font-mono"
+          />
+          <Input
+            type="date"
+            label="End Date"
+            required
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="font-mono"
+          />
         </div>
 
         {isManager ? (
-          <div className="bg-emerald-50 border border-emerald-200/80 rounded-xl p-3 text-[11px] text-emerald-800 leading-relaxed font-bold flex items-center gap-2">
+          <div className="bg-emerald-50 border border-emerald-200/80 rounded-xl p-3 text-[11px] text-emerald-800 font-bold flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" />
-            <span>
-              Manager / Executive Level Access Active: Your leave request is
-              automatically approved without requiring authorization.
-            </span>
+            <span>Manager leave requests are auto-approved.</span>
           </div>
         ) : (
-          <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-[11px] text-stone-600 leading-relaxed font-medium">
-            ℹ️ Staff leave requests will be reviewed and approved by your
-            department Manager (Not HR).
+          <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-[11px] text-stone-600 font-medium">
+            Reviewed by your department Manager.
           </div>
         )}
 
         <div className="pt-4 border-t border-stone-100 flex justify-end gap-2.5">
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={onClose}
-            className="px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-600 text-xs font-black uppercase tracking-wider rounded-xl transition-colors"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
-            disabled={isSubmittingLeave}
-            className="px-6 py-2.5 bg-[#b02524] hover:bg-[#961f1e] text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md disabled:opacity-50 cursor-pointer"
+            variant="primary"
+            isLoading={isSubmittingLeave}
           >
-            {isSubmittingLeave ? "Processing..." : "Submit Leave Request"}
-          </button>
+            Submit Leave Request
+          </Button>
         </div>
       </form>
     </Modal>

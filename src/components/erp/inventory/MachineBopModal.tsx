@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import {
   Cpu,
@@ -151,21 +152,21 @@ export function MachineBopModal({
     >
       <div className="p-6 space-y-6">
         {/* Machine Identity Header Banner */}
-        <div className="p-4 rounded-2xl bg-stone-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+        <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-400/30 flex items-center justify-center text-blue-400">
+            <div className="w-10 h-10 rounded-xl bg-white border border-stone-200 flex items-center justify-center text-stone-700 shadow-2xs">
               <Cpu className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs font-bold text-blue-300 px-2 py-0.5 rounded bg-blue-950 border border-blue-800">
+                <span className="font-mono text-xs font-bold text-stone-700 px-2 py-0.5 rounded bg-stone-100 border border-stone-200">
                   {machine.item_code}
                 </span>
-                <span className="text-xs font-semibold text-stone-300">
+                <span className="text-xs font-semibold text-stone-500">
                   {machine.machine_category || "GENERAL MACHINE"}
                 </span>
               </div>
-              <h3 className="text-base font-bold text-white mt-0.5">{machine.name}</h3>
+              <h3 className="text-base font-bold text-stone-900 mt-0.5">{machine.name}</h3>
             </div>
           </div>
 
@@ -174,17 +175,17 @@ export function MachineBopModal({
               className={cn(
                 "text-[10px] font-black uppercase px-2.5 py-1 rounded-lg tracking-wider",
                 machine.machine_status === "ASSIGNED"
-                  ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40"
+                  ? "bg-amber-50 text-amber-800 border border-amber-200"
                   : machine.machine_status === "MAINTENANCE"
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                  : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                  ? "bg-rose-50 text-rose-700 border border-rose-200"
+                  : "bg-emerald-50 text-emerald-700 border border-emerald-200"
               )}
             >
               {machine.machine_status || machine.operational_status || "AVAILABLE"}
             </span>
 
             {machine.bypass_multi_station ? (
-              <span className="text-[10px] font-bold uppercase px-2 py-1 rounded-lg bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1">
+              <span className="text-[10px] font-bold uppercase px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                 <ShieldCheck className="w-3 h-3" /> Multi-Station Bypass
               </span>
             ) : null}
@@ -199,14 +200,14 @@ export function MachineBopModal({
               Active BOP Process Assignments ({assignments.length})
             </h4>
             <Button
-              size="xs"
+              size="icon-xs"
               variant="secondary"
               onClick={loadAssignments}
               disabled={isLoading}
-              className="text-[11px] gap-1"
+              title="Refresh BOP Assignments"
+              aria-label="Refresh BOP Assignments"
             >
               <RefreshCw className={cn("w-3 h-3", isLoading && "animate-spin")} />
-              Refresh
             </Button>
           </div>
 
@@ -220,7 +221,7 @@ export function MachineBopModal({
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[10px] font-bold px-2 py-0.5 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded border border-stone-200 dark:border-stone-700">
-                        {item.spk_number || "SPK-PRJ"}
+                        {item.spk_number || "WO-PRJ"}
                       </span>
                       <span className="text-xs font-bold text-stone-900 dark:text-stone-100">
                         {item.project_name}
@@ -334,44 +335,44 @@ export function MachineBopModal({
           {/* Timing Parameters */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
             <div className="space-y-1">
-              <label className="text-[11px] font-bold uppercase text-stone-500 flex items-center gap-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-stone-600 flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-stone-400" />
                 Cycle Time (min/pc)
               </label>
-              <input
+              <Input
                 type="number"
                 min={1}
                 value={cycleTime}
                 onChange={(e) => setCycleTime(Math.max(1, Number(e.target.value)))}
-                className="w-full px-3 py-1.5 text-xs font-mono font-bold border border-stone-300 dark:border-stone-700 rounded-xl bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100"
+                className="font-mono font-bold"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-[11px] font-bold uppercase text-stone-500 flex items-center gap-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-stone-600 flex items-center gap-1">
                 <Timer className="w-3.5 h-3.5 text-stone-400" />
                 Setup Time (min)
               </label>
-              <input
+              <Input
                 type="number"
                 min={0}
                 value={setupTime}
                 onChange={(e) => setSetupTime(Math.max(0, Number(e.target.value)))}
-                className="w-full px-3 py-1.5 text-xs font-mono font-bold border border-stone-300 dark:border-stone-700 rounded-xl bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100"
+                className="font-mono font-bold"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-[11px] font-bold uppercase text-stone-500 flex items-center gap-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-stone-600 flex items-center gap-1">
                 <Wrench className="w-3.5 h-3.5 text-stone-400" />
                 Teardown Time (min)
               </label>
-              <input
+              <Input
                 type="number"
                 min={0}
                 value={teardownTime}
                 onChange={(e) => setTeardownTime(Math.max(0, Number(e.target.value)))}
-                className="w-full px-3 py-1.5 text-xs font-mono font-bold border border-stone-300 dark:border-stone-700 rounded-xl bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100"
+                className="font-mono font-bold"
               />
             </div>
           </div>
@@ -390,9 +391,9 @@ export function MachineBopModal({
             <Button
               onClick={handleLinkMachine}
               disabled={isSubmitting || !selectedBopId}
-              className="bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold gap-2 self-end sm:self-auto px-5 rounded-xl shadow-xs"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-2 self-end sm:self-auto px-5 rounded-xl shadow-2xs"
             >
-              <Link2 className="w-4 h-4 text-emerald-400" />
+              <Link2 className="w-4 h-4 text-white" />
               {isSubmitting ? "Linking..." : "Link Machine to BOP Process"}
             </Button>
           </div>

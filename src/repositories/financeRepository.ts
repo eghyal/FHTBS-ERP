@@ -216,7 +216,7 @@ export class FinanceRepository {
   }) {
     const existing = db.prepare("SELECT code FROM chart_of_accounts WHERE code = ?").get(account.code);
     if (existing) {
-      throw new Error(`Akun dengan kode ${account.code} sudah ada.`);
+      throw new Error(`Account with code ${account.code} already exists.`);
     }
 
     const id = "COA-" + crypto.randomBytes(4).toString("hex").toUpperCase();

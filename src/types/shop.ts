@@ -31,6 +31,8 @@ export interface CartItem {
 export interface ShopOrder {
   id: string;
   order_number: string;
+  customer_id?: string | null;
+  customer_code?: string | null;
   customer_name: string;
   customer_phone: string;
   customer_email?: string | null;
@@ -39,18 +41,35 @@ export interface ShopOrder {
   delivery_method: "PICKUP" | "DELIVERY";
   shipping_cost: number;
   subtotal_amount: number;
+  subtotal?: number;
+  dpp_amount?: number;
+  dpp_nilai_lain?: number;
+  ppn_amount?: number;
+  tax_scheme?: string;
   total_amount: number;
   payment_method: "TRANSFER_MANUAL" | "QRIS" | "COD";
-  payment_status: "UNPAID" | "PAID" | "VERIFIED";
-  order_status: "PENDING_PAYMENT" | "PAID" | "PROCESSING" | "DISPATCHED" | "COMPLETED" | "CANCELLED";
+  payment_status: "UNPAID" | "PAID" | "VERIFIED" | "AWAITING_VERIFICATION" | "PENDING_PAYMENT";
+  order_status: "PENDING_PAYMENT" | "PAYMENT_SUBMITTED" | "PENDING_VERIFICATION" | "PAID" | "PROCESSING" | "IN_PRODUCTION" | "READY_TO_SHIP" | "DISPATCHED" | "COMPLETED" | "CANCELLED";
   payment_proof_url?: string | null;
   payment_ref?: string | null;
   is_dp?: number;
   dp_amount?: number;
   delivery_distance?: number;
+  fulfillment_mode?: "MTS" | "MTO" | "HYBRID";
+  production_status?: "NOT_REQUIRED" | "PENDING_SPK" | "IN_PRODUCTION" | "COMPLETED";
+  project_id?: string | null;
+  spk_number?: string | null;
+  project_status?: string | null;
+  bop_progress?: number;
+  dp_invoice_id?: string | null;
+  dp_ci_number?: string | null;
+  final_invoice_id?: string | null;
+  final_ci_number?: string | null;
   tracking_number?: string | null;
   fleet_notes?: string | null;
   delivery_note_id?: string | null;
+  ci_id?: string | null;
+  ci_number?: string | null;
   customer_notes?: string | null;
   created_at: string;
   paid_at?: string | null;
@@ -70,6 +89,9 @@ export interface ShopOrderItem {
   unit_price: number;
   total_price: number;
   weight_kg: number;
+  fulfillment_type?: "READY_STOCK" | "MAKE_TO_ORDER";
+  mto_qty?: number;
+  estimated_lead_days?: number;
 }
 
 export interface CheckoutFormState {

@@ -1,14 +1,19 @@
 import { Router } from "express";
+import bcrypt from "bcrypt";
 import db from "../db/database.ts";
 import { requireRole, getActor } from "../middleware/auth.ts";
+import { logAudit } from "../utils/audit.ts";
 
 export const usersRouter = Router();
 
-usersRouter.get(["/api/users", "/api/users/all"], requireRole(["FC", "ADMIN"]), (req, res) => {
+usersRouter.get(["/api/users", "/api/users/all"], requireRole(["FC", "ADMIN", "HR", "BOD", "DIRECTOR"]), (req, res) => {
   try {
     const users = db
       .prepare(
-        "SELECT id, username, role, level, name, status, created_at FROM users WHERE status != 'PENDING' ORDER BY name ASC",
+        `SELECT id, username, role, level, name, status, created_at,
+                employee_no, nik_ktp, npwp, ptkp_status, bank_name, bank_account_number,
+                contract_type, join_date, contract_end_date, work_center_id
+         FROM users WHERE status != 'PENDING' ORDER BY name ASC`,
       )
       .all();
     res.json(users);
@@ -17,25 +22,85 @@ usersRouter.get(["/api/users", "/api/users/all"], requireRole(["FC", "ADMIN"]), 
   }
 });
 
-usersRouter.put("/api/users/:id/role", requireRole(["FC"]), (req, res) => {
+usersRouter.put("/api/users/:id/role", requireRole(["FC", "ADMIN", "SUPERADMIN", "DIRECTOR", "BOD"]), async (req, res) => {
   try {
-    const { role, level } = req.body;
+    const { role, level, newPassword } = req.body;
+    const validLevels = ["STAFF", "SUPERVISOR", "MANAGER"];
+    const normalizedLevel = validLevels.includes(String(level || "").toUpperCase())
+      ? String(level).toUpperCase()
+      : "STAFF";
+
     const targetUser = db
-      .prepare("SELECT role FROM users WHERE id = ?")
+      .prepare("SELECT role, username FROM users WHERE id = ?")
       .get(req.params.id) as any;
-    if (targetUser && targetUser.role === "FC") {
+    const actorUsername = ((req as any).username || "").toLowerCase();
+    if (
+      targetUser &&
+      targetUser.role === "FC" &&
+      actorUsername !== "eghy" &&
+      actorUsername !== "ludy" &&
+      actorUsername !== "admin"
+    ) {
       return res
         .status(403)
-        .json({ error: "Cannot modify Full Control accounts" });
+        .json({ error: "Cannot modify FC accounts" });
     }
     db.prepare("UPDATE users SET role = ?, level = ? WHERE id = ?").run(
       role,
-      level || "STAFF",
+      normalizedLevel,
       req.params.id,
     );
+
+    if (typeof newPassword === "string" && newPassword.trim().length > 0) {
+      if (newPassword.trim().length < 6) {
+        return res
+          .status(400)
+          .json({ error: "New passcode must be at least 6 characters" });
+      }
+      const hashed = await bcrypt.hash(newPassword.trim(), 12);
+      db.prepare("UPDATE users SET password = ? WHERE id = ?").run(
+        hashed,
+        req.params.id,
+      );
+      logAudit(
+        getActor(req),
+        "UPDATE_PASSWORD_BCRYPT",
+        "USER",
+        req.params.id,
+        `Updated bcrypt-12 passcode for ${targetUser?.username || req.params.id}`,
+      );
+    }
+
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to update role" });
+  }
+});
+
+usersRouter.put("/api/users/:id/password", requireRole(["FC"]), async (req, res) => {
+  try {
+    const rawPassword = typeof req.body?.password === "string" ? req.body.password.trim() : "";
+    if (rawPassword.length < 6) {
+      return res.status(400).json({ error: "Passcode must be at least 6 characters" });
+    }
+    const targetUser = db
+      .prepare("SELECT id, username FROM users WHERE id = ?")
+      .get(req.params.id) as any;
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const hashed = await bcrypt.hash(rawPassword, 12);
+    db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashed, req.params.id);
+    logAudit(
+      getActor(req),
+      "RESET_PASSWORD_BCRYPT",
+      "USER",
+      req.params.id,
+      `Reset bcrypt-12 passcode for ${targetUser.username}`,
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to update password" });
   }
 });
 
@@ -56,7 +121,7 @@ usersRouter.delete("/api/users/:id", requireRole(["FC"]), (req, res) => {
       if (fcCount.count <= 1) {
         return res
           .status(403)
-          .json({ error: "Cannot delete the last Full Control account" });
+          .json({ error: "Cannot delete the last FC account" });
       }
     }
     db.transaction(() => {
@@ -144,7 +209,16 @@ usersRouter.post("/api/users/logout", (req, res) => {
       }
     }
 
-    res.clearCookie("auth_token", { httpOnly: true, sameSite: "strict" });
+    const isHttps =
+      req.secure ||
+      req.headers["x-forwarded-proto"] === "https" ||
+      process.env.NODE_ENV === "production";
+    res.clearCookie("auth_token", {
+      httpOnly: true,
+      secure: isHttps,
+      sameSite: isHttps ? "none" : "lax",
+      path: "/",
+    });
     res.json({ success: true });
   } catch (e) {
     console.error("Logout route error:", e);
@@ -163,6 +237,8 @@ usersRouter.get("/api/users/status", (req, res) => {
       SELECT username, name, role, last_seen_at, device_type
       FROM users 
       WHERE status = 'APPROVED'
+        AND UPPER(TRIM(COALESCE(role, ''))) != 'OPERATOR'
+      ORDER BY CASE WHEN last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC, last_seen_at DESC, name ASC
     `,
         )
         .all();
@@ -175,6 +251,8 @@ usersRouter.get("/api/users/status", (req, res) => {
         SELECT username, name, role, last_seen_at
         FROM users 
         WHERE status = 'APPROVED'
+          AND UPPER(TRIM(COALESCE(role, ''))) != 'OPERATOR'
+        ORDER BY CASE WHEN last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC, last_seen_at DESC, name ASC
       `,
           )
           .all()
@@ -187,6 +265,8 @@ usersRouter.get("/api/users/status", (req, res) => {
         SELECT username, name, role
         FROM users 
         WHERE status = 'APPROVED'
+          AND UPPER(TRIM(COALESCE(role, ''))) != 'OPERATOR'
+        ORDER BY name ASC
       `,
           )
           .all()

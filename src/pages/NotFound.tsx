@@ -14,14 +14,14 @@ export default function NotFound() {
         </div>
 
         <div className="space-y-2">
-          <span className="text-xs font-black tracking-widest text-[#b02524] uppercase">
+          <span className="text-xs font-black tracking-widest text-stone-500 uppercase">
             Error 404
           </span>
           <h1 className="text-2xl font-black text-stone-900 tracking-tight">
-            Halaman Tidak Ditemukan
+            Page Not Found
           </h1>
           <p className="text-xs text-stone-500 leading-relaxed font-medium">
-            Alamat URL yang Anda tuju tidak tersedia atau telah dipindahkan ke tautan lain.
+            The URL address you requested is unavailable or has been moved to another link.
           </p>
         </div>
 
@@ -32,16 +32,16 @@ export default function NotFound() {
             className="w-full sm:w-auto rounded-xl flex items-center justify-center gap-2 border-stone-200"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Kembali</span>
+            <span>Go Back</span>
           </Button>
 
           <Link to="/erp" className="w-full sm:w-auto">
             <Button
               variant="primary"
-              className="w-full rounded-xl flex items-center justify-center gap-2 bg-[#b02524] hover:bg-red-800 text-white"
+              className="w-full rounded-xl flex items-center justify-center gap-2 bg-stone-900 hover:bg-stone-800 text-white"
             >
               <Home className="w-4 h-4" />
-              <span>Ke Dashboard</span>
+              <span>To Dashboard</span>
             </Button>
           </Link>
         </div>

@@ -191,7 +191,7 @@ export const TravelTagModal: React.FC<TravelTagModalProps> = ({
                 </div>
               )}
               <div className="flex justify-between py-1 border-b border-stone-100">
-                <span className="text-stone-400">Project / SPK:</span>
+                <span className="text-stone-400">Project / Work Order:</span>
                 <span className="font-bold text-stone-800">{project?.name || payloadObj.project_name || "N/A"}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-stone-100">

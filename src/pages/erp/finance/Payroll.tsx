@@ -31,6 +31,18 @@ import { useToast } from "@/contexts/ToastContext";
 import { Modal } from "@/components/ui/Modal";
 import { formatIDR, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { Badge } from "@/components/ui/Badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  TableEmpty,
+} from "@/components/ui/Table";
 import { motion, AnimatePresence } from "motion/react";
 import { PrintTemplate } from "@/components/erp/PrintTemplate";
 import { PdfPreviewWrapper } from "@/components/shared/PdfPreviewWrapper";
@@ -210,7 +222,7 @@ export default function Payroll() {
 
   const handleRejectPrq = async (prqId: string) => {
     if (!rejectionReason.trim()) {
-      showToast("Alasan penolakan wajib diisi", "error");
+      showToast("Rejection reason is required", "error");
       return;
     }
     setIsProcessingPrq(true);
@@ -323,7 +335,7 @@ export default function Payroll() {
   );
 
   return (
-    <div className="space-y-8 pb-24 animate-in fade-in duration-500">
+    <div className="space-y-5 pb-24 animate-in fade-in duration-500">
       <ConfirmModal
         isOpen={confirmVoid.isOpen}
         title="Void Payroll Payment"
@@ -334,16 +346,16 @@ export default function Payroll() {
 
       <PageHeader
         title={t("Payroll Processing")}
-        subtitle={t("Employee salaries and disbursement")}
-        icon={<WalletCards className="w-6 h-6" />}
+        subtitle={t("Salaries & disbursement")}
+        icon={<WalletCards className="w-5 h-5" />}
         actions={
           <div className="flex items-center gap-2.5">
             <Button
               onClick={() => setIsGenerateModalOpen(true)}
               variant="primary"
-              className="rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2"
+              size="sm"
+              leftIcon={<WalletCards className="w-4 h-4" />}
             >
-              <WalletCards className="w-4 h-4" />
               Issue Payroll PO
             </Button>
           </div>
@@ -351,212 +363,179 @@ export default function Payroll() {
       />
 
       <div className="flex gap-4 items-center">
-        <div className="relative flex-1 max-w-lg">
-          <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
-          <input
+        <div className="flex-1 max-w-lg">
+          <Input
             type="text"
             placeholder={t("Search by Month (1-12) or Year...")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 bg-white border border-stone-200 rounded-2xl text-sm focus:border-stone-400 outline-none transition-colors shadow-sm"
+            leftIcon={<Search className="w-4 h-4" />}
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Pending Payroll Column */}
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold uppercase tracking-widest text-stone-900 flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-500" />
               {t("Pending Authorization")}
-              <span className="ml-2 bg-stone-100 text-stone-600 py-0.5 px-2 rounded-full text-[10px]">
+              <Badge variant="default" size="sm">
                 {pendingPayrolls.length}
-              </span>
+              </Badge>
             </h3>
           </div>
 
-          <div className="bg-white border border-stone-200 rounded-3xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-stone-200 rounded-2xl shadow-xs overflow-hidden">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-48 space-y-4">
                 <div className="w-8 h-8 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
               </div>
-            ) : pendingPayrolls.length === 0 ? (
-              <div className="p-12 text-center flex flex-col items-center justify-center">
-                <div className="w-16 h-16 rounded-full bg-stone-50 flex items-center justify-center mb-4">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                </div>
-                <p className="text-sm font-bold text-stone-900">
-                  {t("All Clear")}
-                </p>
-                <p className="text-[11px] font-bold uppercase tracking-widest text-stone-500 mt-2">
-                  {t("No pending payroll")}
-                </p>
-              </div>
             ) : (
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-stone-50/50 border-b border-stone-100">
-                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-stone-500">
-                      {t("Period & Status")}
-                    </th>
-                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-stone-500 text-right">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("Period & Status")}</TableHead>
+                    <TableHead className="text-right">
                       {t("Total & Action")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-50">
-                  <AnimatePresence>
-                    {pendingPayrolls.map((payroll, index) => (
-                      <motion.tr
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, x: -10 }}
-                        transition={{ delay: index * 0.05 }}
-                        key={payroll.id}
-                        className="group hover:bg-stone-50/50 transition-colors"
-                      >
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingPayrolls.length === 0 ? (
+                    <TableEmpty colSpan={2} message={t("No pending payroll")} />
+                  ) : (
+                    pendingPayrolls.map((payroll) => (
+                      <TableRow key={payroll.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center shrink-0">
                               <WalletCards className="w-4 h-4" />
                             </div>
                             <div>
-                              <div className="text-sm font-bold font-mono text-stone-900">
-                                {payroll.period_name || `${months[(payroll.period_month || 1) - 1] || ""} ${payroll.period_year || ""}`}
+                              <div className="text-sm font-bold font-mono tabular-nums text-stone-900">
+                                {payroll.period_name ||
+                                  `${months[(payroll.period_month || 1) - 1] || ""} ${payroll.period_year || ""}`}
                               </div>
                               <div className="flex items-center gap-2 mt-1">
-                                <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-600">
+                                <Badge variant="warning" size="sm">
                                   {payroll.status}
-                                </span>
+                                </Badge>
                               </div>
                             </div>
                           </div>
-                        </td>
-                        <td className="px-6 py-5">
-                          <div className="flex flex-col items-end gap-3">
-                            <div className="text-sm font-black font-mono tracking-tight text-amber-600">
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-col items-end gap-2">
+                            <div className="text-sm font-black font-mono tabular-nums tracking-tight text-amber-600">
                               {formatIDR(payroll.total_amount)}
                             </div>
-                            <div className="flex items-center gap-2 w-full justify-end">
+                            <div className="flex items-center gap-1.5 justify-end">
                               <Button
-                                size="sm"
+                                size="xs"
                                 variant="secondary"
-                                className="rounded-xl px-2.5 py-1.5 shadow-sm text-stone-700 hover:bg-stone-100 flex items-center gap-1 cursor-pointer"
                                 onClick={() => fetchPayrollDetails(payroll)}
                                 title="View Document Details"
                               >
-                                <Eye className="w-3.5 h-3.5 text-stone-600" />
-                                
+                                <Eye className="w-3.5 h-3.5" />
                               </Button>
                               <Button
-                                size="sm"
-                                className="rounded-xl text-xs font-bold px-3.5 py-1.5 flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow transition-all shrink-0 cursor-pointer"
+                                size="xs"
+                                variant="success"
+                                leftIcon={<Coins className="w-3.5 h-3.5" />}
                                 onClick={() => {
                                   setSelectedPayrollToPay(payroll);
                                   setAuthPin("");
                                 }}
                               >
-                                <Coins className="w-3.5 h-3.5" />
                                 {t("Pay Now")}
                               </Button>
                             </div>
                           </div>
-                        </td>
-                      </motion.tr>
-                    ))}
-                  </AnimatePresence>
-                </tbody>
-              </table>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             )}
           </div>
         </div>
 
         {/* Paid Payroll Column */}
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold uppercase tracking-widest text-stone-900 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-500" />
               {t("Settled Payments")}
-              <span className="ml-2 bg-stone-100 text-stone-600 py-0.5 px-2 rounded-full text-[10px]">
+              <Badge variant="default" size="sm">
                 {paidPayrolls.length}
-              </span>
+              </Badge>
             </h3>
           </div>
 
-          <div className="bg-white border border-stone-200 rounded-3xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-stone-200 rounded-2xl shadow-xs overflow-hidden">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-48 space-y-4">
                 <div className="w-8 h-8 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
               </div>
-            ) : paidPayrolls.length === 0 ? (
-              <div className="p-12 text-center text-[11px] font-bold uppercase tracking-widest text-stone-500">
-                {t("No settled payroll")}
-              </div>
             ) : (
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-stone-50/50 border-b border-stone-100">
-                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-stone-500">
-                      {t("Period")}
-                    </th>
-                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-stone-500 text-right">
-                      {t("Total")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-50">
-                  {paidPayrolls.map((payroll, index) => (
-                    <motion.tr
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      key={payroll.id}
-                      className="group hover:bg-stone-50/50 transition-colors"
-                    >
-                      <td className="px-6 py-5">
-                        <div className="text-xs font-bold font-mono text-stone-900 flex items-center gap-2">
-                          {payroll.period_name || `${months[(payroll.period_month || 1) - 1] || ""} ${payroll.period_year || ""}`}
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        </div>
-                        <div className="text-[9px] font-bold text-stone-500 mt-1.5 tracking-widest uppercase">
-                          ID: {payroll.id.split("-")[0]}
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 text-right font-mono font-bold text-stone-900">
-                        <div>{formatIDR(payroll.total_amount)}</div>
-                        <div className="flex items-center justify-end gap-2 mt-2">
-                          <Button
-                            size="xs"
-                            variant="secondary"
-                            onClick={() => fetchPayrollDetails(payroll)}
-                            title="View Document Details"
-                            className="px-2.5 py-1 shadow-sm border border-stone-200 flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-stone-600" />
-                            
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="danger_soft"
-                            onClick={() =>
-                              setConfirmVoid({
-                                isOpen: true,
-                                id: payroll.id,
-                                amount: payroll.total_amount,
-                              })
-                            }
-                            title={t("Void Payment")}
-                            className="px-2"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ))}
-                </tbody>
-              </table>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("Period")}</TableHead>
+                    <TableHead className="text-right">{t("Total")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paidPayrolls.length === 0 ? (
+                    <TableEmpty colSpan={2} message={t("No settled payroll")} />
+                  ) : (
+                    paidPayrolls.map((payroll) => (
+                      <TableRow key={payroll.id}>
+                        <TableCell>
+                          <div className="text-xs font-bold font-mono tabular-nums text-stone-900 flex items-center gap-2">
+                            {payroll.period_name ||
+                              `${months[(payroll.period_month || 1) - 1] || ""} ${payroll.period_year || ""}`}
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                          </div>
+                          <div className="text-[10px] font-mono tabular-nums font-bold text-stone-400 mt-1 uppercase">
+                            ID: {payroll.id.split("-")[0]}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums font-bold text-stone-900">
+                          <div>{formatIDR(payroll.total_amount)}</div>
+                          <div className="flex items-center justify-end gap-1.5 mt-1.5">
+                            <Button
+                              size="xs"
+                              variant="secondary"
+                              onClick={() => fetchPayrollDetails(payroll)}
+                              title="View Document Details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="danger_soft"
+                              onClick={() =>
+                                setConfirmVoid({
+                                  isOpen: true,
+                                  id: payroll.id,
+                                  amount: payroll.total_amount,
+                                })
+                              }
+                              title={t("Void Payment")}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             )}
           </div>
         </div>
@@ -588,79 +567,116 @@ export default function Payroll() {
         contentClassName="p-0 border-t border-stone-100"
       >
         <div className="p-6">
-          {(!Array.isArray(payrollReqs) || payrollReqs.length === 0) ? (
-            <div className="py-12 text-center text-xs font-bold tracking-wider uppercase text-stone-400 bg-stone-50 rounded-2xl border border-dashed border-stone-200">
-              No PRq documents submitted by the HR Team yet.
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-stone-200/80 shadow-2xs max-h-[60vh] bg-white">
-              <table className="w-full text-left font-sans text-xs border-collapse min-w-[750px]">
-                <thead className="sticky top-0 bg-stone-50/95 backdrop-blur-xs text-stone-500 uppercase text-[10px] font-bold tracking-wider border-b border-stone-200 z-10">
-                  <tr>
-                    <th className="p-3.5 pl-5 whitespace-nowrap">No. Requisition</th>
-                    <th className="p-3.5 whitespace-nowrap">Payroll Period</th>
-                    <th className="p-3.5 whitespace-nowrap">Total Employees</th>
-                    <th className="p-3.5 text-right whitespace-nowrap">Disbursement Request</th>
-                    <th className="p-3.5 text-center whitespace-nowrap">HR Status</th>
-                    <th className="p-3.5 text-center pr-5 whitespace-nowrap">Finance Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100 text-stone-700 font-medium">
-                  {(Array.isArray(payrollReqs) ? payrollReqs : []).map((prq: any) => {
-                    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+          <div className="rounded-xl border border-stone-200 overflow-hidden bg-white">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>No. Requisition</TableHead>
+                  <TableHead>Payroll Period</TableHead>
+                  <TableHead>Total Employees</TableHead>
+                  <TableHead className="text-right">
+                    Disbursement Request
+                  </TableHead>
+                  <TableHead className="text-center">HR Status</TableHead>
+                  <TableHead className="text-center">Finance Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {!Array.isArray(payrollReqs) || payrollReqs.length === 0 ? (
+                  <TableEmpty
+                    colSpan={6}
+                    message="No PRq documents submitted by the HR Team yet."
+                  />
+                ) : (
+                  payrollReqs.map((prq: any) => {
+                    const monthNames = [
+                      "January",
+                      "February",
+                      "March",
+                      "April",
+                      "May",
+                      "June",
+                      "July",
+                      "August",
+                      "September",
+                      "October",
+                      "November",
+                      "December",
+                    ];
                     const periodText = `${monthNames[(prq.period_month || 1) - 1]} ${prq.period_year || 2026}`;
                     let detailCount = 0;
                     try {
-                      const parsedDet = typeof prq.details_json === 'string' ? JSON.parse(prq.details_json) : prq.details;
-                      if (Array.isArray(parsedDet)) detailCount = parsedDet.length;
+                      const parsedDet =
+                        typeof prq.details_json === "string"
+                          ? JSON.parse(prq.details_json)
+                          : prq.details;
+                      if (Array.isArray(parsedDet))
+                        detailCount = parsedDet.length;
                     } catch (e) {
                       detailCount = 0;
                     }
 
                     return (
-                      <tr key={prq.id} className="hover:bg-stone-50/60 transition-colors">
-                        <td className="p-3.5 pl-5 font-mono font-bold text-stone-900 whitespace-nowrap">{prq.requisition_no || prq.requisition_number}</td>
-                        <td className="p-3.5 text-stone-600 whitespace-nowrap">{periodText}</td>
-                        <td className="p-3.5 text-stone-600 whitespace-nowrap">{prq.total_employees || detailCount} Employees</td>
-                        <td className="p-3.5 text-right font-mono font-black text-[#b02524] whitespace-nowrap">{formatIDR(prq.total_net_pay || prq.total_net || 0)}</td>
-                        <td className="p-3.5 text-center whitespace-nowrap">
+                      <TableRow key={prq.id}>
+                        <TableCell className="font-mono tabular-nums font-bold text-stone-900">
+                          {prq.requisition_no || prq.requisition_number}
+                        </TableCell>
+                        <TableCell className="text-stone-600">
+                          {periodText}
+                        </TableCell>
+                        <TableCell className="text-stone-600 font-mono tabular-nums">
+                          {prq.total_employees || detailCount} Employees
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums font-black text-stone-900">
+                          {formatIDR(prq.total_net_pay || prq.total_net || 0)}
+                        </TableCell>
+                        <TableCell className="text-center">
                           {prq.status === "SUBMITTED" && (
-                            <span className="px-2.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200/80 text-[10px] font-bold uppercase tracking-wider rounded-md">Needs Review</span>
+                            <Badge variant="warning" size="sm">
+                              Needs Review
+                            </Badge>
                           )}
                           {prq.status === "CONVERTED" && (
-                            <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 text-[10px] font-bold uppercase tracking-wider rounded-md">PO Issued</span>
+                            <Badge variant="success" size="sm">
+                              PO Issued
+                            </Badge>
                           )}
                           {prq.status === "REJECTED" && (
-                            <span className="px-2.5 py-0.5 bg-rose-50 text-rose-800 border border-rose-200/80 text-[10px] font-bold uppercase tracking-wider rounded-md">Rejected</span>
+                            <Badge variant="danger" size="sm">
+                              Rejected
+                            </Badge>
                           )}
-                        </td>
-                        <td className="p-3.5 text-center pr-5 whitespace-nowrap">
-                          <button
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            size="xs"
                             onClick={() => {
-                              setIsGenerateModalOpen(false); // Close list modal
-                              handleOpenPrqReview(prq); // Open review modal
+                              setIsGenerateModalOpen(false);
+                              handleOpenPrqReview(prq);
                             }}
-                            className="px-3.5 py-1.5 bg-stone-900 hover:bg-stone-800 text-white text-[11px] font-bold rounded-lg transition-all shadow-2xs cursor-pointer"
                           >
-                            {prq.status === "SUBMITTED" ? "Review & Approve" : "PRq Details"}
-                          </button>
-                        </td>
-                      </tr>
+                            {prq.status === "SUBMITTED"
+                              ? "Review & Approve"
+                              : "PRq Details"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
         <div className="p-4 border-t border-stone-100 bg-stone-50/50 flex justify-end gap-3 rounded-b-2xl">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setIsGenerateModalOpen(false)}
-            className="px-5 py-2 text-stone-500 hover:text-stone-900 text-xs font-bold transition-colors cursor-pointer"
           >
             Close
-          </button>
+          </Button>
         </div>
       </Modal>
 
@@ -682,12 +698,12 @@ export default function Payroll() {
               documentNameEn="PAYROLL MASTER DISBURSEMENT"
               date={
                 selectedPayrollHeader?.created_at
-                  ? new Date(selectedPayrollHeader.created_at).toLocaleDateString("id-ID", {
+                  ? new Date(selectedPayrollHeader.created_at).toLocaleDateString("en-US", {
                       day: "2-digit",
                       month: "long",
                       year: "numeric",
                     })
-                  : new Date().toLocaleDateString("id-ID")
+                  : new Date().toLocaleDateString("en-US")
               }
               referenceNumber={selectedPayrollHeader ? `PAYROLL-${selectedPayrollHeader.period_month || 1}-${selectedPayrollHeader.period_year || 2026}` : "PAYROLL-DOC"}
               documentId={selectedPayrollHeader?.id || "PAYROLL-ID"}
@@ -846,13 +862,13 @@ export default function Payroll() {
             {t("Close")}
           </Button>
           <Button
-            variant="primary"
+            variant="dark"
             onClick={exportPayrollPdf}
             isLoading={isExportingPdf}
             className="px-6 py-2.5 rounded-xl text-sm shadow-md"
           >
             {!isExportingPdf && <Download className="w-4 h-4" />}
-            {isExportingPdf ? "Mengekspor..." : "Ekspor PDF (A4)"}
+            {isExportingPdf ? "Exporting..." : "Export PDF (A4)"}
           </Button>
         </div>
       </Modal>
@@ -872,7 +888,7 @@ export default function Payroll() {
                   <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400">
                     Requisition No
                   </span>
-                  <span className="font-mono text-xs font-bold px-2.5 py-0.5 bg-stone-900 text-white rounded-md">
+                  <span className="font-mono tabular-nums text-xs font-bold px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">
                     {selectedPrq.requisition_no || selectedPrq.requisition_number || "PRQ-DRAFT"}
                   </span>
                 </div>
@@ -885,13 +901,25 @@ export default function Payroll() {
                 <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 block">
                   Total Net Disbursement Request
                 </span>
-                <p className="text-2xl font-mono font-black text-[#b02524]">
-                  {formatIDR(selectedPrq.total_net_pay || selectedPrq.total_net || 0)}
+                <p className="text-2xl font-mono tabular-nums font-black text-stone-900">
+                  {formatIDR(
+                    selectedPrq.total_net_pay || selectedPrq.total_net || 0
+                  )}
                 </p>
                 <div className="text-[11px] text-stone-500 font-medium">
-                  Total Gross: <span className="font-mono font-bold text-stone-700">{formatIDR(selectedPrq.total_gross_pay || selectedPrq.total_gross || 0)}</span>
+                  Total Gross:{" "}
+                  <span className="font-mono tabular-nums font-bold text-stone-700">
+                    {formatIDR(
+                      selectedPrq.total_gross_pay ||
+                        selectedPrq.total_gross ||
+                        0
+                    )}
+                  </span>
                   {" • "}
-                  Deductions: <span className="font-mono font-bold text-rose-600">{formatIDR(selectedPrq.total_deductions || 0)}</span>
+                  Deductions:{" "}
+                  <span className="font-mono tabular-nums font-bold text-rose-600">
+                    {formatIDR(selectedPrq.total_deductions || 0)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -901,62 +929,82 @@ export default function Payroll() {
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-stone-700 flex items-center gap-2">
                   <span>Employee Packing List</span>
-                  <span className="px-2 py-0.5 bg-stone-100 text-stone-600 rounded-full text-[10px] font-mono font-bold">
+                  <Badge variant="default" size="sm">
                     {selectedPrq.details?.length || 0} Employees
-                  </span>
+                  </Badge>
                 </h4>
               </div>
 
-              <div className="overflow-x-auto border border-stone-200/80 rounded-xl shadow-2xs max-h-80 bg-white">
-                <table className="w-full text-left font-sans text-xs border-collapse min-w-[700px]">
-                  <thead className="sticky top-0 bg-stone-50/95 backdrop-blur-xs text-stone-500 uppercase text-[10px] font-bold tracking-wider border-b border-stone-200 z-10">
-                    <tr>
-                      <th className="p-3 pl-4 whitespace-nowrap">Employee Name</th>
-                      <th className="p-3 text-right whitespace-nowrap">Basic Salary</th>
-                      <th className="p-3 text-right whitespace-nowrap">Overtime Pay</th>
-                      <th className="p-3 text-right whitespace-nowrap">Business Trip & Reimburse</th>
-                      <th className="p-3 text-right whitespace-nowrap">Deductions (Absence/Tax)</th>
-                      <th className="p-3 pr-4 text-right whitespace-nowrap">Take Home Pay</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100 text-stone-700 font-medium">
+              <div className="border border-stone-200/80 rounded-xl shadow-2xs max-h-80 overflow-y-auto bg-white">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee Name</TableHead>
+                      <TableHead className="text-right">Basic Salary</TableHead>
+                      <TableHead className="text-right">Overtime Pay</TableHead>
+                      <TableHead className="text-right">
+                        Business Trip & Reimburse
+                      </TableHead>
+                      <TableHead className="text-right">
+                        Deductions (Absence/Tax)
+                      </TableHead>
+                      <TableHead className="text-right">
+                        Take Home Pay
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {(selectedPrq.details || []).map((det: any, idx: number) => {
-                      const empName = det.name || det.employee_name || det.username || det.employee_username || "Employee";
-                      const empUser = det.username || det.employee_username || "";
-                      const travelReimburse = Number(det.travel_allowance || 0) + Number(det.reimbursement_amount || 0);
+                      const empName =
+                        det.name ||
+                        det.employee_name ||
+                        det.username ||
+                        det.employee_username ||
+                        "Employee";
+                      const empUser =
+                        det.username || det.employee_username || "";
+                      const travelReimburse =
+                        Number(det.travel_allowance || 0) +
+                        Number(det.reimbursement_amount || 0);
 
                       return (
-                        <tr key={det.id || det.employee_username || idx} className="hover:bg-stone-50/60 transition-colors">
-                          <td className="p-3 pl-4 whitespace-nowrap">
-                            <div className="font-bold text-stone-900">{empName}</div>
-                            {empUser && <div className="text-[10px] font-mono text-stone-400">@{empUser}</div>}
-                          </td>
-                          <td className="p-3 text-right font-mono whitespace-nowrap text-stone-800">
+                        <TableRow key={det.id || det.employee_username || idx}>
+                          <TableCell>
+                            <div className="font-bold text-stone-900">
+                              {empName}
+                            </div>
+                            {empUser && (
+                              <div className="text-[10px] font-mono text-stone-400">
+                                @{empUser}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-mono tabular-nums text-stone-800">
                             {formatIDR(det.basic_salary)}
-                          </td>
-                          <td className="p-3 text-right whitespace-nowrap">
-                            <span className="font-mono text-[11px] text-amber-700 font-bold bg-amber-50/70 px-2 py-0.5 rounded-md inline-block">
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className="font-mono tabular-nums text-[11px] text-amber-700 font-bold bg-amber-50/70 px-2 py-0.5 rounded-md inline-block">
                               +{formatIDR(det.overtime_pay)}
                             </span>
-                          </td>
-                          <td className="p-3 text-right whitespace-nowrap">
-                            <span className="font-mono text-[11px] text-blue-700 font-bold bg-blue-50/70 px-2 py-0.5 rounded-md inline-block">
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className="font-mono tabular-nums text-[11px] text-blue-700 font-bold bg-blue-50/70 px-2 py-0.5 rounded-md inline-block">
                               +{formatIDR(travelReimburse)}
                             </span>
-                          </td>
-                          <td className="p-3 text-right whitespace-nowrap">
-                            <span className="font-mono text-[11px] text-rose-600 font-bold bg-rose-50/70 px-2 py-0.5 rounded-md inline-block">
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className="font-mono tabular-nums text-[11px] text-rose-600 font-bold bg-rose-50/70 px-2 py-0.5 rounded-md inline-block">
                               -{formatIDR(det.total_deductions)}
                             </span>
-                          </td>
-                          <td className="p-3 pr-4 text-right font-mono font-black text-stone-900 whitespace-nowrap text-sm">
+                          </TableCell>
+                          <TableCell className="text-right font-mono tabular-nums font-black text-stone-900 text-sm">
                             {formatIDR(det.net_pay)}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             </div>
 
@@ -965,63 +1013,65 @@ export default function Payroll() {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block mb-1">
                   Submission Notes from HR:
                 </span>
-                <p className="font-medium text-stone-800">{selectedPrq.notes}</p>
+                <p className="font-medium text-stone-800">
+                  {selectedPrq.notes}
+                </p>
               </div>
             )}
 
             {showRejectInput && (
               <div className="p-4 bg-rose-50/70 border border-rose-200 rounded-xl space-y-2 animate-in fade-in">
-                <label className="text-[10px] font-bold text-rose-800 uppercase tracking-wider block">
-                  Reason for Rejection / Revision Notes to HR:
-                </label>
-                <textarea
+                <Textarea
+                  label="Reason for Rejection / Revision Notes to HR"
                   rows={2}
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
                   placeholder="Example: Overtime detail does not attach supervisor approval report, please fix."
-                  className="w-full px-3 py-2 bg-white border border-rose-200 rounded-lg text-xs font-medium text-stone-800 focus:ring-1 focus:ring-rose-400 outline-none resize-none shadow-2xs"
                 />
               </div>
             )}
 
             <div className="pt-4 border-t border-stone-100 flex flex-col sm:flex-row justify-between items-center gap-3">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 onClick={() => setIsPrqReviewModalOpen(false)}
-                className="px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold rounded-xl transition-all cursor-pointer"
               >
                 Cancel
-              </button>
+              </Button>
               <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
                 {selectedPrq.status === "SUBMITTED" && (
                   <>
                     {!showRejectInput ? (
-                      <button
+                      <Button
                         type="button"
+                        variant="danger_soft"
+                        size="sm"
                         onClick={() => setShowRejectInput(true)}
-                        className="px-5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
                       >
                         Reject & Return to HR
-                      </button>
+                      </Button>
                     ) : (
-                      <button
+                      <Button
                         type="button"
-                        disabled={isProcessingPrq}
+                        variant="danger"
+                        size="sm"
+                        isLoading={isProcessingPrq}
                         onClick={() => handleRejectPrq(selectedPrq.id)}
-                        className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all disabled:opacity-50 cursor-pointer"
                       >
-                        {isProcessingPrq ? "Processing..." : "Confirm Rejection"}
-                      </button>
+                        Confirm Rejection
+                      </Button>
                     )}
-                    <button
+                    <Button
                       type="button"
-                      disabled={isProcessingPrq}
+                      size="sm"
+                      isLoading={isProcessingPrq}
+                      leftIcon={<CheckCircle2 className="w-4 h-4" />}
                       onClick={() => handleApproveAndConvertPrq(selectedPrq.id)}
-                      className="px-6 py-2.5 bg-[#b02524] hover:bg-[#8e1e1d] text-white text-xs font-bold rounded-xl shadow-xs transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                     >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>{isProcessingPrq ? "Issuing..." : "Approve & Issue Disbursement Order (Payroll PO)"}</span>
-                    </button>
+                      Approve & Issue Disbursement Order (Payroll PO)
+                    </Button>
                   </>
                 )}
               </div>

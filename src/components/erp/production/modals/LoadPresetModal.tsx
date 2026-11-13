@@ -65,7 +65,7 @@ export const LoadPresetModal: React.FC<LoadPresetModalProps> = ({
             </div>
           </div>
           <p className="text-[8px] text-stone-400 font-medium tracking-wide text-center uppercase mt-2">
-            * Hanya menerima format .json yang di-generate dari fitur Save Preset
+            * Only accepts .json files generated from the Save Preset feature
           </p>
         </div>
 
@@ -75,7 +75,7 @@ export const LoadPresetModal: React.FC<LoadPresetModalProps> = ({
             variant="secondary"
             onClick={onClose}
           >
-            Batal
+            Cancel
           </Button>
           <Button
             disabled={!loadPresetFile}

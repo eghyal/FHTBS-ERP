@@ -30,7 +30,7 @@ export class InventoryService {
    */
   async adjustStock(dto: StockAdjustmentDto, userEmail: string) {
     if (dto.quantity <= 0) {
-      throw new Error("Kuantitas penyesuaian harus lebih dari 0.");
+      throw new Error("Adjustment quantity must be greater than 0.");
     }
     return inventoryRepository.adjustStock(dto, userEmail);
   }
@@ -40,10 +40,10 @@ export class InventoryService {
    */
   async transferStock(dto: StockTransferDto, userEmail: string) {
     if (dto.quantity <= 0) {
-      throw new Error("Kuantitas transfer harus lebih dari 0.");
+      throw new Error("Transfer quantity must be greater than 0.");
     }
     if (dto.source_warehouse_id === dto.target_warehouse_id) {
-      throw new Error("Gudang tujuan tidak boleh sama dengan gudang asal.");
+      throw new Error("Target warehouse cannot be the same as source warehouse.");
     }
     return inventoryRepository.transferStock(dto, userEmail);
   }

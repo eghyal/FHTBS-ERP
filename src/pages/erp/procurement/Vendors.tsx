@@ -23,8 +23,14 @@ import { Loader } from "@/components/shared/Loader";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { ConfirmModal } from "@/components/shared/ConfirmModal";
 import { Action, hasPermission } from "@/utils/pbac";
+import {
+  formatSequence3,
+  getNextEntitySequence,
+  generateSmartSupplierCode,
+} from "@/utils/autoCoding";
 
 interface Supplier {
   id: string;
@@ -142,19 +148,34 @@ export default function Vendors() {
     npwp: "",
   });
 
+  const nextSupplierSeq = React.useMemo(
+    () => getNextEntitySequence("SUP", suppliers),
+    [suppliers],
+  );
+
+  const computedSupplierCode = React.useMemo(
+    () => generateSmartSupplierCode(newSupplier.name, nextSupplierSeq),
+    [newSupplier.name, nextSupplierSeq],
+  );
+
   const handleAddSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const payload = {
+        ...newSupplier,
+        code: generateSmartSupplierCode(newSupplier.name, nextSupplierSeq),
+      };
       const res = await apiFetch(
         "/api/suppliers",
         {
           method: "POST",
-          body: JSON.stringify(newSupplier),
+          body: JSON.stringify(payload),
         },
         user?.username,
       );
       if (res.ok) {
+        const assignedCode = (res.data as any)?.code || payload.code;
         setShowAddModal(false);
         setNewSupplier({
           name: "",
@@ -166,7 +187,7 @@ export default function Vendors() {
           npwp: "",
         });
         fetchSuppliers();
-        showToast("Supplier added successfully", "success");
+        showToast(`Supplier ${assignedCode} added successfully`, "success");
       } else {
         showToast(res.error || "Failed to add supplier", "error");
       }
@@ -219,34 +240,35 @@ export default function Vendors() {
   });
 
   return (
-    <div className="space-y-8 pb-20 animate-in fade-in duration-500">
+    <div className="space-y-5 pb-20 animate-in fade-in duration-500">
       <PageHeader
         title="Supplier Profiles"
-        subtitle="Supplier directory, quality performance & contact records"
+        subtitle="Supplier directory"
         icon={<Handshake className="w-5 h-5" />}
         actions={
           canModify && (
-            <button
+            <Button
+              variant="primary"
               onClick={() => setShowAddModal(true)}
-              className="px-6 py-2.5 bg-stone-800 text-white text-xs font-bold rounded-xl hover:bg-stone-900 transition-all active:scale-95 flex items-center gap-2 shadow-sm cursor-pointer"
+              leftIcon={<Plus className="w-4 h-4" />}
             >
-              <Plus className="w-4 h-4" /> Add New Supplier
-            </button>
+              Add New Supplier
+            </Button>
           )
         }
       />
 
       {/* Elegant Filter & Search Toolbar */}
-      <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-stone-200/90 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+      <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-stone-200/90 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 sm:gap-3">
         {/* Search input with leading icon and clear button */}
         <div className="relative flex-1 max-w-full md:max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
           <input
             type="text"
             placeholder="Search suppliers by name, code, contact person..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-10 pl-9.5 pr-8 bg-stone-50/70 hover:bg-stone-50 focus:bg-white text-stone-800 placeholder-stone-400 text-xs font-medium rounded-xl border border-stone-200/90 transition-all outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-400/15"
+            className="no-base-style w-full h-9 pl-9 pr-8 bg-stone-50/70 hover:bg-stone-50 focus:bg-white text-stone-800 placeholder-stone-400 text-xs font-medium rounded-lg border border-stone-200/90 transition-all outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-400/15"
           />
           {searchQuery && (
             <button
@@ -260,14 +282,14 @@ export default function Vendors() {
         </div>
 
         {/* Integrated Filter Controls Row */}
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 justify-end">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 justify-end">
           {/* Grade Performance Filter */}
           <div className="relative inline-flex items-center min-w-[155px] flex-1 sm:flex-initial">
-            <Filter className="absolute left-3 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
+            <Filter className="absolute left-2.5 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
             <select
               value={gradeFilter}
               onChange={(e) => setGradeFilter(e.target.value)}
-              className="w-full h-10 pl-8 pr-8 bg-stone-50/70 hover:bg-stone-100/60 text-stone-700 text-xs font-semibold rounded-xl border border-stone-200/90 transition-all cursor-pointer outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-400/15 appearance-none"
+              className="no-base-style w-full h-9 pl-8 pr-8 bg-stone-50/70 hover:bg-stone-100/60 text-stone-700 text-xs font-semibold rounded-lg border border-stone-200/90 transition-all cursor-pointer outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-400/15 appearance-none"
             >
               <option value="ALL">All Grades ({suppliers.length})</option>
               <option value="A">Grade A (Optimal &gt;95%)</option>
@@ -278,7 +300,7 @@ export default function Vendors() {
           </div>
 
           {/* Result Count Badge */}
-          <div className="h-10 px-3.5 bg-stone-50/90 border border-stone-200/90 rounded-xl flex items-center gap-1.5 text-xs font-bold text-stone-600 whitespace-nowrap">
+          <div className="h-9 px-3 bg-stone-50/90 border border-stone-200/90 rounded-lg flex items-center gap-1.5 text-xs font-bold text-stone-600 whitespace-nowrap">
             <Building2 className="w-3.5 h-3.5 text-stone-400" />
             <span>
               {filteredSuppliers.length}{" "}
@@ -289,7 +311,7 @@ export default function Vendors() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {isLoading ? (
           <div className="col-span-full">
             <Loader text="Loading suppliers..." className="py-20" />
@@ -323,71 +345,73 @@ export default function Vendors() {
                   "bg-emerald-50 text-emerald-700 border-emerald-200";
               } else if (healthScore >= 0.8) {
                 grade = "B";
-                gradeColor = "bg-lime-50 text-lime-700 border-lime-200";
+                gradeColor = "bg-blue-50 text-blue-700 border-blue-200";
               } else if (healthScore >= 0.6) {
                 grade = "C";
                 gradeColor = "bg-amber-50 text-amber-700 border-amber-200";
               } else {
                 grade = "D";
-                gradeColor = "bg-red-50 text-red-700 border-red-200";
+                gradeColor = "bg-rose-50 text-rose-700 border-rose-200";
               }
             }
 
             return (
               <div
                 key={sup.id}
-                className="bg-white p-6 border border-stone-200 rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group"
+                className="bg-white p-4 border border-stone-200/80 rounded-xl shadow-2xs hover:border-stone-300 transition-all duration-200 group flex flex-col justify-between"
               >
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h3 className="text-sm font-bold text-stone-900 tracking-tight flex items-center gap-2">
-                      {sup.name}
-                    </h3>
-                    <div className="text-[10px] text-stone-400 font-bold tracking-widest uppercase mt-1 flex items-center gap-2">
-                      {sup.code || "NO CODE"}
-                      <span
-                        className={cn(
-                          "px-1.5 py-0.5 text-[9px] rounded-sm font-semibold border",
-                          gradeColor,
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-stone-900 tracking-tight flex items-center gap-2">
+                        {sup.name}
+                      </h3>
+                      <div className="text-[10px] text-stone-400 font-bold tracking-widest uppercase mt-1 flex items-center gap-2">
+                        {sup.code || "NO CODE"}
+                        <span
+                          className={cn(
+                            "px-1.5 py-0.5 text-[9px] rounded-sm font-semibold border",
+                            gradeColor,
+                          )}
+                        >
+                          {grade === "NEW" || grade === "PEN"
+                            ? grade
+                            : `GRADE ${grade}`}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-2 bg-stone-50 rounded-lg text-stone-400 group-hover:text-stone-900 group-hover:bg-stone-100 transition-colors">
+                      <Users className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2.5 text-xs text-stone-600">
+                      <Mail className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                      {sup.email || (
+                        <span className="text-stone-400 italic">No email</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2.5 text-xs text-stone-600">
+                      <Phone className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                      {sup.phone || (
+                        <span className="text-stone-400 italic">No phone</span>
+                      )}
+                    </div>
+                    <div className="flex items-start gap-2.5 text-xs text-stone-600">
+                      <MapPin className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
+                      <span className="line-clamp-2">
+                        {sup.address || (
+                          <span className="text-stone-400 italic">
+                            No address
+                          </span>
                         )}
-                      >
-                        {grade === "NEW" || grade === "PEN"
-                          ? grade
-                          : `GRADE ${grade}`}
                       </span>
                     </div>
                   </div>
-                  <div className="p-2.5 bg-stone-50 rounded-full text-stone-400 group-hover:text-stone-900 group-hover:bg-stone-100 transition-colors">
-                    <Users className="w-4 h-4" />
-                  </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 text-sm text-stone-600">
-                    <Mail className="w-4 h-4 text-stone-400" />
-                    {sup.email || (
-                      <span className="text-stone-400 italic">No email</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-stone-600">
-                    <Phone className="w-4 h-4 text-stone-400" />
-                    {sup.phone || (
-                      <span className="text-stone-400 italic">No phone</span>
-                    )}
-                  </div>
-                  <div className="flex items-start gap-3 text-sm text-stone-600">
-                    <MapPin className="w-4 h-4 text-stone-400 mt-0.5 shrink-0" />
-                    <span className="line-clamp-2">
-                      {sup.address || (
-                        <span className="text-stone-400 italic">
-                          No address
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-stone-50 grid grid-cols-3 gap-2 text-center items-center font-sans">
+                <div className="mt-3.5 pt-3 border-t border-stone-100 grid grid-cols-3 gap-2 text-center items-center font-sans">
                   <div className="bg-stone-50/80 p-2 rounded-xl">
                     <div className="text-[9px] font-bold text-stone-400 tracking-widest uppercase">
                       Orders
@@ -414,16 +438,16 @@ export default function Vendors() {
                   </div>
                 </div>
 
-                {/* Tax ID / NPWP Badge */}
+                {/* Tax ID Badge */}
                 <div className="mt-3 pt-3 border-t border-stone-100 flex flex-wrap items-center gap-1.5">
                   {sup.npwp ? (
                     <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-md">
                       <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                      NPWP: {sup.npwp}
+                      Tax ID: {sup.npwp}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-[10px] font-mono text-stone-400 bg-stone-50 border border-stone-200/60 px-2 py-0.5 rounded-md">
-                      No NPWP
+                      No Tax ID
                     </span>
                   )}
                 </div>
@@ -488,15 +512,11 @@ export default function Vendors() {
                 }
               />
               <Input
-                label="Supplier Code"
+                label="Supplier Code · System Locked"
+                readOnly
+                tabIndex={-1}
                 value={editingSupplier.code || ""}
-                onChange={(e) =>
-                  setEditingSupplier({
-                    ...editingSupplier,
-                    code: e.target.value.toUpperCase(),
-                  })
-                }
-                className="font-mono font-bold"
+                className="font-mono tabular-nums font-bold bg-stone-100/80 text-stone-800 border-stone-200 cursor-not-allowed select-all"
               />
             </div>
             <Input
@@ -533,7 +553,7 @@ export default function Vendors() {
               />
             </div>
             <Input
-              label="Tax ID / NPWP (Nomor Pokok Wajib Pajak)"
+              label="Tax ID"
               value={editingSupplier.npwp || ""}
               onChange={(e) =>
                 setEditingSupplier({
@@ -544,21 +564,17 @@ export default function Vendors() {
               className="font-mono"
               placeholder="e.g. 01.234.567.8-901.000"
             />
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest">
-                Address
-              </label>
-              <textarea
-                value={editingSupplier.address || ""}
-                onChange={(e) =>
-                  setEditingSupplier({
-                    ...editingSupplier,
-                    address: e.target.value,
-                  })
-                }
-                className="input-elegant min-h-[80px]"
-              />
-            </div>
+            <Textarea
+              label="Address"
+              value={editingSupplier.address || ""}
+              onChange={(e) =>
+                setEditingSupplier({
+                  ...editingSupplier,
+                  address: e.target.value,
+                })
+              }
+              className="min-h-[80px]"
+            />
             <div className="flex justify-end gap-3 pt-4 border-t border-stone-100">
               <Button
                 type="button"
@@ -601,23 +617,32 @@ export default function Vendors() {
               label="Supplier Name"
               required
               value={newSupplier.name}
-              onChange={(e) =>
-                setNewSupplier({ ...newSupplier, name: e.target.value })
-              }
-              placeholder="e.g. PT. Steel Indonesia"
-            />
-            <Input
-              label="Supplier Code"
-              value={newSupplier.code}
-              onChange={(e) =>
+              onChange={(e) => {
+                const nameVal = e.target.value;
                 setNewSupplier({
                   ...newSupplier,
-                  code: e.target.value.toUpperCase(),
-                })
-              }
-              className="font-mono font-bold"
-              placeholder="e.g. SUP-001"
+                  name: nameVal,
+                  code: generateSmartSupplierCode(nameVal, nextSupplierSeq),
+                });
+              }}
+              placeholder="e.g. PT Baja Jaya Sentosa"
             />
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest">
+                  Supplier Code · Auto
+                </label>
+                <span className="text-[10px] font-mono tabular-nums text-stone-500">
+                  Seq #{formatSequence3(nextSupplierSeq)}
+                </span>
+              </div>
+              <Input
+                readOnly
+                tabIndex={-1}
+                value={computedSupplierCode}
+                className="font-mono tabular-nums font-bold bg-stone-100/80 text-stone-800 border-stone-200 cursor-not-allowed select-all"
+              />
+            </div>
           </div>
           <Input
             label="Contact Person"
@@ -650,7 +675,7 @@ export default function Vendors() {
             />
           </div>
           <Input
-            label="Tax ID / NPWP (Nomor Pokok Wajib Pajak)"
+            label="Tax ID"
             value={newSupplier.npwp}
             onChange={(e) =>
               setNewSupplier({ ...newSupplier, npwp: e.target.value })
@@ -658,19 +683,15 @@ export default function Vendors() {
             className="font-mono"
             placeholder="e.g. 01.234.567.8-901.000"
           />
-          <div className="space-y-1.5">
-            <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest">
-              Address
-            </label>
-            <textarea
-              value={newSupplier.address}
-              onChange={(e) =>
-                setNewSupplier({ ...newSupplier, address: e.target.value })
-              }
-              className="input-elegant min-h-[80px]"
-              placeholder="Jl. Raya Industri No. 123..."
-            />
-          </div>
+          <Textarea
+            label="Address"
+            value={newSupplier.address}
+            onChange={(e) =>
+              setNewSupplier({ ...newSupplier, address: e.target.value })
+            }
+            className="min-h-[80px]"
+            placeholder="Jl. Raya Industri No. 123..."
+          />
           <div className="flex justify-end gap-3 pt-4 border-t border-stone-100">
             <Button
               type="button"

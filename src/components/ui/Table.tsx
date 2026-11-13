@@ -1,13 +1,30 @@
 import React, { memo } from "react";
 import { cn } from "@/lib/utils";
 
+export interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
+  wrapperClassName?: string;
+  compact?: boolean;
+  unbordered?: boolean;
+}
+
 export const Table = memo(
-  React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-    ({ className, ...props }, ref) => (
-      <div className="relative w-full overflow-x-auto custom-scrollbar rounded-xl border border-stone-200/80 bg-white">
+  React.forwardRef<HTMLTableElement, TableProps>(
+    ({ className, wrapperClassName, compact = false, unbordered = false, ...props }, ref) => (
+      <div
+        className={cn(
+          "relative w-full overflow-x-auto custom-scrollbar bg-white",
+          !unbordered && "rounded-2xl border border-stone-200/80 shadow-2xs",
+          wrapperClassName,
+        )}
+      >
         <table
           ref={ref}
-          className={cn("w-full caption-bottom text-xs sm:text-sm border-collapse", className)}
+          data-compact={compact ? "true" : undefined}
+          className={cn(
+            "w-full caption-bottom text-xs border-collapse tabular-nums",
+            compact && "[&_th]:h-8 [&_th]:px-2.5 [&_td]:px-2.5 [&_td]:py-1.5",
+            className,
+          )}
           {...props}
         />
       </div>
@@ -23,7 +40,7 @@ export const TableHeader = memo(
   >(({ className, ...props }, ref) => (
     <thead
       ref={ref}
-      className={cn("bg-stone-50 border-b border-stone-200/80 sticky top-0 z-10", className)}
+      className={cn("bg-stone-50/95 border-b border-stone-200/80 sticky top-0 z-10", className)}
       {...props}
     />
   )),
@@ -52,7 +69,7 @@ export const TableFooter = memo(
     <tfoot
       ref={ref}
       className={cn(
-        "border-t border-stone-200 bg-stone-50/50 font-medium text-stone-900",
+        "border-t border-stone-200/80 bg-stone-50/80 font-bold text-stone-900 tabular-nums",
         className,
       )}
       {...props}
@@ -61,13 +78,18 @@ export const TableFooter = memo(
 );
 TableFooter.displayName = "TableFooter";
 
+export interface TableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
+  hoverable?: boolean;
+}
+
 export const TableRow = memo(
-  React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTMLTableRowElement>>(
-    ({ className, ...props }, ref) => (
+  React.forwardRef<HTMLTableRowElement, TableRowProps>(
+    ({ className, hoverable = true, ...props }, ref) => (
       <tr
         ref={ref}
         className={cn(
-          "transition-colors hover:bg-stone-50/70 data-[state=selected]:bg-stone-100",
+          "transition-colors data-[state=selected]:bg-stone-100/80",
+          hoverable && "hover:bg-stone-50/80",
           className,
         )}
         {...props}
@@ -85,7 +107,7 @@ export const TableHead = memo(
     <th
       ref={ref}
       className={cn(
-        "h-10 px-3.5 sm:px-4 text-left align-middle font-extrabold text-stone-600 text-[10px] sm:text-[11px] uppercase tracking-wider select-none whitespace-nowrap",
+        "h-9 px-3 sm:px-3.5 text-left align-middle font-bold text-stone-500 text-[10px] sm:text-[10.5px] uppercase tracking-wider select-none whitespace-nowrap",
         className,
       )}
       {...props}
@@ -101,7 +123,10 @@ export const TableCell = memo(
   >(({ className, ...props }, ref) => (
     <td
       ref={ref}
-      className={cn("p-3 sm:p-4 align-middle text-stone-700 font-normal leading-relaxed", className)}
+      className={cn(
+        "px-3 py-2.5 sm:px-3.5 sm:py-2.5 align-middle text-stone-700 font-normal leading-snug tabular-nums",
+        className,
+      )}
       {...props}
     />
   )),
@@ -110,7 +135,7 @@ TableCell.displayName = "TableCell";
 
 export const TableEmpty = memo(function TableEmpty({
   colSpan,
-  message = "Tidak ada data yang tersedia",
+  message = "No records found",
   icon,
 }: {
   colSpan: number;
@@ -121,11 +146,11 @@ export const TableEmpty = memo(function TableEmpty({
     <tr>
       <td
         colSpan={colSpan}
-        className="h-32 text-center p-8 text-stone-400 font-medium select-none"
+        className="h-28 text-center p-6 text-stone-400 font-medium select-none"
       >
-        <div className="flex flex-col items-center justify-center gap-2">
-          {icon && <div className="text-stone-300 [&>svg]:w-8 [&>svg]:h-8">{icon}</div>}
-          <p className="text-xs sm:text-sm font-semibold">{message}</p>
+        <div className="flex flex-col items-center justify-center gap-1.5">
+          {icon && <div className="text-stone-300 [&>svg]:w-6 [&>svg]:h-6">{icon}</div>}
+          <p className="text-xs font-semibold text-stone-500">{message}</p>
         </div>
       </td>
     </tr>

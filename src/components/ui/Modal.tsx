@@ -9,10 +9,13 @@ export interface ModalProps {
   onClose: () => void;
   title?: React.ReactNode;
   description?: React.ReactNode;
+  headerActions?: React.ReactNode;
+  footer?: React.ReactNode;
   children: React.ReactNode;
   className?: string; // For additional styling on the modal container
   contentClassName?: string; // For styling the content wrapper (e.g. to remove default padding)
   closeOnOverlayClick?: boolean;
+  hideCloseButton?: boolean;
   maxWidth?:
     | "sm"
     | "md"
@@ -25,6 +28,19 @@ export interface ModalProps {
     | "6xl"
     | "7xl"
     | "full";
+  size?:
+    | "sm"
+    | "md"
+    | "lg"
+    | "xl"
+    | "2xl"
+    | "3xl"
+    | "4xl"
+    | "5xl"
+    | "6xl"
+    | "7xl"
+    | "full";
+  uiTheme?: "auto" | "erp" | "hris";
 }
 
 export const Modal = memo(function Modal({
@@ -32,11 +48,16 @@ export const Modal = memo(function Modal({
   onClose,
   title,
   description,
+  headerActions,
+  footer,
   children,
   className,
   contentClassName,
   closeOnOverlayClick = true,
-  maxWidth = "lg",
+  hideCloseButton = false,
+  maxWidth,
+  size,
+  uiTheme = "auto",
 }: ModalProps) {
   useEffect(() => {
     if (!isOpen) return;
@@ -48,6 +69,8 @@ export const Modal = memo(function Modal({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
+
+  const effectiveMaxWidth = maxWidth || size || "lg";
   const maxWidthClass = {
     sm: "max-w-sm",
     md: "max-w-md",
@@ -60,9 +83,15 @@ export const Modal = memo(function Modal({
     "6xl": "max-w-6xl",
     "7xl": "max-w-7xl",
     full: "max-w-full m-4",
-  }[maxWidth];
+  }[effectiveMaxWidth];
 
   if (typeof document === "undefined") return null;
+
+  const isHrisContext =
+    uiTheme === "hris" ||
+    (uiTheme === "auto" &&
+      (document.documentElement.classList.contains("hris-dark") ||
+        Boolean(document.querySelector(".hris-theme"))));
 
   return createPortal(
     <AnimatePresence>
@@ -73,61 +102,93 @@ export const Modal = memo(function Modal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-[200]"
+            className="fixed inset-0 bg-stone-950/50 backdrop-blur-sm z-[200]"
             onClick={closeOnOverlayClick ? onClose : undefined}
           />
-          <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center p-0 sm:p-4 pointer-events-none">
+          <div
+            className={cn(
+              "fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-3 md:p-4 pointer-events-none",
+              isHrisContext && "hris-theme",
+            )}
+          >
             <motion.div
               role="dialog"
               aria-modal="true"
-              initial={{ opacity: 0, scale: 0.95, y: "100%" }}
+              initial={{ opacity: 0, scale: 0.98, y: 24 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: "100%" }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
+              exit={{ opacity: 0, scale: 0.98, y: 24 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
               className={cn(
-                "bg-white w-full flex flex-col pointer-events-auto",
-                "max-h-[90vh] md:max-h-[85vh]",
-                "rounded-t-[1.5rem] md:rounded-[2rem]",
-                "mt-auto md:mt-0", // Bottom sheet effect on mobile
-                "shadow-[0_-8px_30px_-15px_rgba(0,0,0,0.1)] md:shadow-2xl", // Shadow up for bottom sheet
+                "bg-white w-full flex flex-col pointer-events-auto border border-stone-200/90",
+                "max-h-[90dvh] sm:max-h-[86vh]",
+                isHrisContext
+                  ? "rounded-t-2xl sm:rounded-2xl hris-glass-panel"
+                  : "rounded-t-xl sm:rounded-xl",
+                "mt-auto sm:mt-0",
+                "shadow-[0_-10px_35px_-12px_rgba(0,0,0,0.18)] sm:shadow-2xl",
                 maxWidthClass,
                 className,
               )}
             >
-              {title && (
-                <div className="sticky top-0 bg-white z-10 flex items-center justify-between p-4 md:p-8 border-b border-stone-100 shrink-0 rounded-t-[1.5rem] md:rounded-[2rem]">
-                  <div className="flex-1">
+              {/* Mobile Bottom-Sheet Grab Handle */}
+              <div className="sm:hidden flex justify-center pt-2 pb-0.5 shrink-0">
+                <div className="w-9 h-1 rounded-full bg-stone-300/80" />
+              </div>
+
+              {(title || headerActions) && (
+                <div
+                  className={cn(
+                    "sticky top-0 bg-white z-10 flex items-center justify-between gap-3 px-4 py-3 sm:px-5 sm:py-3.5 border-b border-stone-200/80 shrink-0",
+                    isHrisContext ? "rounded-t-2xl" : "rounded-t-xl",
+                  )}
+                >
+                  <div className="flex-1 min-w-0">
                     {typeof title === "string" ? (
-                      <h3 className="text-lg md:text-xl font-bold tracking-tight text-stone-900">
+                      <h3 className="text-sm sm:text-base font-bold tracking-tight text-stone-900 truncate">
                         {title}
                       </h3>
                     ) : (
                       title
                     )}
                     {description && (
-                      <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mt-1.5">
+                      <p className="text-[10px] sm:text-[11px] text-stone-500 font-semibold uppercase tracking-wider mt-0.5 truncate">
                         {description}
                       </p>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    aria-label="Tutup modal"
-                    className="p-2 ml-4 rounded-xl hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {headerActions}
+                    {!hideCloseButton && (
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        aria-label="Close modal"
+                        className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                      >
+                        <X className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               <div
                 className={cn(
-                  "overflow-y-auto p-4 md:p-8 custom-scrollbar",
+                  "overflow-y-auto p-4 sm:p-5 custom-scrollbar flex-1",
                   contentClassName,
                 )}
               >
                 {children}
               </div>
+              {footer && (
+                <div
+                  className={cn(
+                    "sticky bottom-0 bg-stone-50/95 backdrop-blur-xs z-10 flex flex-wrap items-center justify-end gap-2 px-4 py-3 sm:px-5 sm:py-3.5 border-t border-stone-200/80 shrink-0",
+                    isHrisContext ? "sm:rounded-b-2xl" : "sm:rounded-b-xl",
+                  )}
+                >
+                  {footer}
+                </div>
+              )}
             </motion.div>
           </div>
         </React.Fragment>

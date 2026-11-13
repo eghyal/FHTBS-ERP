@@ -1,6 +1,11 @@
 import db from "../db/database.ts";
 import { outboxService } from "../services/outboxService.ts";
 import { cacheService } from "../services/cacheService.ts";
+import { postJournalEntry } from "../utils/accountingBridge.ts";
+import {
+  getNextCategorySequence,
+  generateSmartSku,
+} from "../utils/autoCoding.ts";
 import crypto from "crypto";
 
 export interface StockAdjustmentDto {
@@ -47,6 +52,8 @@ export class InventoryRepository {
         i.lead_time_days,
         COALESCE(inv.free_stock, 0) as free_stock,
         COALESCE(inv.allocated_stock, 0) as allocated_stock,
+        COALESCE(inv.physical_qty, COALESCE(inv.free_stock, 0) + COALESCE(inv.allocated_stock, 0)) as physical_qty,
+        COALESCE(inv.available_qty, COALESCE(inv.free_stock, 0)) as available_qty,
         (COALESCE(inv.free_stock, 0) + COALESCE(inv.allocated_stock, 0)) as total_stock
       FROM items i
       LEFT JOIN inventory inv ON i.id = inv.item_id
@@ -81,7 +88,7 @@ export class InventoryRepository {
    * Insert new Inventory Item with Transactional Outbox and Cache Invalidation
    */
   createItem(item: {
-    item_code: string;
+    item_code?: string;
     name: string;
     type?: string;
     uom?: string;
@@ -91,9 +98,19 @@ export class InventoryRepository {
     lead_time_days?: number;
     initial_stock?: number;
   }) {
-    const existing = db.prepare("SELECT id FROM items WHERE item_code = ?").get(item.item_code);
-    if (existing) {
-      throw new Error(`Item code ${item.item_code} already exists.`);
+    const rawType = (item.type || "RAW").toUpperCase();
+    const allActiveItems = db
+      .prepare("SELECT item_code, type, item_type, category FROM items WHERE deleted_at IS NULL")
+      .all() as any[];
+
+    let seq = getNextCategorySequence(rawType, allActiveItems);
+    let finalCode = generateSmartSku(rawType, item.name, seq);
+
+    while (
+      db.prepare("SELECT id FROM items WHERE item_code = ? COLLATE NOCASE").get(finalCode)
+    ) {
+      seq++;
+      finalCode = generateSmartSku(rawType, item.name, seq);
     }
 
     const id = "ITM-" + crypto.randomBytes(4).toString("hex").toUpperCase();
@@ -107,7 +124,7 @@ export class InventoryRepository {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
-        item.item_code,
+        finalCode,
         item.name,
         item.dimension || null,
         item.spec || null,
@@ -120,9 +137,9 @@ export class InventoryRepository {
       // 2. Insert Inventory baseline
       const initialStock = Math.max(0, item.initial_stock || 0);
       db.prepare(`
-        INSERT INTO inventory (item_id, free_stock, allocated_stock)
-        VALUES (?, ?, 0)
-      `).run(id, initialStock);
+        INSERT INTO inventory (item_id, free_stock, allocated_stock, physical_qty, available_qty)
+        VALUES (?, ?, 0, ?, ?)
+      `).run(id, initialStock, initialStock, initialStock);
 
       // 3. Outbox Event
       outboxService.enqueue(
@@ -132,7 +149,7 @@ export class InventoryRepository {
         "CREATE",
         {
           id,
-          item_code: item.item_code,
+          item_code: finalCode,
           name: item.name,
           type: item.type || "RAW",
           uom: item.uom || "PCS",
@@ -142,7 +159,7 @@ export class InventoryRepository {
         "BOTH"
       );
 
-      return { id, item_code: item.item_code, name: item.name };
+      return { id, item_code: finalCode, name: item.name };
     })();
 
     // Invalidate Items Cache
@@ -155,7 +172,7 @@ export class InventoryRepository {
    * Atomic stock adjustment with ledger recording and outbox event
    */
   adjustStock(dto: StockAdjustmentDto, userEmail: string) {
-    const item = db.prepare("SELECT id, name, item_code FROM items WHERE id = ?").get(dto.item_id) as any;
+    const item = db.prepare("SELECT id, name, item_code, type, unit_price FROM items WHERE id = ?").get(dto.item_id) as any;
     if (!item) {
       throw new Error("Item tidak ditemukan.");
     }
@@ -169,7 +186,7 @@ export class InventoryRepository {
         allocated_stock: 0,
       };
 
-      let newFreeStock = currentInv.free_stock;
+      let newFreeStock = Number(currentInv.free_stock || 0);
       let qtyDelta = 0;
 
       if (dto.adjustment_type === "INCREASE") {
@@ -177,12 +194,12 @@ export class InventoryRepository {
         newFreeStock += dto.quantity;
       } else if (dto.adjustment_type === "DECREASE") {
         if (currentInv.free_stock < dto.quantity) {
-          throw new Error(`Stok tidak mencukupi untuk pengurangan. Stok tersedia: ${currentInv.free_stock}`);
+          throw new Error(`Insufficient stock for deduction. Available stock: ${currentInv.free_stock}`);
         }
         qtyDelta = -dto.quantity;
         newFreeStock -= dto.quantity;
       } else if (dto.adjustment_type === "SET") {
-        qtyDelta = dto.quantity - currentInv.free_stock;
+        qtyDelta = dto.quantity - Number(currentInv.free_stock || 0);
         newFreeStock = dto.quantity;
       }
 
@@ -198,20 +215,52 @@ export class InventoryRepository {
         dto.item_id,
         newFreeStock,
         currentInv.allocated_stock,
-        newFreeStock + currentInv.allocated_stock,
+        newFreeStock + Number(currentInv.allocated_stock || 0),
         newFreeStock,
         newFreeStock,
-        newFreeStock + currentInv.allocated_stock,
+        newFreeStock + Number(currentInv.allocated_stock || 0),
         newFreeStock
       );
 
-      // 1b. Synchronize items.stock_quantity (K1 fix)
-      db.prepare("UPDATE items SET stock_quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
-        newFreeStock,
-        dto.item_id
-      );
+      // 1b. Synchronize items.stock_quantity if column exists
+      try {
+        db.prepare("UPDATE items SET stock_quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
+          newFreeStock,
+          dto.item_id
+        );
+      } catch (_) {}
 
-      // 2. Insert into stock_ledger / stock_movements
+      // 2. Always insert into stock_movements (canonical movement table)
+      try {
+        db.prepare(`
+          INSERT INTO stock_movements (
+            id, item_id, type, qty, reference_id, recorded_by, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          ledgerId,
+          dto.item_id,
+          "ADJUSTMENT",
+          qtyDelta,
+          dto.reason || "ADJUST",
+          userEmail || "SYSTEM",
+          nowIso
+        );
+      } catch (e2) {
+        db.prepare(`
+          INSERT INTO stock_movements (
+            id, item_id, type, qty, reference_id, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          ledgerId,
+          dto.item_id,
+          "ADJUSTMENT",
+          qtyDelta,
+          dto.reason || "ADJUST",
+          nowIso
+        );
+      }
+
+      // Also insert into stock_ledger if present
       try {
         db.prepare(`
           INSERT INTO stock_ledger (
@@ -223,28 +272,39 @@ export class InventoryRepository {
           dto.warehouse_id || "MAIN",
           "ADJUSTMENT_" + dto.adjustment_type,
           qtyDelta,
-          dto.cost_per_unit || 0,
+          dto.cost_per_unit || item.unit_price || 0,
           dto.reason,
           userEmail,
           nowIso
         );
-      } catch (e) {
-        // Table might be stock_movements
+      } catch (_) {}
+
+      // 2b. Post Accounting Journal Entry for stock adjustment value
+      const unitCost = Number(dto.cost_per_unit || item.unit_price || 0);
+      const adjVal = Math.round(Math.abs(qtyDelta) * unitCost);
+      if (qtyDelta !== 0 && adjVal > 0) {
+        const invAccount = item.type === "FINISHED" ? "1103" : "1104";
+        const invAccountName = item.type === "FINISHED" ? "Finished Goods Inventory (Persediaan Barang Jadi)" : "Raw Materials Inventory (Persediaan Bahan Baku)";
         try {
-          db.prepare(`
-            INSERT INTO stock_movements (
-              id, item_id, type, qty, reference_id, notes, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            ledgerId,
-            dto.item_id,
-            "ADJUSTMENT",
-            qtyDelta,
-            "ADJUST",
-            dto.reason,
-            nowIso
-          );
-        } catch (e2) {}
+          postJournalEntry(db, {
+            reference_type: "MANUAL_ADJUSTMENT",
+            reference_id: ledgerId,
+            reference_number: ledgerId,
+            description: `Stock Adjustment (${qtyDelta > 0 ? "+" : ""}${qtyDelta}) ${item.name} - ${dto.reason}`,
+            created_by: userEmail || "WAREHOUSE",
+            lines: qtyDelta > 0
+              ? [
+                  { account_code: invAccount, account_name: invAccountName, debit: adjVal, credit: 0, memo: `Stock increase ${item.item_code}` },
+                  { account_code: "5101", account_name: "Cost of Goods Sold - Direct Materials (HPP Bahan Baku)", debit: 0, credit: adjVal, memo: `Inventory opname gain adjustment` },
+                ]
+              : [
+                  { account_code: "5101", account_name: "Cost of Goods Sold - Direct Materials (HPP Bahan Baku)", debit: adjVal, credit: 0, memo: `Inventory shrinkage / adjustment loss` },
+                  { account_code: invAccount, account_name: invAccountName, debit: 0, credit: adjVal, memo: `Stock decrease ${item.item_code}` },
+                ],
+          });
+        } catch (jeErr) {
+          console.warn("Could not post stock adjustment journal:", jeErr);
+        }
       }
 
       // 3. Outbox Event
@@ -286,11 +346,11 @@ export class InventoryRepository {
   transferStock(dto: StockTransferDto, userEmail: string) {
     const item = db.prepare("SELECT id, name, item_code FROM items WHERE id = ?").get(dto.item_id) as any;
     if (!item) {
-      throw new Error("Item tidak ditemukan.");
+      throw new Error("Item not found.");
     }
 
     if (dto.source_warehouse_id === dto.target_warehouse_id) {
-      throw new Error("Gudang tujuan tidak boleh sama dengan gudang asal.");
+      throw new Error("Target warehouse cannot be the same as source warehouse.");
     }
 
     const nowIso = new Date().toISOString();
@@ -318,22 +378,25 @@ export class InventoryRepository {
         .prepare("SELECT quantity FROM warehouse_stock WHERE warehouse_id = ? AND item_id = ?")
         .get(dto.source_warehouse_id, dto.item_id) as any;
 
-      const availableInSource = sourceStock ? Number(sourceStock.quantity) : Number(currentInv.free_stock);
+      const availableInSource = sourceStock !== undefined
+        ? Number(sourceStock.quantity || 0)
+        : Number(currentInv.free_stock || 0);
 
-      if (availableInSource < dto.quantity && currentInv.free_stock < dto.quantity) {
+      if (availableInSource < dto.quantity) {
         throw new Error(
-          `Stok di gudang asal [${dto.source_warehouse_id}] tidak mencukupi untuk transfer. Stok tersedia: ${availableInSource}`
+          `Insufficient stock in source warehouse [${dto.source_warehouse_id}] for transfer. Available stock: ${availableInSource}`
         );
       }
 
-      // 1. Deduct from source warehouse
+      // 1. Deduct from source warehouse safely (never negative)
+      const nextSourceQty = Math.max(0, availableInSource - dto.quantity);
       db.prepare(`
         INSERT INTO warehouse_stock (warehouse_id, item_id, quantity, updated_at)
         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(warehouse_id, item_id) DO UPDATE SET
-          quantity = warehouse_stock.quantity - excluded.quantity,
+          quantity = ?,
           updated_at = CURRENT_TIMESTAMP
-      `).run(dto.source_warehouse_id, dto.item_id, dto.quantity);
+      `).run(dto.source_warehouse_id, dto.item_id, nextSourceQty, nextSourceQty);
 
       // 2. Add to target warehouse
       db.prepare(`

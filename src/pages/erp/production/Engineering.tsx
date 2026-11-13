@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn, formatIDR, formatNumberWithDots } from "@/lib/utils";
-import { BomRegistrySearchModal } from "@/components/erp/production/modals/BomRegistrySearchModal";
+import { BomRegistrySearchModal } from "@/components/erp/production/modals/BomSearchModal";
 import { ReviseBomModal } from "@/components/erp/production/modals/ReviseBomModal";
 import { LoadPresetModal } from "@/components/erp/production/modals/LoadPresetModal";
 import { SavePresetModal } from "@/components/erp/production/modals/SavePresetModal";
@@ -40,7 +40,7 @@ import {
   Check,
   ExternalLink,
 } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/contexts/ToastContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -48,16 +48,18 @@ import { ConfirmModal } from "@/components/shared/ConfirmModal";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { safeFetchJson, apiFetch } from "@/utils/api";
 import { BomPreviewModal } from "@/components/erp/BomPreviewModal";
-import { BomMergeDuplicatesModal } from "@/components/erp/BomMergeDuplicatesModal";
+import { BomMergeDuplicatesModal } from "@/components/erp/BomMergeModal";
 import { AuthorizeDocModal } from "@/components/erp/AuthorizeDocModal";
 import { EcoHistoryModal } from "@/components/erp/EcoHistoryModal";
 import { Action, hasPermission, hasGodMode } from "@/utils/pbac";
 import { BomItemRowEditor, BomRow } from "@/components/erp/production/BomItemRowEditor";
 
 export default function Engineering() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const paramProjectId = searchParams.get("projectId");
 
@@ -124,12 +126,7 @@ target_project_id: "",
       }, user?.username);
       if (res.ok && res.data?.success) {
         setShowAuthModal(false);
-        showToast(
-          language === "id"
-            ? "BOM berhasil diotorisasi secara sah!"
-            : "BOM Authorized successfully!",
-          "success"
-        );
+        showToast("BOM authorized successfully!", "success");
         fetchProjects();
         apiFetch(`/api/projects/${selectedProject}`, {}, user?.username).then((r) => {
           if (r.ok && r.data?.project) {
@@ -343,11 +340,9 @@ target_project_id: "",
     if (quotationItems.length === 0) return;
     setConfirmModal({
       isOpen: true,
-      title: language === "id" ? "Impor dr Penawaran" : "Import from Quotation",
+      title: "Import from Quotation",
       message:
-        language === "id"
-          ? "Mekanisme ini akan menggantikan rancangan BOM saat ini dengan item deliverables dari Quotation."
-          : "This will replace your current BOM draft with the approved deliverables and quantities from the referenced Customer Quotation. Proceed?",
+        "This will replace your current BOM draft with the approved deliverables and quantities from the referenced Customer Quotation. Proceed?",
       action: () => {
         setRows(
           quotationItems.map((itm: any) => ({
@@ -365,9 +360,7 @@ target_project_id: "",
           })),
         );
         showToast(
-          language === "id"
-            ? "Deliverables berhasil diimpor"
-            : "Successfully imported quotation lines into BOM",
+          "Successfully imported quotation lines into BOM",
           "success",
         );
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
@@ -391,7 +384,22 @@ target_project_id: "",
     fetchWarehouseItems();
   }, []);
 
-  // Auto-enrich rows with warehouse item details whenever warehouseItems are available or updated
+  // Auto-refresh BOM catalog when returning from Warehouse / Inventory Master tab or window
+  useEffect(() => {
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchWarehouseItems();
+      }
+    };
+    window.addEventListener("focus", handleFocusOrVisibility);
+    document.addEventListener("visibilitychange", handleFocusOrVisibility);
+    return () => {
+      window.removeEventListener("focus", handleFocusOrVisibility);
+      document.removeEventListener("visibilitychange", handleFocusOrVisibility);
+    };
+  }, [user?.username]);
+
+  // Auto-enrich and lock rows with Master Warehouse item details whenever warehouseItems are available or updated
   useEffect(() => {
     if (warehouseItems.length === 0 || rows.length === 0) return;
     setRows((prevRows) => {
@@ -400,30 +408,40 @@ target_project_id: "",
         if (!r.item_code || r.item_code.trim() === "") return r;
         const cleanCode = r.item_code.trim().toUpperCase();
         const matched = warehouseItems.find(
-          (i) => i.item_code && i.item_code.trim().toUpperCase() === cleanCode
+          (i) =>
+            (r.item_id && i.id === r.item_id) ||
+            (i.item_code && i.item_code.trim().toUpperCase() === cleanCode)
         );
         if (matched) {
-          const newName = r.name || matched.name || "";
-          const newDim = r.dimension || matched.dimension || "";
-          const newSpec = r.spec || matched.spec || "";
-          const newUnit = r.unit || matched.uom || "PCS";
-          const newPrice = r.unit_price && r.unit_price !== "0" ? r.unit_price : (matched.unit_price || 0).toString();
+          const masterCode = matched.item_code || r.item_code;
+          const masterName = matched.name || "";
+          const masterDim = matched.dimension || "";
+          const masterSpec = matched.spec || "";
+          const masterUnit = matched.uom || "PCS";
+          const newPrice =
+            r.unit_price && r.unit_price !== "0"
+              ? r.unit_price
+              : (matched.unit_price || 0).toString();
 
           if (
             r.item_id !== matched.id ||
-            r.name !== newName ||
-            r.dimension !== newDim ||
-            r.spec !== newSpec ||
+            r.item_code !== masterCode ||
+            r.name !== masterName ||
+            r.dimension !== masterDim ||
+            r.spec !== masterSpec ||
+            r.unit !== masterUnit ||
+            r.free_stock !== (matched.free_stock || 0) ||
             r.notFound
           ) {
             hasChanges = true;
             return {
               ...r,
               item_id: matched.id,
-              name: newName,
-              dimension: newDim,
-              spec: newSpec,
-              unit: newUnit,
+              item_code: masterCode,
+              name: masterName,
+              dimension: masterDim,
+              spec: masterSpec,
+              unit: masterUnit,
               unit_price: newPrice,
               matrix_unit_price: (matched.unit_price || 0).toString(),
               free_stock: matched.free_stock || 0,
@@ -690,6 +708,17 @@ target_project_id: "",
     }, 300);
   }, [warehouseItems, user?.username, setRows]);
 
+  const handleOpenInventoryMaster = useCallback(
+    (initialSearch?: string) => {
+      const clean = (initialSearch || "").trim();
+      const query = clean
+        ? `?tab=STOCK&openRegister=1&prefillName=${encodeURIComponent(clean)}`
+        : `?tab=STOCK&openRegister=1`;
+      navigate(`/warehouse${query}`);
+    },
+    [navigate],
+  );
+
   const handleSyncBom = async (pin?: string, reason?: string, isDraft?: boolean): Promise<boolean> => {
     if (!selectedProject) {
       showToast("Please select a project first.", "error");
@@ -704,25 +733,33 @@ target_project_id: "",
       return false;
     }
 
+    const unregisteredRow = validRows.find((r) => !r.item_id || r.notFound);
+    if (unregisteredRow) {
+      showToast(
+        `Unregistered SKU "${unregisteredRow.item_code}". Please select a registered Master SKU or register it in Warehouse > Inventory Master first.`,
+        "error",
+      );
+      return false;
+    }
+
     setIsSubmitting(true);
     try {
-      const payload = { is_draft: !!isDraft,
+      const payload = {
+        is_draft: !!isDraft,
         urgency,
         auth_pin: pin,
         eco_reason: reason,
         items: validRows.map((r) => ({
-          item_id: r.item_id || null,
+          item_id: r.item_id,
           item_code: r.item_code,
           name: r.name,
           dimension: r.dimension,
           spec: r.spec,
-          uom: r.unit || r.uom || "pcs",
+          uom: r.unit || r.uom || "PCS",
           required_qty: Number(r.qty),
           unit_price: Number(r.unit_price || 0),
           reference: r.reference,
           target_project_id: r.target_project_id,
-
-          is_new: !r.item_id,
         })),
       };
       const res = await apiFetch(
@@ -740,28 +777,16 @@ target_project_id: "",
         if (res.data.is_eco || reason) {
           const ecoNum = res.data.eco_number || `ECO-${selectedProject}`;
           showToast(
-            language === "id"
-              ? `Revisi ECO (${ecoNum}) berhasil diotorisasi & disimpan!`
-              : `ECO Revision (${ecoNum}) successfully authorized & committed!`,
+            `ECO Revision (${ecoNum}) successfully authorized & committed!`,
             "success"
           );
           setLastEcoReason(reason || "BOM Technical Revision & Material Re-allocation");
           setLastEcoAuthorizedAt(new Date().toISOString());
           setShowEcoHistoryModal(true);
         } else if (res.data.bom_status === "PENDING") {
-          showToast(
-            language === "id"
-              ? "BOM berhasil diajukan untuk otorisasi!"
-              : "BOM submitted for approval successfully!",
-            "success"
-          );
+          showToast("BOM submitted for approval successfully!", "success");
         } else if (isDraft) {
-          showToast(
-            language === "id"
-              ? "Draft BOM berhasil disimpan."
-              : "BOM draft saved successfully.",
-            "success"
-          );
+          showToast("BOM draft saved successfully.", "success");
         } else {
           showToast("BOM successfully saved/updated!", "success");
         }
@@ -1167,51 +1192,49 @@ target_project_id: b.target_project_id || "",
   const isCategoryProject = ["CONSUMABLE", "TRANSPORTATION", "OTHERS"].includes(selectedProject);
 
   return (
-    <div className="space-y-8 pb-20">
+    <div className="space-y-5 pb-12">
       <PageHeader
-        title={language === "id" ? "Daftar Material (BOM)" : "Bill of Materials (BOM)"}
-        subtitle={
-          language === "id"
-            ? "Formula produk dan komponen material"
-            : "Product formulas and material components"
-        }
+        title="Bill of Materials (BOM)"
+        subtitle="Material components & engineering specifications"
         icon={<Layers className="w-5 h-5" />}
         actions={
           <div className="flex items-center gap-3">
             {projectBomUpdatedAt && (
-              <div className="text-[10px] text-stone-400 font-semibold uppercase tracking-wider px-2">
-                {language === "id" ? "Update Terakhir:" : "Last Sync:"}{" "}
-                {new Date(projectBomUpdatedAt).toLocaleString(
-                  language === "id" ? "id-ID" : "en-US",
-                  { timeZone: "Asia/Jakarta" },
-                )}
+              <div className="text-[10px] text-stone-400 font-semibold uppercase tracking-wider px-2 font-mono tabular-nums">
+                Last Sync:{" "}
+                {new Date(projectBomUpdatedAt).toLocaleString("en-US", {
+                  timeZone: "Asia/Jakarta",
+                })}
               </div>
             )}
           </div>
         }
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-12 relative">
-        <div className="xl:col-span-3 space-y-8">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 relative">
+        <div className="xl:col-span-3 space-y-5">
           {/* Primary Controls */}
-          <div className="bg-white border border-stone-200 rounded-3xl p-8 shadow-sm flex items-center justify-between gap-8 transition-all">
-            <div className="flex-1">
-              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-3">
+          <div className="bg-white border border-stone-200/80 rounded-2xl p-5 shadow-2xs flex items-center justify-between gap-6 transition-all">
+            <div className="flex-1 min-w-0">
+              <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mb-2">
                 Active Project Engineering Instance
               </label>
               <Select
                 value={selectedProject}
                 onChange={(e) => setSelectedProject(e.target.value)}
-                className="w-full border border-stone-200 bg-stone-50/30 rounded-2xl pr-6 py-3.5 text-sm font-bold text-stone-950 focus:ring-4 focus:ring-stone-900/5 focus:border-stone-900 focus:bg-white outline-none transition-all cursor-pointer appearance-none uppercase tracking-tight shadow-sm group-hover:bg-stone-50"
+                className="w-full h-11 border border-stone-200 bg-stone-50/30 rounded-2xl py-2 pr-9 text-sm font-bold leading-normal text-stone-950 focus:ring-4 focus:ring-stone-900/5 focus:border-stone-900 focus:bg-white outline-none transition-all cursor-pointer appearance-none uppercase tracking-tight shadow-sm group-hover:bg-stone-50"
                 icon={<Wrench className="w-4 h-4" />}
               >
                 <option value="">-- UNASSIGNED --</option>
                 {projects
                   .filter(
                     (p) =>
-                      p.status === "ACTIVE" ||
-                      p.status === "HOLD" ||
-                      p.status === "FINISHED",
+                      !["CONSUMABLE", "TRANSPORTATION", "OTHERS", "GENERAL"].includes(
+                        String(p.id).toUpperCase()
+                      ) &&
+                      (p.status === "ACTIVE" ||
+                        p.status === "HOLD" ||
+                        p.status === "FINISHED"),
                   )
                   .map((p) => (
                     <option key={p.id} value={p.id}>
@@ -1221,106 +1244,6 @@ target_project_id: b.target_project_id || "",
               </Select>
             </div>
           </div>
-
-          {selectedProject &&
-            currentProject &&
-            !["CONSUMABLE", "TRANSPORTATION", "OTHERS"].includes(currentProject.id) && (
-              <div className="space-y-4">
-                <div className="bg-white border border-stone-200 rounded-3xl p-8 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 divide-y xl:divide-y-0 xl:divide-x divide-stone-100 shadow-2xs">
-                  {/* SYSTEM IDENTITY */}
-                  <div className="flex flex-col justify-between pb-6 md:pb-8 xl:pb-0 xl:pr-6">
-                    <div>
-                      <div className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                        <Wrench className="w-3.5 h-3.5 text-stone-400" />
-                        System Identity
-                      </div>
-                      <div className="text-xl font-bold tracking-tight text-stone-900 leading-none">
-                        {currentProject.id}
-                      </div>
-                      <div className="text-[10px] text-stone-500 font-semibold uppercase tracking-wider mt-2 leading-relaxed">
-                        {currentProject.name}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* CONTROL PHASE */}
-                  <div className="flex flex-col justify-start pt-6 md:pt-0 md:pl-6 pb-6 md:pb-8 xl:pb-0 xl:px-6">
-                    <div>
-                      <div className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mb-4">
-                        Phase Control
-                      </div>
-                      <div>
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-2 px-3.5 py-1.5 text-[9px] font-bold rounded-full uppercase tracking-widest border",
-                            currentProject.status === "DRAFT"
-                              ? "border-amber-200 text-amber-700 bg-amber-50/40"
-                              : currentProject.status === "CLOSED"
-                                ? "border-stone-200 text-stone-500 bg-stone-50"
-                                : "border-emerald-250 text-emerald-700 bg-emerald-50/20",
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "w-1.5 h-1.5 rounded-full",
-                              currentProject.status === "DRAFT"
-                                ? "bg-amber-400"
-                                : currentProject.status === "CLOSED"
-                                  ? "bg-stone-400"
-                                  : "bg-emerald-500",
-                            )}
-                          />
-                          {currentProject.status} CONTROL
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* REAL-TIME BUDGET */}
-                  <div className="flex flex-col justify-start pt-6 xl:pt-0 pb-6 md:pb-0 xl:px-6">
-                    <div>
-                      <div className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mb-3">
-                        Real-time Budget
-                      </div>
-                      <div className="text-xl font-bold text-stone-900 tracking-tight">
-                        {formatIDR(summary.totalCost)}
-                      </div>
-                      <div className="text-[10px] text-stone-500 font-medium mt-2 uppercase tracking-wider">
-                        Total Sourced Cost
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* MATERIAL READINESS */}
-                  <div className="flex flex-col justify-start pt-6 xl:pt-0 xl:px-6">
-                    <div>
-                      <div className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mb-3">
-                        Material Readiness
-                      </div>
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-xl font-bold text-stone-900">
-                          {summary.readiness}%
-                        </span>
-                        <span className="text-[10px] text-stone-400 font-semibold uppercase tracking-wider">
-                          Stocked
-                        </span>
-                      </div>
-                      <div className="w-full h-2 bg-stone-100 border border-stone-200/55 rounded-full mt-3 overflow-hidden">
-                        <div
-                          className={cn(
-                            "h-full transition-all duration-1000 ease-out",
-                            summary.readiness === 100
-                              ? "bg-emerald-500"
-                              : "bg-stone-800",
-                          )}
-                          style={{ width: `${summary.readiness}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
 
           <div className="border border-stone-200 rounded-2xl bg-white shadow-sm overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-stone-100/50 px-6 py-3.5 border-b border-stone-200 gap-3">
@@ -1332,6 +1255,19 @@ target_project_id: b.target_project_id || "",
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    fetchWarehouseItems();
+                    showToast("Master SKU catalog refreshed.", "info");
+                  }}
+                  title="Refresh Master SKU Catalog"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </Button>
+
                 {hasDuplicateItems && (
                   <Button
                     onClick={handleMergeItems}
@@ -1360,13 +1296,13 @@ target_project_id: b.target_project_id || "",
                     setSavePresetModal({
                       isOpen: true,
                       name: selectedProject
-                        ? `Preset Proyek ${selectedProject}`
+                        ? `Project Preset ${selectedProject}`
                         : "Preset Standard Final BOM",
                       description: "",
                     })
                   }
                   disabled={!isEngineering || rows.length === 0}
-                  className="bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold py-1.5 px-3 rounded-lg gap-1.5 shrink-0 shadow-3xs"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg gap-1.5 shrink-0 shadow-3xs"
                 >
                   <BookmarkPlus className="w-3.5 h-3.5" />
                   Save Preset
@@ -1394,6 +1330,7 @@ target_project_id: b.target_project_id || "",
                   updateRow={updateRow}
                   removeRow={removeRow}
                   onOpenSearchModal={(rowId) => setSearchModal({ isOpen: true, rowId })}
+                  onOpenInventoryMaster={handleOpenInventoryMaster}
                 />
               ))}
             </div>
@@ -1424,7 +1361,7 @@ target_project_id: b.target_project_id || "",
                 <div className="flex items-center justify-between p-3 bg-stone-50 border border-stone-200/80 rounded-xl">
                   <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">Status</span>
                   <span className={cn(
-                    "px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border",
+                    "px-2.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase border",
                     currentProject?.bom_status === "AUTHORIZED"
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                       : currentProject?.bom_status === "PENDING"
@@ -1438,22 +1375,22 @@ target_project_id: b.target_project_id || "",
                 </div>
               </div>
 
-              <div className="pt-6 border-t border-stone-100">
+              <div className="pt-5 border-t border-stone-100">
                 <div className="flex justify-between items-end mb-2">
                   <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
                     Readiness
                   </span>
-                  <span className="text-xl font-bold text-stone-900">
+                  <span className="text-xl font-bold text-stone-900 font-mono tabular-nums">
                     {summary.readiness}%
                   </span>
                 </div>
               </div>
 
-              <div className="pt-6 border-t border-stone-100">
+              <div className="pt-5 border-t border-stone-100">
                 <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-2">
                   Budget
                 </label>
-                <div className="text-lg font-bold text-stone-900">
+                <div className="text-lg font-bold text-stone-900 font-mono tabular-nums">
                   {formatIDR(summary.totalCost)}
                 </div>
               </div>
@@ -1517,7 +1454,7 @@ target_project_id: b.target_project_id || "",
                           rows.some(
                             (r) =>
                               r.notFound ||
-                              (r.item_code && r.item_code.trim() === ""),
+                              Boolean(r.item_code?.trim() && !r.item_id),
                           ) ||
                           !isEngineering
                         }
@@ -1533,13 +1470,21 @@ target_project_id: b.target_project_id || "",
                     <button
                       type="button"
                       onClick={() => setShowConfirmSubmitBomModal(true)}
-                      disabled={isSubmitting || rows.some(r => r.notFound || (r.item_code && r.item_code.trim() === "")) || !isEngineering}
-                      className="w-full h-11 px-4 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-sm hover:shadow flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 cursor-pointer"
+                      disabled={
+                        isSubmitting ||
+                        rows.some(
+                          (r) =>
+                            r.notFound ||
+                            Boolean(r.item_code?.trim() && !r.item_id)
+                        ) ||
+                        !isEngineering
+                      }
+                      className="w-full h-11 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-sm hover:shadow flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 cursor-pointer"
                     >
                       {isSubmitting ? (
-                        <Clock className="w-4 h-4 animate-spin text-stone-400" />
+                        <Clock className="w-4 h-4 animate-spin text-white/80" />
                       ) : (
-                        <Send className="w-4 h-4 text-stone-300" />
+                        <Send className="w-4 h-4 text-white" />
                       )}
                       <span>{isSubmitting ? "SUBMITTING..." : "SUBMIT APPROVAL"}</span>
                     </button>
@@ -1595,16 +1540,6 @@ target_project_id: b.target_project_id || "",
                 )}
               </div>
             </div>
-
-            <div className="bg-stone-100 text-stone-600 rounded-2xl p-6 flex items-start gap-4 border border-stone-200">
-              <div className="w-10 h-10 bg-stone-200 rounded-xl flex items-center justify-center shrink-0">
-                <Info className="w-5 h-5 text-stone-500" />
-              </div>
-              <p className="text-xs font-medium leading-relaxed uppercase tracking-tight">
-                Engineering master data is synchronized upon{" "}
-                <span className="text-stone-900 font-semibold">COMMIT</span>.
-              </p>
-            </div>
           </div>
         </div>
       </div>
@@ -1637,6 +1572,7 @@ target_project_id: b.target_project_id || "",
         isSearching={isSearching}
         searchResults={searchResults}
         selectItemFromSearch={selectItemFromSearch}
+        onOpenInventoryMaster={handleOpenInventoryMaster}
       />
       {/* Initial BOM Commit Auth Modal */}
       <AuthorizeDocModal
@@ -1653,8 +1589,8 @@ target_project_id: b.target_project_id || "",
         submitLabel="Authorize BOM"
         submitVariant="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs"
         themeVariant="emerald"
-        approvalTitle="Otorisasi Bill of Materials (BOM)"
-        approvalDescription="Masukkan Daily Internal Auth Key akun anda (dapat dilihat pada panel aktivitas & notifikasi di header) untuk menyetujui penerbitan sah Bill of Materials ini ke dalam sistem produksi."
+        approvalTitle="Authorize Bill of Materials (BOM)"
+        approvalDescription="Enter your account's Daily Internal Auth Key (available in the header activity & notification panel) to authorize and lock this official Bill of Materials for production."
         onAuthorize={async (pin) => {
           await handleAuthorizeBom(pin);
         }}
@@ -1680,8 +1616,8 @@ target_project_id: b.target_project_id || "",
         submitDisabled={!ecoReason.trim()}
         themeVariant="amber"
         icon={<Wrench className="w-5 h-5 text-amber-600" />}
-        approvalTitle="Otorisasi Engineering Change Order (ECO)"
-        approvalDescription="Proyek ini telah masuk ke tahap Manufaktur. Masukkan Daily Internal Auth Key akun anda (dapat dilihat pada panel aktivitas & notifikasi di header) untuk menyetujui revisi teknis Bill of Materials (BOM)."
+        approvalTitle="Authorize Engineering Change Order (ECO)"
+        approvalDescription="This project is in the Manufacturing phase. Enter your account's Daily Internal Auth Key (available in the header activity & notification panel) to authorize a technical revision to the Bill of Materials (BOM)."
         onAuthorize={async (pin) => {
           const success = await handleSyncBom(pin, ecoReason);
           if (success) {
@@ -1690,12 +1626,9 @@ target_project_id: b.target_project_id || "",
           }
         }}
       >
-        <div className="space-y-2 mb-3">
-          <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-            Reason for Engineering Change (ECO)
-          </label>
-          <textarea
-            className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-medium text-stone-900 focus:bg-white focus:border-stone-400 outline-none transition-all placeholder:text-stone-400 placeholder:font-normal"
+        <div className="mb-3">
+          <Textarea
+            label="Reason for Engineering Change (ECO)"
             rows={3}
             required
             placeholder="Explain why the Bill of Materials (BOM) needs to be revised..."
@@ -1786,24 +1719,14 @@ target_project_id: b.target_project_id || "",
           setShowConfirmSubmitBomModal(false);
           await handleSyncBom();
         }}
-        title={
-          language === "id"
-            ? "Konfirmasi Pengajuan Bill of Materials (BOM)"
-            : "Confirm Bill of Materials (BOM) Submission"
-        }
+        title="Confirm Bill of Materials (BOM) Submission"
         message={
-          language === "id" ? (
-            <>
-              Apakah Anda yakin ingin mengajukan <strong>Bill of Materials (BOM)</strong> proyek <strong>{currentProject?.spk_number || currentProject?.name || ""}</strong> ini untuk persetujuan Manajer Teknik? Data BOM yang diajukan akan dikunci untuk otorisasi.
-            </>
-          ) : (
-            <>
-              Are you sure you want to submit this <strong>Bill of Materials (BOM)</strong> for project <strong>{currentProject?.spk_number || currentProject?.name || ""}</strong> for Manager approval? Submitted BOM data will be queued for authorization.
-            </>
-          )
+          <>
+            Are you sure you want to submit this <strong>Bill of Materials (BOM)</strong> for project <strong>{currentProject?.spk_number || currentProject?.name || ""}</strong> for Manager approval? Submitted BOM data will be queued for authorization.
+          </>
         }
-        confirmText={language === "id" ? "Ya, Ajukan BOM" : "Yes, Submit BOM"}
-        cancelText={language === "id" ? "Batal" : "Cancel"}
+        confirmText="Yes, Submit BOM"
+        cancelText="Cancel"
         variant="info"
       />
     </div>

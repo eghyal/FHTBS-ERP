@@ -9,6 +9,10 @@ import { outboxService } from "../services/outboxService.ts";
 import { logAudit } from "../utils/audit.ts";
 import { syncCollectionToFirestore } from "../db/firebaseSync.ts";
 import { postJournalEntry } from "../utils/accountingBridge.ts";
+import {
+  getNextCategorySequence,
+  generateSmartSku,
+} from "../utils/autoCoding.ts";
 
 export const inventoryRouter = Router();
 
@@ -75,7 +79,7 @@ export const inventoryRouter = Router();
 
     inventoryRouter.get(
       "/api/inventory/movements",
-      requireRole(["WAREHOUSE", "PURCHASING", "PRODUCTION", "ENGINEERING"]),
+      requireRole(["WAREHOUSE", "QA_QC", "PURCHASING", "PPIC", "PRODUCTION", "ENGINEERING", "FINANCE", "SALES", "FC", "ADMIN"]),
       (req, res) => {
         try {
           const limit = parseInt(req.query.limit as string) || 100;
@@ -132,7 +136,8 @@ export const inventoryRouter = Router();
         let queryStr = `
           SELECT i.*, 
                  COALESCE(inv.free_stock, 0) as free_stock, 
-                 COALESCE(inv.allocated_stock, 0) as allocated_stock
+                 COALESCE(inv.allocated_stock, 0) as allocated_stock,
+                 COALESCE((SELECT MIN(isp.unit_price) FROM item_supplier_prices isp WHERE isp.item_id = i.id AND isp.unit_price > 0), i.unit_price, 0) as ssot_unit_price
           FROM items i
           LEFT JOIN inventory inv ON i.id = inv.item_id
           WHERE i.deleted_at IS NULL
@@ -177,7 +182,8 @@ export const inventoryRouter = Router();
           .prepare(`
             SELECT i.*, 
                    COALESCE(inv.free_stock, 0) as free_stock, 
-                   COALESCE(inv.allocated_stock, 0) as allocated_stock
+                   COALESCE(inv.allocated_stock, 0) as allocated_stock,
+                   COALESCE((SELECT MIN(isp.unit_price) FROM item_supplier_prices isp WHERE isp.item_id = i.id AND isp.unit_price > 0), i.unit_price, 0) as ssot_unit_price
             FROM items i
             LEFT JOIN inventory inv ON i.id = inv.item_id
             WHERE (UPPER(TRIM(i.item_code)) = UPPER(TRIM(?)) OR i.id = ?)
@@ -203,10 +209,12 @@ export const inventoryRouter = Router();
             `
         SELECT i.*, 
                COALESCE(inv.free_stock, 0) as free_stock, 
-               COALESCE(inv.allocated_stock, 0) as allocated_stock
+               COALESCE(inv.allocated_stock, 0) as allocated_stock,
+               COALESCE((SELECT MIN(isp.unit_price) FROM item_supplier_prices isp WHERE isp.item_id = i.id AND isp.unit_price > 0), i.unit_price, 0) as ssot_unit_price
         FROM items i
         LEFT JOIN inventory inv ON i.id = inv.item_id
-        WHERE i.name LIKE ? OR i.item_code LIKE ? OR i.dimension LIKE ? OR i.spec LIKE ?
+        WHERE i.deleted_at IS NULL
+          AND (i.name LIKE ? OR i.item_code LIKE ? OR i.dimension LIKE ? OR i.spec LIKE ?)
         LIMIT 50
       `,
           )
@@ -221,7 +229,7 @@ export const inventoryRouter = Router();
     // Create new item
     inventoryRouter.post(
       "/api/items",
-      requireRole(["ENGINEERING", "PURCHASING", "WAREHOUSE", "FC", "ADMIN"]),
+      requireRole(["ENGINEERING", "PPIC", "PURCHASING", "WAREHOUSE", "PRODUCTION", "SALES", "FINANCE", "HR", "MAINTENANCE", "QA_QC", "FC", "ADMIN", "SUPERADMIN", "BOD", "DIRECTOR"]),
       (req, res) => {
         try {
           const { 
@@ -240,6 +248,7 @@ export const inventoryRouter = Router();
             machine_category,
             capacity_per_hour,
             operational_status,
+            assigned_operator,
             serial_number,
             manufacturer,
             machine_specifications,
@@ -258,39 +267,6 @@ export const inventoryRouter = Router();
             shop_gallery_urls
           } = req.body;
 
-          const code = (item_code || "").toString().trim().toUpperCase();
-          const itemName = (name || "").toString().trim();
-          const itemUom = (uom || "").toString().trim().toUpperCase();
-
-          if (!code || !itemName || !itemUom) {
-            return res.status(400).json({
-              error: "Kode SKU, Nama Barang, dan Satuan (UOM) wajib diisi.",
-            });
-          }
-
-          // Check if item_code already exists in database
-          const existing = db
-            .prepare("SELECT id, item_code, name, deleted_at FROM items WHERE item_code = ? COLLATE NOCASE")
-            .get(code) as any;
-
-          if (existing) {
-            if (!existing.deleted_at) {
-              return res.status(400).json({
-                error: `Kode SKU '${code}' sudah terdaftar (${existing.name}). Gunakan kode SKU lain yang unik.`,
-              });
-            } else {
-              // Hard-delete soft-deleted item with same code to prevent UNIQUE constraint conflict
-              db.prepare("DELETE FROM stock_movements WHERE item_id = ?").run(existing.id);
-              db.prepare("DELETE FROM inventory WHERE item_id = ?").run(existing.id);
-              db.prepare("DELETE FROM item_supplier_prices WHERE item_id = ?").run(existing.id);
-              db.prepare("DELETE FROM item_price_history WHERE item_id = ?").run(existing.id);
-              db.prepare("DELETE FROM items WHERE id = ?").run(existing.id);
-            }
-          }
-
-          const itemId =
-            "ITEM-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substr(2, 4).toUpperCase();
-
           const rawType = (type || "RAW").toString().trim().toUpperCase();
           let resolvedType = rawType;
           if (rawType === "FINISH_GOOD" || rawType === "FINISHED_GOOD") {
@@ -301,27 +277,105 @@ export const inventoryRouter = Router();
             resolvedType = "RAW";
           }
 
+          const itemName = (name || "").toString().trim();
+          const itemUom = (uom || "").toString().trim().toUpperCase();
+
+          if (!itemName || !itemUom) {
+            return res.status(400).json({
+              error: "Item Name and Unit of Measure (UOM) are required.",
+            });
+          }
+
+          const cleanOperator = assigned_operator ? String(assigned_operator).trim() : null;
+          if (resolvedType === "MACHINE" && cleanOperator) {
+            const conflictingMachine = db
+              .prepare(
+                "SELECT item_code, name FROM items WHERE (type = 'MACHINE' OR item_type = 'MACHINE') AND LOWER(TRIM(assigned_operator)) = LOWER(?) AND deleted_at IS NULL"
+              )
+              .get(cleanOperator) as any;
+            if (conflictingMachine) {
+              return res.status(400).json({
+                error: `Operator "${cleanOperator}" is already assigned to active machine [${conflictingMachine.item_code}] ${conflictingMachine.name}. Only 1 operator per active machine is permitted.`,
+              });
+            }
+          }
+
+          // Authoritative Smart Auto-Coding per category with 3-digit sequence
+          const allActiveItems = db
+            .prepare("SELECT item_code, type, item_type, category FROM items WHERE deleted_at IS NULL")
+            .all() as any[];
+
+          let seq = getNextCategorySequence(rawType, allActiveItems);
+          let code = generateSmartSku(rawType, itemName, seq);
+
+          // Guarantee uniqueness against active items, incrementing sequence if needed
+          while (true) {
+            const existingActive = db
+              .prepare("SELECT id, deleted_at FROM items WHERE item_code = ? COLLATE NOCASE")
+              .get(code) as any;
+
+            if (!existingActive) {
+              break;
+            }
+            if (existingActive.deleted_at) {
+              // Hard-delete soft-deleted item with same code to prevent UNIQUE constraint conflict
+              db.prepare("DELETE FROM stock_movements WHERE item_id = ?").run(existingActive.id);
+              db.prepare("DELETE FROM inventory WHERE item_id = ?").run(existingActive.id);
+              db.prepare("DELETE FROM item_supplier_prices WHERE item_id = ?").run(existingActive.id);
+              db.prepare("DELETE FROM item_price_history WHERE item_id = ?").run(existingActive.id);
+              db.prepare("DELETE FROM items WHERE id = ?").run(existingActive.id);
+              break;
+            }
+            seq++;
+            code = generateSmartSku(rawType, itemName, seq);
+          }
+
+          const itemId =
+            "ITEM-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substr(2, 4).toUpperCase();
+
           const resolvedItemType = item_type || (resolvedType === "MACHINE" ? "MACHINE" : "MATERIAL");
           const resolvedCategory =
-            category ||
-            (rawType === "FINISH_GOOD" || resolvedType === "FINISHED"
+            category && category !== "General"
+              ? category
+              : rawType === "FINISH_GOOD" || resolvedType === "FINISHED"
               ? "Paving & Precast"
               : resolvedType === "MACHINE"
               ? "Machine Equipment"
-              : "General");
+              : ["CONSUMABLE", "SPAREPART", "TOOL", "GENERAL", "RAW"].includes(rawType)
+              ? rawType
+              : "General";
           const bypass = bypass_multi_station ? 1 : 0;
+          const resolvedOpStatus =
+            resolvedType === "MACHINE"
+              ? cleanOperator
+                ? "ACTIVE"
+                : "INACTIVE"
+              : operational_status || "AVAILABLE";
+          const resolvedMachineStatus =
+            resolvedType === "MACHINE"
+              ? cleanOperator
+                ? "ASSIGNED"
+                : "AVAILABLE"
+              : "AVAILABLE";
+
+          const userRoleUpper = ((req as any).userRole || "").toString().trim().toUpperCase();
+          const canSetPurchasePrice = ["PURCHASING", "FC", "ADMIN", "SUPERADMIN", "BOD", "DIRECTOR"].includes(userRoleUpper);
+          const effectiveUnitPrice =
+            canSetPurchasePrice || resolvedType === "FINISHED"
+              ? Number(unit_price) || 0
+              : 0;
 
           db.transaction(() => {
             db.prepare(
               `INSERT INTO items (
                 id, item_code, name, uom, dimension, spec, type, unit_price, selling_price,
                 category, description, min_stock, max_stock, machine_category,
-                capacity_per_hour, operational_status, serial_number, manufacturer,
+                capacity_per_hour, operational_status, machine_status, assigned_operator, serial_number, manufacturer,
                 machine_specifications, item_type, bypass_multi_station,
                 is_published_shop, shop_image_url, shop_promo_price, shop_weight_kg,
                 shop_badge, shop_featured, shop_availability_type, shop_lead_time_days,
                 shop_moq, shop_specs, shop_gallery_urls
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             ).run(
               itemId,
               code,
@@ -330,15 +384,17 @@ export const inventoryRouter = Router();
               dimension || "",
               spec || "",
               resolvedType,
-              unit_price || 0,
-              selling_price || unit_price || 0,
+              effectiveUnitPrice,
+              selling_price || effectiveUnitPrice || 0,
               resolvedCategory,
               description || "",
               min_stock || 0,
               max_stock || 0,
               machine_category || null,
               capacity_per_hour || null,
-              operational_status || "AVAILABLE",
+              resolvedOpStatus,
+              resolvedMachineStatus,
+              cleanOperator,
               serial_number || null,
               manufacturer || null,
               machine_specifications ? JSON.stringify(machine_specifications) : null,
@@ -382,7 +438,19 @@ export const inventoryRouter = Router();
             "BOTH"
           );
 
-          res.json({ success: true, id: itemId, message: "Item created successfully" });
+          res.json({
+            success: true,
+            id: itemId,
+            item_code: code,
+            name: itemName,
+            uom: itemUom,
+            dimension: dimension || "",
+            spec: spec || "",
+            type: resolvedType,
+            unit_price: effectiveUnitPrice,
+            free_stock: 0,
+            message: "Item created successfully",
+          });
         } catch (error: any) {
           console.error("[Inventory API] Create item error:", error);
           res.status(400).json({ error: error?.message || "Failed to create item" });
@@ -393,7 +461,7 @@ export const inventoryRouter = Router();
     // Update existing item
     inventoryRouter.put(
       "/api/items/:id",
-      requireRole(["ENGINEERING", "PURCHASING", "WAREHOUSE", "FC", "ADMIN"]),
+      requireRole(["ENGINEERING", "PPIC", "PURCHASING", "WAREHOUSE", "PRODUCTION", "SALES", "FINANCE", "HR", "MAINTENANCE", "QA_QC", "FC", "ADMIN", "SUPERADMIN", "BOD", "DIRECTOR"]),
       (req, res) => {
         try {
           const { id } = req.params;
@@ -408,6 +476,7 @@ export const inventoryRouter = Router();
             machine_category,
             capacity_per_hour,
             operational_status,
+            assigned_operator,
             serial_number,
             manufacturer,
             machine_specifications,
@@ -420,26 +489,74 @@ export const inventoryRouter = Router();
             return res.status(404).json({ error: "Item not found" });
           }
 
-          db.transaction(() => {
-            const rawType = (type || existing.type || "RAW").toString().trim().toUpperCase();
-            let resolvedType = rawType;
-            if (rawType === "FINISH_GOOD" || rawType === "FINISHED_GOOD") {
-              resolvedType = "FINISHED";
-            } else if (["CONSUMABLE", "GENERAL", "SPAREPART"].includes(rawType)) {
-              resolvedType = "RAW";
-            } else if (!["RAW", "WIP", "FINISHED", "TOOL", "MACHINE"].includes(rawType)) {
-              resolvedType = "RAW";
-            }
+          const rawType = (type || existing.type || "RAW").toString().trim().toUpperCase();
+          let resolvedType = rawType;
+          if (rawType === "FINISH_GOOD" || rawType === "FINISHED_GOOD") {
+            resolvedType = "FINISHED";
+          } else if (["CONSUMABLE", "GENERAL", "SPAREPART"].includes(rawType)) {
+            resolvedType = "RAW";
+          } else if (!["RAW", "WIP", "FINISHED", "TOOL", "MACHINE"].includes(rawType)) {
+            resolvedType = "RAW";
+          }
 
+          const isMachineRecord =
+            resolvedType === "MACHINE" ||
+            existing.item_type === "MACHINE" ||
+            item_type === "MACHINE";
+
+          const finalAssignedOperator =
+            assigned_operator !== undefined
+              ? String(assigned_operator || "").trim() || null
+              : existing.assigned_operator || null;
+
+          if (isMachineRecord && finalAssignedOperator) {
+            const conflictingMachine = db
+              .prepare(
+                "SELECT item_code, name FROM items WHERE id != ? AND (type = 'MACHINE' OR item_type = 'MACHINE') AND LOWER(TRIM(assigned_operator)) = LOWER(?) AND deleted_at IS NULL"
+              )
+              .get(id, finalAssignedOperator) as any;
+            if (conflictingMachine) {
+              return res.status(400).json({
+                error: `Operator "${finalAssignedOperator}" is already assigned to active machine [${conflictingMachine.item_code}] ${conflictingMachine.name}. Only 1 operator per active machine is permitted.`,
+              });
+            }
+          }
+
+          db.transaction(() => {
             const resolvedItemType = item_type || (resolvedType === "MACHINE" ? "MACHINE" : "MATERIAL");
             const resolvedBypass = bypass_multi_station !== undefined ? (bypass_multi_station ? 1 : 0) : (existing.bypass_multi_station || 0);
 
+            let resolvedCode = (item_code || existing.item_code || "").toString().trim().toUpperCase();
+            if (rawType === "FINISH_GOOD" || resolvedType === "FINISHED") {
+              if (!resolvedCode.startsWith("FG - ") && !resolvedCode.startsWith("FG-")) {
+                const stripped = resolvedCode.replace(/^FG\s*[-_:]?\s*/i, "").trim();
+                resolvedCode = "FG - " + (stripped || name || existing.name);
+              }
+            } else if (resolvedType === "MACHINE") {
+              if (!resolvedCode.startsWith("MC - ") && !resolvedCode.startsWith("MC-")) {
+                const stripped = resolvedCode.replace(/^MC\s*[-_:]?\s*/i, "").trim();
+                resolvedCode = "MC - " + (stripped || name || existing.name);
+              }
+            }
+
             // One-Gate Policy: Price on inventory items (except Finish Goods) is the exclusive authority of Purchasing
-            const isFinishGood = rawType === "FINISH_GOOD" || resolvedType === "FINISHED" || (existing.item_code && existing.item_code.startsWith("FG-"));
+            const isFinishGood = rawType === "FINISH_GOOD" || resolvedType === "FINISHED" || (existing.item_code && (existing.item_code.startsWith("FG-") || existing.item_code.startsWith("FG - ")));
             const userRoleUpper = ((req as any).userRole || "").toUpperCase();
             const isPurchasingOrAdmin = ["PURCHASING", "ADMIN", "SUPER_ADMIN", "FC"].includes(userRoleUpper);
             const canEditPrice = isFinishGood || isPurchasingOrAdmin;
             const finalUnitPrice = canEditPrice && unit_price !== undefined ? Number(unit_price) : (existing.unit_price || 0);
+
+            const resolvedOpStatus = isMachineRecord
+              ? finalAssignedOperator
+                ? "ACTIVE"
+                : "INACTIVE"
+              : operational_status || existing.operational_status || "AVAILABLE";
+
+            const resolvedMachineStatus = isMachineRecord
+              ? finalAssignedOperator
+                ? "ASSIGNED"
+                : "AVAILABLE"
+              : existing.machine_status || "AVAILABLE";
 
             db.prepare(
               `UPDATE items SET
@@ -453,6 +570,8 @@ export const inventoryRouter = Router();
                 machine_category = ?,
                 capacity_per_hour = ?,
                 operational_status = ?,
+                machine_status = ?,
+                assigned_operator = ?,
                 serial_number = ?,
                 manufacturer = ?,
                 machine_specifications = ?,
@@ -469,7 +588,9 @@ export const inventoryRouter = Router();
               finalUnitPrice,
               machine_category !== undefined ? machine_category : existing.machine_category,
               capacity_per_hour !== undefined ? (capacity_per_hour ? Number(capacity_per_hour) : null) : existing.capacity_per_hour,
-              operational_status || existing.operational_status || "AVAILABLE",
+              resolvedOpStatus,
+              resolvedMachineStatus,
+              finalAssignedOperator,
               serial_number !== undefined ? serial_number : existing.serial_number,
               manufacturer !== undefined ? manufacturer : existing.manufacturer,
               machine_specifications ? JSON.stringify(machine_specifications) : existing.machine_specifications,
@@ -505,7 +626,7 @@ export const inventoryRouter = Router();
     // Delete item
     inventoryRouter.delete(
       "/api/items/:id",
-      requireRole(["ENGINEERING", "PURCHASING", "WAREHOUSE", "FC", "ADMIN"]),
+      requireRole(["PURCHASING", "WAREHOUSE", "FC", "ADMIN"]),
       (req, res) => {
         try {
           const { id } = req.params;
@@ -588,6 +709,7 @@ export const inventoryRouter = Router();
             }
           })();
 
+          cacheService.invalidateNamespace("items");
           res.json({ success: true, updated_boms: totalUpdatedBoms });
         } catch (error) {
           console.error(error);
@@ -615,6 +737,7 @@ export const inventoryRouter = Router();
               `UPDATE boms SET unit_price = ? WHERE item_id = ? AND project_id IN (SELECT id FROM projects WHERE status NOT IN ('FINISHED', 'CLOSED', 'CANCELLED'))`
             ).run(matrixPrice, id);
             db.prepare("UPDATE bom_template_items SET unit_price = ? WHERE item_id = ?").run(matrixPrice, id);
+            cacheService.invalidateNamespace("items");
             return res.json({ success: true, matrix_price: matrixPrice, updated_boms: resBom.changes });
           }
           res.json({ success: true, matrix_price: 0, updated_boms: 0 });
@@ -634,6 +757,19 @@ export const inventoryRouter = Router();
           const { id } = req.params;
           const { unit_price, remarks } = req.body;
           const email = getActor(req);
+
+          const targetItem = db.prepare("SELECT * FROM items WHERE id = ?").get(id) as any;
+          if (!targetItem) {
+            return res.status(404).json({ error: "Item not found" });
+          }
+          const itType = (targetItem.type || "").toUpperCase();
+          const itCode = (targetItem.item_code || "").trim().toUpperCase();
+          const isFg = itType === "FINISHED" || itType === "FINISH_GOOD" || itType === "FINISH_GOODS" || itCode.startsWith("FG - ") || itCode.startsWith("FG-");
+          if (isFg) {
+            return res.status(400).json({
+              error: `Finish Goods item [${targetItem.item_code}] cannot have its price set in Sourcing & Pricing. Finish Goods pricing is managed via Production Cost (COGS) and Sales Quotations.`,
+            });
+          }
 
           if (unit_price === undefined || isNaN(Number(unit_price)) || Number(unit_price) < 0) {
             return res.status(400).json({ error: "Valid unit price is required" });
@@ -667,6 +803,7 @@ export const inventoryRouter = Router();
             db.prepare("UPDATE bom_template_items SET unit_price = ? WHERE item_id = ?").run(priceVal, id);
           })();
 
+          cacheService.invalidateNamespace("items");
           res.json({ success: true, unit_price: priceVal });
         } catch (error: any) {
           console.error(error);
@@ -675,23 +812,31 @@ export const inventoryRouter = Router();
       }
     );
 
-    // Endpoint to sync a specific project's BOM items with matrix prices
+    // Endpoint to sync a specific project's BOM items with matrix prices (Batched Single-Query Optimization)
     inventoryRouter.post(
       "/api/projects/:id/boms/sync-matrix",
       requireRole(["ENGINEERING", "PURCHASING", "FC"]),
       (req, res) => {
         try {
           const projectId = req.params.id;
-          const projectBoms = db.prepare("SELECT id, item_id FROM boms WHERE project_id = ?").all(projectId) as any[];
+          const projectBoms = db.prepare(`
+            SELECT b.id, b.item_id,
+                   COALESCE(
+                     (SELECT MIN(isp.unit_price) FROM item_supplier_prices isp WHERE isp.item_id = b.item_id),
+                     i.unit_price,
+                     0
+                   ) as matrix_price
+            FROM boms b
+            LEFT JOIN items i ON b.item_id = i.id
+            WHERE b.project_id = ?
+          `).all(projectId) as any[];
 
           let updatedCount = 0;
           const stmtUpdate = db.prepare("UPDATE boms SET unit_price = ? WHERE id = ?");
 
           db.transaction(() => {
             for (const bom of projectBoms) {
-              const best = db.prepare("SELECT MIN(unit_price) as min_p FROM item_supplier_prices WHERE item_id = ?").get(bom.item_id) as any;
-              const item = db.prepare("SELECT unit_price FROM items WHERE id = ?").get(bom.item_id) as any;
-              const matrixPrice = best?.min_p ?? item?.unit_price ?? 0;
+              const matrixPrice = Number(bom.matrix_price) || 0;
               if (matrixPrice > 0) {
                 stmtUpdate.run(matrixPrice, bom.id);
                 updatedCount++;
@@ -709,7 +854,7 @@ export const inventoryRouter = Router();
 
     inventoryRouter.get(
       "/api/inventory/supplier-prices",
-      requireRole(["PURCHASING", "ENGINEERING", "PRODUCTION", "WAREHOUSE", "FC", "SALES", "ADMIN"]),
+      requireRole(["PURCHASING", "ENGINEERING", "PPIC", "QA_QC", "PRODUCTION", "WAREHOUSE", "FC", "SALES", "ADMIN"]),
       (req, res) => {
         try {
           const prices = db
@@ -735,7 +880,7 @@ export const inventoryRouter = Router();
 
     inventoryRouter.get(
       "/api/inventory/items/:id/supplier-prices",
-      requireRole(["PURCHASING", "ENGINEERING", "PRODUCTION"]),
+      requireRole(["PURCHASING", "ENGINEERING", "PPIC", "QA_QC", "PRODUCTION", "WAREHOUSE", "FC", "ADMIN"]),
       (req, res) => {
         try {
           const { id } = req.params;
@@ -768,6 +913,19 @@ export const inventoryRouter = Router();
           const { id } = req.params;
           const { supplier_id, unit_price } = req.body;
           const email = getActor(req);
+
+          const targetItem = db.prepare("SELECT * FROM items WHERE id = ?").get(id) as any;
+          if (!targetItem) {
+            return res.status(404).json({ error: "Item not found" });
+          }
+          const itType = (targetItem.type || "").toUpperCase();
+          const itCode = (targetItem.item_code || "").trim().toUpperCase();
+          const isFg = itType === "FINISHED" || itType === "FINISH_GOOD" || itType === "FINISH_GOODS" || itCode.startsWith("FG - ") || itCode.startsWith("FG-");
+          if (isFg) {
+            return res.status(400).json({
+              error: `Finish Goods item [${targetItem.item_code}] cannot have its price set in Sourcing & Pricing. Finish Goods pricing is managed via Production Cost (COGS) and Sales Quotations.`,
+            });
+          }
 
           if (!supplier_id || !unit_price) {
             return res
@@ -831,6 +989,7 @@ export const inventoryRouter = Router();
             ).run(matrixPrice, id);
           })();
 
+          cacheService.invalidateNamespace("items");
           res.json({ success: true });
         } catch (error) {
           console.error(error);
@@ -868,6 +1027,7 @@ export const inventoryRouter = Router();
             );
           })();
 
+          cacheService.invalidateNamespace("items");
           res.json({ success: true });
         } catch (error) {
           console.error(error);
@@ -922,6 +1082,7 @@ export const inventoryRouter = Router();
             }
           })();
 
+          cacheService.invalidateNamespace("items");
           res.json({ success: true });
         } catch (error) {
           console.error(error);
@@ -932,7 +1093,7 @@ export const inventoryRouter = Router();
 
     inventoryRouter.get(
       "/api/inventory/items/:id/price-history",
-      requireRole(["PURCHASING", "ENGINEERING", "PRODUCTION"]),
+      requireRole(["PURCHASING", "ENGINEERING", "PPIC", "QA_QC", "PRODUCTION", "WAREHOUSE", "FC", "ADMIN"]),
       (req, res) => {
         try {
           const { id } = req.params;
@@ -975,7 +1136,7 @@ export const inventoryRouter = Router();
     // Check Stock (MRP Logic)
     inventoryRouter.post(
       "/api/mrp/check-stock",
-      requireRole(["PRODUCTION", "ENGINEERING", "WAREHOUSE", "PURCHASING"]),
+      requireRole(["PRODUCTION", "PPIC", "ENGINEERING", "WAREHOUSE", "PURCHASING"]),
       (req, res) => {
         try {
           const { items, project_id } = req.body; // Array of { item_code, qty, ... }, optional project_id
@@ -1065,7 +1226,7 @@ export const inventoryRouter = Router();
     // Delete BOM Item
     inventoryRouter.get(
       "/api/inventory/summary",
-      requireRole(["PURCHASING", "WAREHOUSE", "PRODUCTION", "ENGINEERING"]),
+      requireRole(["PURCHASING", "WAREHOUSE", "PRODUCTION", "PPIC", "QA_QC", "ENGINEERING"]),
       (req, res) => {
         try {
           const summary = {
@@ -1110,7 +1271,7 @@ export const inventoryRouter = Router();
     // Get Inventory (Comprehensive items & stock ledger)
     inventoryRouter.get(
       "/api/inventory",
-      requireRole(["PRODUCTION", "WAREHOUSE", "ENGINEERING", "PURCHASING", "FC", "ADMIN"]),
+      requireRole(["PRODUCTION", "PPIC", "QA_QC", "WAREHOUSE", "ENGINEERING", "PURCHASING", "SALES", "FINANCE", "HR", "MAINTENANCE", "FC", "ADMIN", "SUPERADMIN", "BOD", "DIRECTOR"]),
       (req, res) => {
         try {
           const items = db
@@ -1123,7 +1284,9 @@ export const inventoryRouter = Router();
                COALESCE(inv.free_stock, 0) as free_stock, 
                COALESCE(inv.allocated_stock, 0) as allocated_stock,
                COALESCE(inv.min_stock, 0) as min_stock,
-               COALESCE(inv.max_stock, 0) as max_stock
+               COALESCE(inv.max_stock, 0) as max_stock,
+               COALESCE((SELECT MIN(isp.unit_price) FROM item_supplier_prices isp WHERE isp.item_id = i.id AND isp.unit_price > 0), i.unit_price, 0) as ssot_unit_price,
+               (SELECT COUNT(*) FROM item_supplier_prices isp WHERE isp.item_id = i.id AND isp.unit_price > 0) as supplier_quotes_count
         FROM items i
         LEFT JOIN inventory inv ON i.id = inv.item_id
         WHERE i.deleted_at IS NULL
@@ -1142,7 +1305,7 @@ export const inventoryRouter = Router();
     // Alias for /api/inventory/full
     inventoryRouter.get(
       "/api/inventory/full",
-      requireRole(["PRODUCTION", "WAREHOUSE", "ENGINEERING", "PURCHASING", "FC", "ADMIN"]),
+      requireRole(["PRODUCTION", "PPIC", "QA_QC", "WAREHOUSE", "ENGINEERING", "PURCHASING", "SALES", "FINANCE", "HR", "MAINTENANCE", "FC", "ADMIN", "SUPERADMIN", "BOD", "DIRECTOR"]),
       (req, res) => {
         try {
           const items = db
@@ -1156,6 +1319,8 @@ export const inventoryRouter = Router();
                COALESCE(inv.allocated_stock, 0) as allocated_stock,
                COALESCE(inv.min_stock, 0) as min_stock,
                COALESCE(inv.max_stock, 0) as max_stock,
+               COALESCE((SELECT MIN(isp.unit_price) FROM item_supplier_prices isp WHERE isp.item_id = i.id AND isp.unit_price > 0), i.unit_price, 0) as ssot_unit_price,
+               (SELECT COUNT(*) FROM item_supplier_prices isp WHERE isp.item_id = i.id AND isp.unit_price > 0) as supplier_quotes_count,
                (SELECT COUNT(DISTINCT pb.project_id) FROM boms pb WHERE pb.item_id = i.id) as bom_projects_count
         FROM items i
         LEFT JOIN inventory inv ON i.id = inv.item_id
@@ -1172,9 +1337,248 @@ export const inventoryRouter = Router();
       },
     );
 
+    // Get Active & Historical Stock Reservations across Projects
+    inventoryRouter.get(
+      "/api/inventory/reservations",
+      requireRole(["PRODUCTION", "PPIC", "QA_QC", "WAREHOUSE", "ENGINEERING", "PURCHASING", "FC", "ADMIN"]),
+      (req, res) => {
+        try {
+          const { project_id, status } = req.query;
+          let sql = `
+            SELECT
+              ir.id,
+              ir.item_id,
+              ir.project_id,
+              COALESCE(ir.spk_id, p.spk_number, ir.project_id) as spk_id,
+              ir.qty,
+              ir.qty as reserved_qty,
+              COALESCE(
+                (SELECT SUM(b.required_qty * COALESCE(p.qty, 1)) FROM boms b WHERE b.project_id = ir.project_id AND b.item_id = ir.item_id),
+                ir.qty
+              ) as required_qty,
+              ir.status,
+              ir.created_at,
+              i.item_code,
+              i.name,
+              i.name as item_name,
+              i.uom,
+              i.spec,
+              COALESCE(p.name, ir.project_id) as project_name,
+              p.status as project_status,
+              COALESCE(inv.free_stock, inv.available_qty, 0) as current_free_stock
+            FROM inventory_reservations ir
+            JOIN items i ON ir.item_id = i.id
+            LEFT JOIN projects p ON ir.project_id = p.id
+            LEFT JOIN inventory inv ON ir.item_id = inv.item_id
+            WHERE 1=1
+          `;
+          const params: any[] = [];
+          if (project_id) {
+            sql += ` AND ir.project_id = ?`;
+            params.push(project_id);
+          }
+          if (status && status !== "ALL") {
+            sql += ` AND ir.status = ?`;
+            params.push(status);
+          }
+          sql += ` ORDER BY CASE ir.status WHEN 'ACTIVE' THEN 1 WHEN 'CONSUMED' THEN 2 ELSE 3 END ASC, ir.created_at DESC`;
+          const rows = db.prepare(sql).all(...params) as any[];
+          const enriched = rows.map((r) => {
+            const reqQty = Math.max(Number(r.required_qty) || 0, Number(r.qty) || 0);
+            const resQty = Math.max(0, Number(r.reserved_qty) || 0);
+            return {
+              ...r,
+              required_qty: reqQty,
+              reserved_qty: resQty,
+              shortage_qty: Math.max(0, reqQty - resQty),
+            };
+          });
+          res.json(enriched);
+        } catch (error: any) {
+          console.error("Failed to fetch reservations:", error);
+          res.status(500).json({ error: error.message || "Failed to fetch reservations" });
+        }
+      },
+    );
+
+    // Allocate Free Warehouse Stock to a Project Reservation
+    inventoryRouter.post(
+      "/api/warehouse/reservations/:id/allocate",
+      requireRole(["PPIC", "WAREHOUSE", "PRODUCTION", "FC", "ADMIN", "SUPERADMIN"]),
+      (req, res) => {
+        try {
+          const { id } = req.params;
+          const actor = getActor(req) || req.body?.recorded_by || "PPIC";
+
+          const resRow = db
+            .prepare("SELECT * FROM inventory_reservations WHERE id = ?")
+            .get(id) as any;
+          if (!resRow) {
+            return res.status(404).json({ ok: false, error: "Reservation not found" });
+          }
+
+          const bomRow = db
+            .prepare(
+              "SELECT COALESCE(SUM(b.required_qty * COALESCE(p.qty, 1)), 0) as req_qty FROM boms b LEFT JOIN projects p ON b.project_id = p.id WHERE b.project_id = ? AND b.item_id = ?"
+            )
+            .get(resRow.project_id, resRow.item_id) as any;
+          const requiredQty = Math.max(
+            Number(bomRow?.req_qty) || 0,
+            Number(resRow.qty) || 0
+          );
+          const currentReserved = Math.max(0, Number(resRow.qty) || 0);
+          const shortage = Math.max(0, requiredQty - currentReserved);
+
+          const invRow = db
+            .prepare(
+              "SELECT COALESCE(free_stock, available_qty, 0) as free_stock FROM inventory WHERE item_id = ?"
+            )
+            .get(resRow.item_id) as any;
+          const availableFree = Math.max(0, Number(invRow?.free_stock) || 0);
+
+          if (availableFree <= 0) {
+            return res.status(400).json({
+              ok: false,
+              error: "No free stock available in Warehouse to allocate.",
+            });
+          }
+
+          const allocateQty = shortage > 0 ? Math.min(shortage, availableFree) : 0;
+          if (allocateQty > 0) {
+            db.transaction(() => {
+              db.prepare(
+                `UPDATE inventory
+                 SET free_stock = MAX(0, COALESCE(free_stock, 0) - ?),
+                     available_qty = MAX(0, COALESCE(available_qty, 0) - ?),
+                     allocated_stock = COALESCE(allocated_stock, 0) + ?,
+                     reserved_qty = COALESCE(reserved_qty, 0) + ?
+                 WHERE item_id = ?`
+              ).run(allocateQty, allocateQty, allocateQty, allocateQty, resRow.item_id);
+
+              db.prepare(
+                `UPDATE inventory_reservations
+                 SET qty = COALESCE(qty, 0) + ?,
+                     status = 'ACTIVE'
+                 WHERE id = ?`
+              ).run(allocateQty, id);
+
+              db.prepare(
+                `INSERT INTO stock_movements (id, item_id, project_id, type, qty, recorded_by, reference_id)
+                 VALUES (?, ?, ?, 'ALLOCATION', ?, ?, ?)`
+              ).run(
+                `MOV-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                resRow.item_id,
+                resRow.project_id,
+                allocateQty,
+                actor,
+                id
+              );
+            })();
+          }
+
+          cacheService.invalidateNamespace("items");
+          res.json({
+            ok: true,
+            allocated_qty: allocateQty,
+            message:
+              allocateQty > 0
+                ? `Allocated ${allocateQty} unit(s) of free stock to reservation ${id}.`
+                : "Reservation is already 100% allocated.",
+          });
+        } catch (error: any) {
+          console.error("Failed to allocate reservation:", error);
+          res.status(500).json({
+            ok: false,
+            error: error.message || "Failed to allocate free stock",
+          });
+        }
+      }
+    );
+
+    // Release or Consume an Active Stock Reservation Atomically
+    inventoryRouter.post(
+      "/api/inventory/reservations/:id/release",
+      requireRole(["WAREHOUSE", "PPIC", "PRODUCTION", "FC", "ADMIN"]),
+      (req, res) => {
+        try {
+          const { id } = req.params;
+          const { action = "RELEASE" } = req.body; // 'RELEASE' returns to free_stock; 'CONSUME' deducts physical_qty & allocated_stock
+          const actor = getActor(req) || "WAREHOUSE";
+
+          const resRow = db
+            .prepare("SELECT * FROM inventory_reservations WHERE id = ?")
+            .get(id) as any;
+          if (!resRow) {
+            return res.status(404).json({ error: "Reservation not found" });
+          }
+          if (resRow.status !== "ACTIVE") {
+            return res.status(400).json({ error: `Reservation is already ${resRow.status}` });
+          }
+
+          const qty = Math.max(0, Number(resRow.qty) || 0);
+
+          db.transaction(() => {
+            const targetStatus = action === "CONSUME" ? "CONSUMED" : "CANCELLED";
+            const upd = db
+              .prepare(
+                `UPDATE inventory_reservations SET status = ? WHERE id = ? AND status = 'ACTIVE'`,
+              )
+              .run(targetStatus, id);
+            if (upd.changes === 0) {
+              throw new Error(`Reservation is already processed or no longer ACTIVE.`);
+            }
+
+            if (action === "CONSUME") {
+              db.prepare(
+                `UPDATE inventory
+                 SET physical_qty = MAX(0, COALESCE(physical_qty, 0) - ?),
+                     allocated_stock = MAX(0, COALESCE(allocated_stock, 0) - ?),
+                     reserved_qty = MAX(0, COALESCE(reserved_qty, 0) - ?)
+                 WHERE item_id = ?`,
+              ).run(qty, qty, qty, resRow.item_id);
+
+              db.prepare(
+                `INSERT INTO stock_movements (id, item_id, project_id, type, qty, recorded_by, reference_id)
+                 VALUES (?, ?, ?, 'CONSUMPTION', ?, ?, ?)`,
+              ).run(
+                `MOV-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                resRow.item_id,
+                resRow.project_id,
+                -qty,
+                actor,
+                id,
+              );
+            } else {
+              db.prepare(
+                `UPDATE inventory
+                 SET free_stock = COALESCE(free_stock, 0) + ?,
+                     available_qty = COALESCE(available_qty, 0) + ?,
+                     allocated_stock = MAX(0, COALESCE(allocated_stock, 0) - ?),
+                     reserved_qty = MAX(0, COALESCE(reserved_qty, 0) - ?)
+                 WHERE item_id = ?`,
+              ).run(qty, qty, qty, qty, resRow.item_id);
+            }
+          })();
+
+          cacheService.invalidateNamespace("items");
+          res.json({
+            ok: true,
+            status: action === "CONSUME" ? "CONSUMED" : "CANCELLED",
+            message:
+              action === "CONSUME"
+                ? `Reservation ${id} consumed into production.`
+                : `Reservation ${id} released back to Free Stock.`,
+          });
+        } catch (error: any) {
+          console.error("Failed to update reservation:", error);
+          res.status(500).json({ error: error.message || "Failed to update reservation" });
+        }
+      },
+    );
+
     inventoryRouter.post(
       "/api/inventory/adjust-v2",
-      requireRole(["WAREHOUSE", "FC", "ENGINEERING", "PRODUCTION", "ADMIN"]),
+      requireRole(["WAREHOUSE", "FC", "ADMIN", "SUPERADMIN"]),
       (req, res) => {
         const { item_id, new_free_stock, reason, username, item_name, uom } =
           req.body;
@@ -1283,6 +1687,7 @@ export const inventoryRouter = Router();
             );
           })();
 
+          cacheService.invalidateNamespace("items");
           res.json({ success: true });
         } catch (err: any) {
           console.error(err);
@@ -1338,7 +1743,7 @@ export const inventoryRouter = Router();
 
     inventoryRouter.post(
       "/api/projects/:id/save-as-template",
-      requireRole(["ENGINEERING", "PRODUCTION"]),
+      requireRole(["ENGINEERING", "PPIC", "PRODUCTION", "FC", "ADMIN"]),
       (req, res) => {
         const { id } = req.params;
         const { name, description } = req.body;
@@ -1378,7 +1783,7 @@ export const inventoryRouter = Router();
 
     inventoryRouter.post(
       "/api/projects/:id/clone-bom",
-      requireRole(["ENGINEERING", "PRODUCTION"]),
+      requireRole(["ENGINEERING", "PPIC", "PRODUCTION", "FC", "ADMIN"]),
       (req, res) => {
         const { id } = req.params;
         const { reference_project_id } = req.body;

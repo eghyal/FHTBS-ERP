@@ -271,15 +271,15 @@ export const ScannerModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[500] bg-stone-800/95 backdrop-blur-3xl flex items-center justify-center p-0 md:p-6">
+    <div className="fixed inset-0 z-[500] bg-stone-900/40 backdrop-blur-sm flex items-center justify-center p-0 md:p-6">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
+        initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="relative w-full h-full md:h-[650px] md:max-w-[400px] bg-stone-800 md:rounded-[2.5rem] overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.6)] flex flex-col border border-white/10"
+        exit={{ opacity: 0, scale: 0.96 }}
+        className="relative w-full h-full md:h-[620px] md:max-w-[400px] bg-white md:rounded-xl overflow-hidden shadow-2xl flex flex-col border border-stone-200"
       >
         {/* Modern Switcher Tabs */}
-        <div className="flex border-b border-white/[0.06] bg-stone-800 px-6 pt-5 pb-0 shrink-0 select-none z-20">
+        <div className="flex border-b border-stone-200 bg-stone-50 px-6 pt-4 pb-0 shrink-0 select-none z-20">
           <button
             type="button"
             onClick={() => {
@@ -287,15 +287,15 @@ export const ScannerModal = ({
               setHasError(null);
             }}
             className={cn(
-              "flex-1 pb-3 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative",
-              !isManual ? "text-white" : "text-stone-500 hover:text-stone-400",
+              "flex-1 pb-3 text-[10px] font-bold uppercase tracking-[0.18em] transition-all relative cursor-pointer",
+              !isManual ? "text-stone-900" : "text-stone-500 hover:text-stone-800",
             )}
           >
             Camera Lens
             {!isManual && (
               <motion.div
                 layoutId="scannerTabIndicator"
-                className="absolute bottom-0 left-0 right-0 h-[2px] bg-emerald-500"
+                className="absolute bottom-0 left-0 right-0 h-[2px] bg-stone-900"
               />
             )}
           </button>
@@ -307,21 +307,21 @@ export const ScannerModal = ({
               setHasError(null);
             }}
             className={cn(
-              "flex-1 pb-3 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative",
-              isManual ? "text-white" : "text-stone-500 hover:text-stone-400",
+              "flex-1 pb-3 text-[10px] font-bold uppercase tracking-[0.18em] transition-all relative cursor-pointer",
+              isManual ? "text-stone-900" : "text-stone-500 hover:text-stone-800",
             )}
           >
             Manual Entry
             {isManual && (
               <motion.div
                 layoutId="scannerTabIndicator"
-                className="absolute bottom-0 left-0 right-0 h-[2px] bg-emerald-500"
+                className="absolute bottom-0 left-0 right-0 h-[2px] bg-stone-900"
               />
             )}
           </button>
         </div>
 
-        <div className="flex-1 relative bg-stone-800 flex flex-col overflow-hidden items-center justify-center">
+        <div className="flex-1 relative bg-stone-50 flex flex-col overflow-hidden items-center justify-center">
           <AnimatePresence mode="wait">
             {isManual ? (
               <motion.div
@@ -329,17 +329,16 @@ export const ScannerModal = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="absolute inset-0 z-10 bg-stone-800 flex flex-col justify-center p-8 text-center"
+                className="absolute inset-0 z-10 bg-white flex flex-col justify-center p-8 text-center"
               >
-                <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                  <Smartphone className="w-6 h-6 text-emerald-400" />
+                <div className="w-14 h-14 bg-stone-100 border border-stone-200 rounded-xl flex items-center justify-center mx-auto mb-5">
+                  <Smartphone className="w-6 h-6 text-stone-800" />
                 </div>
-                <h3 className="text-base font-bold text-white mb-1 uppercase tracking-tight">
+                <h3 className="text-base font-bold text-stone-900 mb-1 uppercase tracking-tight">
                   Direct Trace Entry
                 </h3>
-                <p className="text-[9px] text-stone-500 mb-8 leading-relaxed font-bold uppercase tracking-widest max-w-[280px] mx-auto">
-                  Type a purchase ID, SKU/item code, or serial token directly to
-                  bypass camera scanner hardware.
+                <p className="text-[10px] text-stone-500 mb-6 leading-relaxed font-semibold uppercase tracking-wider max-w-[280px] mx-auto">
+                  Enter a Purchase ID, SKU code, or serial token directly to bypass optical camera hardware.
                 </p>
                 <form
                   onSubmit={(e) => {
@@ -349,20 +348,20 @@ export const ScannerModal = ({
                       handleStop();
                     }
                   }}
-                  className="space-y-4 w-full max-w-[280px] mx-auto"
+                  className="space-y-3 w-full max-w-[280px] mx-auto"
                 >
                   <input
                     type="text"
                     value={manualCode}
                     onChange={(e) => setManualCode(e.target.value)}
-                    placeholder="e.g. PR-0001, ITEM-001, etc."
-                    className="w-full bg-white/5 border border-white/10 text-white placeholder:text-stone-700 rounded-xl px-5 py-4 text-xs font-bold uppercase tracking-wider text-center focus:bg-white/10 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all"
+                    placeholder="e.g. PR-0001, ITEM-001"
+                    className="no-base-style w-full bg-stone-50 border border-stone-200 text-stone-900 placeholder:text-stone-400 rounded-lg px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-center focus:bg-white focus:border-stone-900 focus:ring-2 focus:ring-stone-900/10 outline-none transition-all"
                     autoFocus
                   />
                   <button
                     type="submit"
                     disabled={!manualCode.trim()}
-                    className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:hover:bg-emerald-500 text-stone-950 font-bold text-[10px] uppercase tracking-[0.25em] rounded-xl transition-all shadow-md active:scale-[0.98]"
+                    className="w-full py-3 bg-stone-900 hover:bg-stone-800 disabled:opacity-40 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all shadow-xs active:scale-[0.98] cursor-pointer"
                   >
                     Submit Code
                   </button>
@@ -376,22 +375,22 @@ export const ScannerModal = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="absolute inset-0 z-50 bg-stone-800 flex flex-col items-center justify-center p-12 text-center"
+                    className="absolute inset-0 z-50 bg-white flex flex-col items-center justify-center p-10 text-center"
                   >
-                    <div className="w-20 h-20 bg-stone-800 rounded-3xl flex items-center justify-center mb-8">
-                      <ShieldCheck className="w-8 h-8 text-white" />
+                    <div className="w-16 h-16 bg-stone-100 border border-stone-200 rounded-xl flex items-center justify-center mb-6">
+                      <ShieldCheck className="w-7 h-7 text-stone-800" />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2 uppercase tracking-tight">
-                      Security Clear
+                    <h3 className="text-lg font-bold text-stone-900 mb-1.5 uppercase tracking-tight">
+                      Camera Access Required
                     </h3>
-                    <p className="text-[10px] text-stone-500 mb-8 leading-relaxed font-bold uppercase tracking-widest">
-                      Inisialisasi modul optik diperlukan.
+                    <p className="text-[10px] text-stone-500 mb-6 leading-relaxed font-semibold uppercase tracking-wider">
+                      Authorize optical camera access to scan QR and barcode labels.
                     </p>
                     <button
                       onClick={handleAuthorize}
-                      className="w-full py-5 bg-white text-stone-950 font-bold text-[10px] uppercase tracking-[0.3em] rounded-2xl hover:bg-stone-200 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+                      className="w-full py-3 bg-stone-900 text-white font-bold text-xs uppercase tracking-wider rounded-lg hover:bg-stone-800 transition-all flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
                     >
-                      Authorize Unit
+                      Authorize Camera
                     </button>
                   </motion.div>
                 )}
@@ -402,18 +401,18 @@ export const ScannerModal = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="absolute inset-0 z-50 bg-stone-800 flex flex-col items-center justify-center p-12 text-center"
+                    className="absolute inset-0 z-50 bg-white flex flex-col items-center justify-center p-8 text-center"
                   >
-                    <div className="w-20 h-20 bg-rose-500/10 text-rose-500 rounded-3xl flex items-center justify-center mb-8">
-                      <AlertCircle className="w-8 h-8" />
+                    <div className="w-16 h-16 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl flex items-center justify-center mb-5">
+                      <AlertCircle className="w-7 h-7" />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2 uppercase tracking-tight">
-                      Access Failure
+                    <h3 className="text-base font-bold text-stone-900 mb-1.5 uppercase tracking-tight">
+                      Camera Unavailable
                     </h3>
-                    <p className="text-[10px] text-rose-400/60 mb-10 leading-relaxed font-semibold uppercase tracking-widest">
+                    <p className="text-[11px] text-stone-500 mb-6 leading-relaxed font-medium">
                       {hasError}
                     </p>
-                    <div className="flex flex-col gap-3 w-full">
+                    <div className="flex flex-col gap-2.5 w-full">
                       <button
                         type="button"
                         onClick={() => {
@@ -421,23 +420,23 @@ export const ScannerModal = ({
                           stopAndClearScanner();
                           setStatus("IDLE");
                         }}
-                        className="w-full py-4.5 bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl transition-all active:scale-[0.98] shadow-md"
+                        className="w-full py-3 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all active:scale-[0.98] shadow-xs cursor-pointer"
                       >
                         Use Manual Entry
                       </button>
                       <button
                         type="button"
                         onClick={checkPermission}
-                        className="w-full py-4 bg-white hover:bg-stone-100 text-stone-950 font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl transition-colors"
+                        className="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs uppercase tracking-wider rounded-lg transition-colors cursor-pointer"
                       >
-                        Reconnect
+                        Retry Camera
                       </button>
                       <button
                         type="button"
                         onClick={onClose}
-                        className="w-full py-4 bg-stone-800 text-stone-500 hover:text-stone-400 font-bold text-[10px] uppercase tracking-[0.2em] rounded-2xl"
+                        className="w-full py-2.5 bg-white border border-stone-200 text-stone-600 hover:text-stone-900 font-bold text-xs uppercase tracking-wider rounded-lg cursor-pointer"
                       >
-                        Abort Scanner
+                        Cancel
                       </button>
                     </div>
                   </motion.div>
@@ -463,7 +462,7 @@ export const ScannerModal = ({
                   border-radius: 0 !important;
                 }
                 #reader #reader__scan_region {
-                  background: #0c0a09 !important;
+                  background: #fafaf9 !important;
                   height: 100% !important;
                 }
                 #reader #reader__dashboard_section_csr {
@@ -474,12 +473,12 @@ export const ScannerModal = ({
               />
 
               {status === "SCANNING" && (
-                <div className="absolute inset-0 pointer-events-none z-10 flex flex-col items-center justify-center bg-stone-900/20">
-                  <div className="relative w-[280px] h-[280px] border-2 border-white/20 rounded-3xl overflow-hidden shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]">
-                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-emerald-500 rounded-tl-3xl"></div>
-                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-emerald-500 rounded-tr-3xl"></div>
-                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-emerald-500 rounded-bl-3xl"></div>
-                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-emerald-500 rounded-br-3xl"></div>
+                <div className="absolute inset-0 pointer-events-none z-10 flex flex-col items-center justify-center bg-stone-900/15">
+                  <div className="relative w-[260px] h-[260px] border-2 border-white/60 rounded-xl overflow-hidden shadow-[0_0_0_9999px_rgba(28,25,23,0.35)]">
+                    <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-stone-900 rounded-tl-xl"></div>
+                    <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-stone-900 rounded-tr-xl"></div>
+                    <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-stone-900 rounded-bl-xl"></div>
+                    <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-stone-900 rounded-br-xl"></div>
 
                     <motion.div
                       initial={{ top: "0%" }}
@@ -489,29 +488,30 @@ export const ScannerModal = ({
                         repeat: Infinity,
                         ease: "linear",
                       }}
-                      className="absolute left-0 right-0 h-[2px] bg-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.8)]"
+                      className="absolute left-0 right-0 h-[2px] bg-stone-900 shadow-[0_0_12px_rgba(28,25,23,0.8)]"
                     />
                   </div>
-                  <div className="absolute top-8 text-center text-xs font-bold tracking-[0.3em] uppercase text-white/50">
-                    Point exactly at code
+                  <div className="absolute top-6 text-center text-[10px] font-bold tracking-[0.2em] uppercase text-white bg-stone-900/50 px-3 py-1 rounded-full">
+                    Align QR or Barcode in Frame
                   </div>
                 </div>
               )}
 
               {status === "SCANNING" && cameras.length > 1 && (
-                <div className="absolute bottom-8 right-8 z-20">
+                <div className="absolute bottom-6 right-6 z-20">
                   <button
                     onClick={switchCamera}
-                    className="w-12 h-12 bg-stone-800/50 backdrop-blur-xl rounded-full flex items-center justify-center text-white border border-white/10 hover:bg-stone-900 transition-all active:scale-90 shadow-2xl"
+                    className="w-10 h-10 bg-white/90 backdrop-blur-md rounded-lg flex items-center justify-center text-stone-800 border border-stone-200 hover:bg-white transition-all active:scale-95 shadow-md cursor-pointer"
                   >
-                    <RefreshCw className="w-5 h-5" />
+                    <RefreshCw className="w-4 h-4" />
                   </button>
                 </div>
               )}
 
               {status === "INITIALIZING" && (
-                <div className="absolute inset-0 z-30 bg-stone-800 flex flex-col items-center justify-center text-white">
-                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                <div className="absolute inset-0 z-30 bg-white flex flex-col items-center justify-center text-stone-700 gap-2">
+                  <div className="w-5 h-5 border-2 border-stone-200 border-t-stone-900 rounded-full animate-spin"></div>
+                  <span className="text-[11px] font-semibold text-stone-500">Initializing camera...</span>
                 </div>
               )}
             </>
@@ -519,7 +519,7 @@ export const ScannerModal = ({
         </div>
 
         {/* Minimal Control Footer */}
-        <div className="p-6 bg-stone-800 flex flex-col items-center gap-3">
+        <div className="p-4 bg-stone-50 border-t border-stone-200 flex flex-col items-center gap-2">
           {!isManual && (
             <>
               <input
@@ -531,18 +531,18 @@ export const ScannerModal = ({
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full max-w-[280px] py-4 bg-white/5 text-white/70 font-bold text-xs uppercase tracking-[0.2em] rounded-2xl hover:bg-white/10 transition-all flex items-center justify-center gap-3 active:scale-[0.98] border border-white/5"
+                className="w-full max-w-[280px] py-2.5 bg-white text-stone-700 font-bold text-xs uppercase tracking-wider rounded-lg hover:bg-stone-100 transition-all flex items-center justify-center gap-2 active:scale-[0.98] border border-stone-200 shadow-2xs cursor-pointer"
               >
-                <Upload className="w-4 h-4" />
-                Upload Image
+                <Upload className="w-3.5 h-3.5 text-stone-700" />
+                Upload QR Image
               </button>
             </>
           )}
           <button
             onClick={handleStop}
-            className="w-full max-w-[280px] py-4 bg-stone-800/50 text-stone-500 font-bold text-xs uppercase tracking-[0.2em] rounded-2xl hover:bg-rose-600/20 hover:text-rose-400 transition-all flex items-center justify-center gap-3 active:scale-[0.98] border border-stone-800"
+            className="w-full max-w-[280px] py-2.5 bg-stone-100 text-stone-600 font-bold text-xs uppercase tracking-wider rounded-lg hover:bg-stone-200 hover:text-stone-900 transition-all flex items-center justify-center gap-2 active:scale-[0.98] border border-stone-200 cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
             Close Scanner
           </button>
         </div>

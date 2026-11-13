@@ -1,8 +1,19 @@
 import React, { memo } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { X, FileText } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/Badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/Table";
+import { FileText } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatIDR } from "@/lib/utils";
+import { canViewDocFinancials, ConfidentialBadge } from "@/utils/rbacFinancials";
 
 interface PrDetailsModalProps {
   isOpen: boolean;
@@ -15,37 +26,38 @@ export const PrDetailsModal = memo(function PrDetailsModal({
   onClose,
   selectedPrDetails,
 }: PrDetailsModalProps) {
+  const { user } = useAuth();
   if (!selectedPrDetails) return null;
+
+  const canViewPrPrices = canViewDocFinancials(user, "PR");
+  const estimatedCost = Number(selectedPrDetails.total_estimated_cost || 0);
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       maxWidth="3xl"
-      contentClassName="p-0 flex flex-col h-[90vh] bg-stone-50"
-    >
-      <div className="p-5 border-b border-stone-200 flex justify-between items-center bg-white shrink-0">
+      title={
         <div>
-          <span className="text-[9px] font-black tracking-widest text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 uppercase">
+          <Badge variant="success" size="sm" className="mb-1">
             Official Purchase Request
-          </span>
-          <h3 className="text-base font-black text-stone-900 tracking-tight mt-1">
+          </Badge>
+          <div className="text-base font-mono font-bold text-stone-900 tracking-tight">
             {selectedPrDetails.pr_number}
-          </h3>
+          </div>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 text-stone-400 hover:text-stone-600 transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      }
+      footer={
+        <Button variant="secondary" size="sm" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <div className="space-y-5">
         {/* PR Information Block */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-xs grid grid-cols-3 gap-6">
+        <div className="bg-stone-50/70 border border-stone-200/80 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div>
-            <span className="text-[9px] font-black text-stone-400 uppercase tracking-widest block mb-1">
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-1">
               Project Name
             </span>
             <div className="text-xs font-bold text-stone-900 uppercase">
@@ -53,41 +65,49 @@ export const PrDetailsModal = memo(function PrDetailsModal({
             </div>
           </div>
           <div>
-            <span className="text-[9px] font-black text-stone-400 uppercase tracking-widest block mb-1">
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-1">
               Expected Delivery Date
             </span>
-            <div className="text-xs font-bold text-emerald-700 font-mono">
+            <div className="text-xs font-bold text-emerald-700 font-mono tabular-nums">
               {selectedPrDetails.expected_delivery_date || "As soon as possible"}
             </div>
           </div>
           <div>
-            <span className="text-[9px] font-black text-stone-400 uppercase tracking-widest block mb-1">
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-1">
+              Estimated Cost
+            </span>
+            <div className="text-xs font-bold text-stone-900 font-mono tabular-nums">
+              {canViewPrPrices ? (
+                estimatedCost > 0 ? formatIDR(estimatedCost) : "-"
+              ) : (
+                <ConfidentialBadge size="xs" />
+              )}
+            </div>
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-1">
               Document Status
             </span>
             <div>
-              <span
-                className={cn(
-                  "px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase border",
-                  selectedPrDetails.status === "ORDERED"
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : "bg-amber-50 text-amber-700 border-amber-200",
-                )}
+              <Badge
+                variant={selectedPrDetails.status === "ORDERED" || selectedPrDetails.status === "AUTHORIZED" ? "success" : "warning"}
+                size="sm"
               >
                 {selectedPrDetails.status}
-              </span>
+              </Badge>
             </div>
           </div>
 
           {selectedPrDetails.drawing_reference && (
-            <div className="col-span-3 pt-3 border-t border-stone-100 flex items-center justify-between">
-              <span className="text-[9px] font-black text-stone-400 uppercase tracking-widest">
+            <div className="sm:col-span-4 pt-3 border-t border-stone-200/60 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
                 Technical Drawing Attachment
               </span>
               <a
                 href={selectedPrDetails.drawing_reference}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3 py-1 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all"
+                className="px-3 py-1 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border border-stone-300 dark:border-stone-700 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all"
               >
                 <FileText className="w-3.5 h-3.5" /> View Drawing
               </a>
@@ -96,61 +116,53 @@ export const PrDetailsModal = memo(function PrDetailsModal({
         </div>
 
         {/* PR Items Table Card */}
-        <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-xs">
-          <div className="px-5 py-3 bg-stone-50 border-b border-stone-200/80">
-            <h4 className="text-[10px] font-black text-stone-600 uppercase tracking-widest">
-              Requested Materials & Components
-            </h4>
-          </div>
-          <table className="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr className="border-b border-stone-200 bg-stone-50/30 text-[9px] font-extrabold text-stone-400 uppercase tracking-widest">
-                <th className="py-2.5 px-5">Material Item</th>
-                <th className="py-2.5 px-5">Expected Delivery</th>
-                <th className="py-2.5 px-5 text-right">Quantity</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
+        <div>
+          <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">
+            Requested Materials & Components
+          </h4>
+          <Table compact>
+            <TableHeader>
+              <TableRow hoverable={false}>
+                <TableHead>Material Item</TableHead>
+                <TableHead>Expected Delivery</TableHead>
+                <TableHead className="text-right">Quantity</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {selectedPrDetails.items &&
                 selectedPrDetails.items.map((item: any) => (
-                  <tr key={item.id} className="hover:bg-stone-50/30">
-                    <td className="py-3.5 px-5">
-                      <div className="font-mono font-bold text-stone-900 text-[10.5px]">
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <div className="font-mono font-bold text-stone-900 text-xs tabular-nums">
                         {item.item_code}
                       </div>
-                      <div className="text-[11px] font-extrabold text-stone-800 uppercase tracking-tight mt-0.5">
+                      <div className="text-xs font-semibold text-stone-800 mt-0.5">
                         {item.item_name}
                       </div>
                       {(item.dimension || item.spec) && (
-                        <div className="text-[9px] text-stone-500 mt-0.5 leading-snug">
+                        <div className="text-[10px] text-stone-500 font-mono mt-0.5 leading-snug">
                           {[item.dimension, item.spec]
                             .filter(Boolean)
                             .join(" • ")}
                         </div>
                       )}
-                    </td>
-                    <td className="py-3.5 px-5">
-                      <div className="text-[10.5px] font-bold text-stone-600 font-mono">
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-xs font-semibold text-stone-600 font-mono tabular-nums">
                         {item.expected_delivery_date || "Consolidated"}
                       </div>
-                    </td>
-                    <td className="py-3.5 px-5 text-right font-black text-stone-950 text-[11px] font-mono">
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-stone-900 text-xs font-mono tabular-nums">
                       {item.qty}{" "}
-                      <span className="text-[9px] text-stone-500 font-sans tracking-widest ml-0.5 uppercase">
+                      <span className="text-[10px] text-stone-500 font-sans tracking-wider ml-0.5 uppercase">
                         {item.uom}
                       </span>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
-      </div>
-
-      <div className="p-4 border-t border-stone-100 flex justify-end bg-white shrink-0">
-        <Button variant="secondary" onClick={onClose}>
-          Close
-        </Button>
       </div>
     </Modal>
   );

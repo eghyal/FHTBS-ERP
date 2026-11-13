@@ -3,28 +3,58 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 
-// Dynamically synchronize client clock with authoritative global time APIs
-const OriginalDate = window.Date;
-let timeOffset = 0;
+// Global error handler to prevent blank white screens in production
+if (typeof window !== "undefined") {
+  window.addEventListener("error", (event) => {
+    console.error("[Global Error Caught]:", event.error || event.message);
+    const root = document.getElementById("root");
+    if (root && (!root.hasChildNodes() || root.innerHTML.trim() === "")) {
+      root.innerHTML = `
+        <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #fafaf9; padding: 24px; box-sizing: border-box;">
+          <div style="max-width: 440px; width: 100%; background: #ffffff; border: 1px solid #fee2e2; border-radius: 16px; padding: 32px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); text-align: center;">
+            <div style="width: 48px; height: 48px; background: #fee2e2; color: #dc2626; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto; font-size: 22px; font-weight: bold;">!</div>
+            <h2 style="font-size: 18px; font-weight: 700; color: #1c1917; margin: 0 0 8px 0;">Memuat Ulang Aplikasi</h2>
+            <p style="font-size: 13px; color: #78716c; margin: 0 0 20px 0; line-height: 1.5;">Terjadi pembaruan versi pada sistem. Silakan muat ulang halaman untuk memuat versi terbaru.</p>
+            <button onclick="window.location.reload(true)" style="background: #b02524; color: #ffffff; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; box-shadow: 0 2px 4px rgba(176,37,36,0.2);">Muat Ulang Sekarang</button>
+          </div>
+        </div>
+      `;
+    }
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    console.error("[Unhandled Rejection Caught]:", event.reason);
+  });
+}
+
+// Background authoritative time synchronization without breaking native window.Date
+let serverTimeOffset = 0;
+export function getServerTimeOffset(): number {
+  return serverTimeOffset;
+}
+
+export function getSyncedTime(): number {
+  return Date.now() + serverTimeOffset;
+}
 
 async function syncGlobalTime() {
-  // 1. First priority: authoritative internal server time (same-origin, zero CORS issues)
+  // 1. Authoritative internal server time (same-origin, zero CORS issues)
   try {
     const res = await fetch("/api/time");
     if (res.ok) {
       const data = await res.json();
       if (data && (data.timestamp || data.time)) {
         const officialDate = data.timestamp
-          ? new OriginalDate(data.timestamp)
-          : new OriginalDate(data.time);
+          ? new Date(data.timestamp)
+          : new Date(data.time);
         if (!isNaN(officialDate.getTime())) {
-          timeOffset = officialDate.getTime() - OriginalDate.now();
+          serverTimeOffset = officialDate.getTime() - Date.now();
           return;
         }
       }
     }
   } catch {
-    // Fallback to secondary sources
+    // Graceful fallback to client system time
   }
 
   // 2. Secondary fallback: /api/health
@@ -33,86 +63,27 @@ async function syncGlobalTime() {
     if (res.ok) {
       const data = await res.json();
       if (data && data.time) {
-        const officialDate = new OriginalDate(data.time);
+        const officialDate = new Date(data.time);
         if (!isNaN(officialDate.getTime())) {
-          timeOffset = officialDate.getTime() - OriginalDate.now();
+          serverTimeOffset = officialDate.getTime() - Date.now();
           return;
         }
       }
     }
   } catch {
-    // Fallback to external time services
-  }
-
-  // 3. Fallback: timeapi.io
-  try {
-    const res = await fetch(
-      "https://timeapi.io/api/time/current/zone?timeZone=Asia/Jakarta",
-    );
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.dateTime) {
-        const officialDate = new OriginalDate(data.dateTime + "+07:00");
-        if (!isNaN(officialDate.getTime())) {
-          timeOffset = officialDate.getTime() - OriginalDate.now();
-          return;
-        }
-      }
-    }
-  } catch {
-    // Fallback to worldtimeapi.org
-  }
-
-  // 4. Fallback: worldtimeapi.org
-  try {
-    const res = await fetch(
-      "https://worldtimeapi.org/api/timezone/Asia/Jakarta",
-    );
-    if (res.ok) {
-      const data = await res.json();
-      if (data && (data.utc_datetime || data.datetime)) {
-        const officialDate = new OriginalDate(
-          data.utc_datetime || data.datetime,
-        );
-        if (!isNaN(officialDate.getTime())) {
-          timeOffset = officialDate.getTime() - OriginalDate.now();
-          return;
-        }
-      }
-    }
-  } catch {
-    // Graceful fallback to client system time
+    // Graceful fallback
   }
 }
 
-// Fire off background synchronization immediately
+// Fire off background synchronization
 syncGlobalTime();
 
-function CustomDate(...args: any[]) {
-  if (!(this instanceof CustomDate)) {
-    return new OriginalDate(OriginalDate.now() + timeOffset).toString();
-  }
-  if (args.length === 0) {
-    return new OriginalDate(OriginalDate.now() + timeOffset);
-  }
-  return new (OriginalDate as any)(...args);
-}
-
-CustomDate.prototype = OriginalDate.prototype;
-(CustomDate as any).now = function () {
-  return OriginalDate.now() + timeOffset;
-};
-(CustomDate as any).UTC = OriginalDate.UTC;
-(CustomDate as any).parse = OriginalDate.parse;
-
-window.Date = CustomDate as any;
-
+// Safe storage access to prevent SecurityError in restrictive browser contexts
 let cachedUserEmail: string | null = null;
 let lastStorageCheck = 0;
 
 function getUserEmail(): string | null {
   const now = Date.now();
-  // Check localStorage at most once every 2 seconds to avoid overhead, or rely on storage events
   if (now - lastStorageCheck > 2000) {
     lastStorageCheck = now;
     try {
@@ -123,42 +94,69 @@ function getUserEmail(): string | null {
       } else {
         cachedUserEmail = null;
       }
-    } catch (e) {
+    } catch {
       cachedUserEmail = null;
     }
   }
   return cachedUserEmail;
 }
 
-window.addEventListener("storage", (e) => {
-  if (e.key === "erp_user") {
-    lastStorageCheck = 0; // Force re-check on next fetch
-  }
-});
-
-const originalFetch = window.fetch;
-Object.defineProperty(window, "fetch", {
-  configurable: true,
-  enumerable: true,
-  writable: true,
-  value: async function (resource: RequestInfo | URL, config?: RequestInit) {
-    if (typeof resource === "string" && resource.startsWith("/api/")) {
-      config = config || {};
-      const headers = { ...config.headers };
-
-      const email = getUserEmail();
-      if (email) {
-        (headers as any)["x-user-email"] = email;
-      }
-      config.headers = headers;
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === "erp_user") {
+      lastStorageCheck = 0;
     }
+  });
+}
 
-    return originalFetch.call(window, resource, config);
-  },
-});
+// Resilient fetch interceptor for /api/ authentication headers
+try {
+  const originalFetch = window.fetch;
+  Object.defineProperty(window, "fetch", {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: async function (resource: RequestInfo | URL, config?: RequestInit) {
+      try {
+        const url =
+          typeof resource === "string"
+            ? resource
+            : resource instanceof URL
+              ? resource.pathname
+              : (resource as Request)?.url || "";
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+        if (url.startsWith("/api/") || url.includes("/api/")) {
+          const email = getUserEmail();
+          if (email) {
+            config = config || {};
+            if (config.headers instanceof Headers) {
+              config.headers.set("x-user-email", email);
+            } else if (Array.isArray(config.headers)) {
+              config.headers.push(["x-user-email", email]);
+            } else {
+              config.headers = {
+                ...config.headers,
+                "x-user-email": email,
+              };
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[Fetch Interceptor] Non-fatal header injection warning:", err);
+      }
+
+      return originalFetch.call(window, resource, config);
+    },
+  });
+} catch {
+  // In environments where window.fetch is non-configurable, apiFetch handles auth headers directly
+}
+
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}

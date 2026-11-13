@@ -27,22 +27,3 @@ export const validateBody = (schema: ZodSchema) => {
   };
 };
 
-/**
- * Middleware factory to validate request query parameters
- */
-export const validateQuery = (schema: ZodSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    try {
-      req.query = schema.parse(req.query) as any;
-      next();
-    } catch (err) {
-      if (err instanceof ZodError) {
-        return res.status(400).json({
-          error: "Query parameter validation failed",
-          details: err.issues.map((i) => ({ field: i.path.join("."), message: i.message })),
-        });
-      }
-      return res.status(400).json({ error: "Invalid query parameters" });
-    }
-  };
-};

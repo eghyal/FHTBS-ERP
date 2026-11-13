@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/Input";
 import { useNavigate } from "react-router-dom";
 
 import { hasGodMode } from "@/utils/pbac";
+import { useTheme } from "@/contexts/ThemeContext";
 
 export default function HrLogin() {
+  const { appLogo } = useTheme();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -24,12 +26,12 @@ export default function HrLogin() {
     try {
       const res = await apiFetch("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: username.trim(), password }),
       });
 
-      if (res.ok) {
+      if (res.ok && res.data?.user) {
         if (res.data.user.role === "HR" || hasGodMode(res.data.user)) {
-          login(res.data.user);
+          login(res.data.user, res.data.token);
           navigate("/hr");
         } else {
           setError(
@@ -47,22 +49,22 @@ export default function HrLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] flex items-center justify-center p-4 font-sans relative overflow-hidden">
+    <div className="min-h-screen bg-[#FDFDFD] dark:bg-[#0c0e13] text-stone-900 dark:text-stone-100 flex items-center justify-center p-4 font-sans relative overflow-hidden transition-colors duration-200">
       {/* Visit Public Website top-right button */}
       <div className="absolute top-6 right-6 md:top-8 md:right-8 z-20">
         <a
           href="/"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/90 hover:bg-stone-50 border border-stone-200/80 backdrop-blur-md rounded-full text-[11px] font-bold uppercase tracking-widest text-stone-700 transition-all shadow-sm active:scale-95 group"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/90 dark:bg-stone-800/80 hover:bg-stone-50 dark:hover:bg-stone-700/80 border border-stone-200/80 dark:border-stone-700/80 backdrop-blur-md rounded-full text-[11px] font-bold uppercase tracking-widest text-stone-700 dark:text-stone-300 transition-all shadow-sm active:scale-95 group"
         >
-          <Globe className="w-4 h-4 text-stone-400 group-hover:text-stone-600 transition-colors" />
+          <Globe className="w-4 h-4 text-stone-400 group-hover:text-stone-600 dark:text-stone-400 dark:group-hover:text-stone-300 transition-colors" />
           <span>Visit Public Website</span>
-          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform text-stone-400 group-hover:text-stone-600" />
+          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform text-stone-400 group-hover:text-stone-600 dark:text-stone-400 dark:group-hover:text-stone-300" />
         </a>
       </div>
 
-      <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-[#b02524]/5 to-transparent -z-10" />
-      <div className="absolute -top-24 -right-24 w-96 h-96 bg-[#b02524]/5 rounded-full blur-3xl opacity-50 -z-10" />
-      <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-stone-100 rounded-full blur-3xl opacity-50 -z-10" />
+      <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-stone-100 dark:from-stone-900/30 to-transparent -z-10" />
+      <div className="absolute -top-24 -right-24 w-96 h-96 bg-stone-100 dark:bg-stone-900/20 rounded-full blur-3xl opacity-50 -z-10" />
+      <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-stone-100 dark:bg-stone-900/20 rounded-full blur-3xl opacity-50 -z-10" />
 
       <div className="max-w-md w-full">
         <div className="text-center mb-10">
@@ -71,22 +73,25 @@ export default function HrLogin() {
             className="inline-flex items-center justify-center w-20 h-20 mb-6 drop-shadow-md hover:scale-105 transition-transform cursor-pointer"
           >
             <img
-              src="/logo.png"
+              src={appLogo}
               alt="Paving Joss Logo"
+              onError={(e) => {
+                e.currentTarget.src = "/logo.png";
+              }}
               className="w-20 h-20 object-contain drop-shadow-sm"
               referrerPolicy="no-referrer"
               crossOrigin="anonymous"
             />
           </a>
-          <h1 className="text-xl font-light text-stone-900 tracking-tight">
+          <h1 className="text-xl font-light text-stone-900 dark:text-stone-100 tracking-tight">
             Human Resources
           </h1>
-          <p className="text-stone-500 mt-2 text-sm tracking-wide">
+          <p className="text-stone-500 dark:text-stone-400 mt-2 text-sm tracking-wide">
             Secure Organization Portal
           </p>
         </div>
 
-        <div className="bg-white border border-stone-100 rounded-3xl p-8 shadow-2xl shadow-stone-200/50 animate-in fade-in zoom-in duration-300">
+        <div className="bg-white/95 dark:bg-[#141821]/95 backdrop-blur-2xl border border-stone-100 dark:border-white/10 rounded-3xl p-8 shadow-2xl shadow-stone-200/50 dark:shadow-[0_24px_60px_rgba(0,0,0,0.65)] animate-in fade-in zoom-in duration-300">
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
               <div className="p-3 bg-red-50 border border-red-100 text-[#b02524] text-xs font-semibold rounded-xl text-center animate-in fade-in zoom-in duration-200">
@@ -140,7 +145,7 @@ export default function HrLogin() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 bg-[#b02524] text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-[1.25rem] hover:bg-[#921e1d] transition-all flex items-center justify-center gap-2 group shadow-xl shadow-red-900/20 active:scale-[0.98] disabled:opacity-50 mt-4 cursor-pointer"
+              className="login-submit-btn w-full py-3.5 bg-stone-900 text-white font-bold text-[10px] uppercase tracking-[0.2em] rounded-xl hover:bg-stone-800 transition-all flex items-center justify-center gap-2 group shadow-xl shadow-stone-900/15 active:scale-[0.98] disabled:opacity-50 mt-4 cursor-pointer"
             >
               {isLoading ? "Authenticating..." : "Sign In"}{" "}
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />

@@ -38,7 +38,7 @@ export const PrqConfirmModal: React.FC<PrqConfirmModalProps> = ({
     >
       <div className="space-y-4 p-2 text-left">
         <div className="flex items-start gap-3 p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-stone-700 text-xs">
-          <AlertCircle className="w-5 h-5 text-[#b02524] shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-stone-700 shrink-0 mt-0.5" />
           <p className="font-semibold leading-relaxed">
             {prqConfirmModal.message}
           </p>
@@ -59,7 +59,7 @@ export const PrqConfirmModal: React.FC<PrqConfirmModalProps> = ({
                 }))
               }
               placeholder="State the cancellation reason for audit archives..."
-              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold focus:outline-none focus:border-[#b02524]"
+              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold focus:outline-none focus:border-stone-900"
             />
           </div>
         )}
@@ -69,7 +69,7 @@ export const PrqConfirmModal: React.FC<PrqConfirmModalProps> = ({
           <div className="space-y-1.5 p-3.5 bg-stone-100/80 rounded-2xl border border-stone-200 text-left">
             <div className="flex items-center justify-between mb-1">
               <label className="text-[10px] font-black text-stone-700 uppercase tracking-widest flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#b02524]" />
+                <ShieldCheck className="w-3.5 h-3.5 text-stone-800" />
                 <span>Auth System: ERP Authorization PIN</span>
               </label>
               <span className="text-[10px] font-mono bg-white px-2 py-0.5 rounded-md text-stone-600 font-extrabold border border-stone-200">
@@ -86,7 +86,7 @@ export const PrqConfirmModal: React.FC<PrqConfirmModalProps> = ({
                 }))
               }
               placeholder="Enter Authorization PIN (e.g. 123456)"
-              className="w-full p-2.5 bg-white border border-stone-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-[#b02524] transition-all"
+              className="w-full p-2.5 bg-white border border-stone-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-stone-900 transition-all"
             />
             <p className="text-[10px] text-stone-500 font-medium leading-normal">
               HR Manager authorization verification. Default PIN:{" "}
@@ -112,7 +112,7 @@ export const PrqConfirmModal: React.FC<PrqConfirmModalProps> = ({
               type="button"
               onClick={() => handleSavePayrollRequisition(true)}
               disabled={isSavingPrq}
-              className="px-5 py-2.5 bg-[#b02524] hover:bg-[#861d1c] text-white text-xs font-black rounded-xl transition-all shadow-md shadow-red-200/50 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="px-5 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-black rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>

@@ -1,6 +1,5 @@
 import React, { memo } from "react";
-import { Link } from "react-router-dom";
-import { Search, AlertCircle, AlertTriangle, Trash2 } from "lucide-react";
+import { Search, AlertCircle, AlertTriangle, Trash2, CheckCircle2, ExternalLink, Lock } from "lucide-react";
 import { cn, formatNumberWithDots } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
 
@@ -35,6 +34,7 @@ interface BomItemRowEditorProps {
   updateRow: (id: string, field: string, value: any) => void;
   removeRow: (id: string) => void;
   onOpenSearchModal: (rowId: string) => void;
+  onOpenInventoryMaster?: (searchCode?: string) => void;
 }
 
 export const BomItemRowEditor = memo(function BomItemRowEditor({
@@ -46,7 +46,12 @@ export const BomItemRowEditor = memo(function BomItemRowEditor({
   updateRow,
   removeRow,
   onOpenSearchModal,
+  onOpenInventoryMaster,
 }: BomItemRowEditorProps) {
+  const isUnregistered =
+    !row.item_id &&
+    (row.notFound || Boolean(row.item_code?.trim()));
+
   return (
     <div className="px-8 py-6 hover:bg-stone-50 transition-colors group relative flex gap-6 items-start">
       <div className="text-[10px] font-bold text-stone-400 w-10 pt-4 text-center shrink-0 font-mono">
@@ -57,8 +62,13 @@ export const BomItemRowEditor = memo(function BomItemRowEditor({
         {/* Row 1: Primary Identification */}
         <div className="grid grid-cols-12 gap-5">
           <div className="col-span-4 space-y-1.5">
-            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1">
-              Item Code
+            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1 flex items-center justify-between">
+              <span>Item Code (Master SKU)</span>
+              {row.item_id && (
+                <span className="text-[8px] text-emerald-600 font-bold uppercase flex items-center gap-0.5">
+                  <CheckCircle2 className="w-2.5 h-2.5" /> Master Linked
+                </span>
+              )}
             </label>
             <div className="relative group/input">
               <input
@@ -68,85 +78,94 @@ export const BomItemRowEditor = memo(function BomItemRowEditor({
                 readOnly={!isEngineering}
                 onChange={(e) => updateRow(row.id, "item_code", e.target.value)}
                 className={cn(
-                  "w-full bg-white border border-stone-200 rounded-xl px-4 py-3 text-sm uppercase outline-none focus:border-stone-900 focus:ring-4 focus:ring-stone-900/5 transition-all font-bold tracking-tight",
-                  row.notFound
-                    ? "text-rose-600 border-rose-300 bg-rose-50"
+                  "w-full bg-white border border-stone-200 rounded-xl px-4 py-3 pr-10 text-sm uppercase outline-none focus:border-stone-900 focus:ring-4 focus:ring-stone-900/5 transition-all font-bold tracking-tight",
+                  isUnregistered
+                    ? "text-rose-700 border-rose-300 bg-rose-50/50"
                     : "text-stone-950",
                   !isEngineering && "border-transparent bg-transparent",
                 )}
-                placeholder="SKU-XXXXX"
+                placeholder="Select or Type Registered SKU..."
               />
               <button
                 type="button"
                 onClick={() => onOpenSearchModal(row.id)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-stone-100 rounded-lg text-stone-400 transition-all cursor-pointer"
-                title="Search Warehouse SKU"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-stone-100 rounded-lg text-stone-400 hover:text-stone-900 transition-all cursor-pointer"
+                title="Search Master SKU Catalog"
               >
                 <Search className="w-3.5 h-3.5" />
               </button>
             </div>
-            {row.notFound && (
-              <Link
-                to="/warehouse"
-                className="text-[9px] text-rose-600 font-bold uppercase mt-1 flex items-center gap-1 hover:underline ml-1"
-              >
-                <AlertCircle className="w-3 h-3" /> Create New Items
-              </Link>
-            )}
           </div>
 
           <div className="col-span-8 space-y-1.5">
-            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1">
-              Component Name & Description
+            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1 flex items-center justify-between">
+              <span>Component Name & Description</span>
+              <span className="text-[8px] text-stone-400 font-bold uppercase flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5" /> Synced from Inventory Master
+              </span>
             </label>
             <input
               type="text"
               value={row.name}
-              readOnly={!!row.item_id || !isEngineering}
-              onChange={(e) => updateRow(row.id, "name", e.target.value)}
-              className={cn(
-                "w-full bg-white border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-stone-900 focus:ring-4 focus:ring-stone-900/5 font-bold text-stone-900",
-                (!!row.item_id || !isEngineering) &&
-                  "border-transparent bg-transparent",
-              )}
-              placeholder="Internal System Component Name"
+              readOnly
+              tabIndex={-1}
+              className="w-full bg-stone-100/70 border border-stone-200/80 rounded-xl px-4 py-3 text-sm outline-none font-bold text-stone-700 cursor-not-allowed"
+              placeholder="Auto-populated from registered Master SKU"
             />
           </div>
         </div>
 
+        {/* Unregistered SKU Governance Warning Bar */}
+        {isUnregistered && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl bg-rose-50/80 border border-rose-200">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-rose-800">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>
+                SKU not registered in Inventory Master. Select from the catalog or register via Warehouse &gt; Inventory Balances.
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => onOpenSearchModal(row.id)}
+                className="h-7 px-2.5 rounded-lg bg-white hover:bg-stone-50 border border-stone-200 text-[10px] font-bold text-stone-700 uppercase tracking-wider inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              >
+                <Search className="w-3 h-3" />
+                <span>Search Catalog</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Row 2: Specifications & Logistics */}
         <div className="grid grid-cols-12 gap-5 py-3 px-4 bg-stone-50/50 rounded-2xl border border-stone-100/50">
           <div className="col-span-3 space-y-1.5">
-            <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
-              Dimensions
+            <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1 flex items-center justify-between">
+              <span>Dimensions</span>
+              <Lock className="w-2.5 h-2.5 text-stone-300" />
             </label>
             <input
               type="text"
               value={row.dimension}
-              readOnly={!isEngineering}
-              onChange={(e) => updateRow(row.id, "dimension", e.target.value)}
-              className={cn(
-                "w-full bg-white border border-stone-100 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-stone-400 font-medium text-stone-900",
-                !isEngineering && "border-transparent bg-transparent",
-              )}
-              placeholder="L x W x H"
+              readOnly
+              tabIndex={-1}
+              className="w-full bg-stone-100/70 border border-stone-200/70 rounded-lg px-3 py-2 text-[13px] outline-none font-medium text-stone-600 cursor-not-allowed"
+              placeholder="Master Dimension"
             />
           </div>
 
           <div className="col-span-3 space-y-1.5">
-            <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
-              Technical Spec
+            <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1 flex items-center justify-between">
+              <span>Technical Spec</span>
+              <Lock className="w-2.5 h-2.5 text-stone-300" />
             </label>
             <input
               type="text"
               value={row.spec}
-              readOnly={!isEngineering}
-              onChange={(e) => updateRow(row.id, "spec", e.target.value)}
-              className={cn(
-                "w-full bg-white border border-stone-100 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-stone-400 font-medium text-stone-900",
-                !isEngineering && "border-transparent bg-transparent",
-              )}
-              placeholder="Standard Configuration"
+              readOnly
+              tabIndex={-1}
+              className="w-full bg-stone-100/70 border border-stone-200/70 rounded-lg px-3 py-2 text-[13px] outline-none font-medium text-stone-600 cursor-not-allowed"
+              placeholder="Master Spec"
             />
           </div>
 
@@ -160,22 +179,23 @@ export const BomItemRowEditor = memo(function BomItemRowEditor({
               readOnly={!isEngineering}
               onChange={(e) => updateRow(row.id, "qty", e.target.value)}
               className={cn(
-                "w-full bg-white border border-stone-100 rounded-lg px-3 py-2 text-sm text-stone-950 outline-none focus:border-stone-900 font-bold text-center",
+                "w-full bg-white border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-950 outline-none focus:border-stone-900 font-bold text-center",
                 !isEngineering && "border-transparent bg-transparent",
               )}
             />
           </div>
 
           <div className="col-span-2 space-y-1.5">
-            <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1">
-              Uom
+            <label className="text-[8px] font-bold text-stone-400 uppercase tracking-widest px-1 flex items-center justify-between">
+              <span>Uom</span>
+              <Lock className="w-2.5 h-2.5 text-stone-300" />
             </label>
             <input
               type="text"
               value={row.unit || row.uom || ""}
-              readOnly={!!row.item_id || !isEngineering}
-              onChange={(e) => updateRow(row.id, "unit", e.target.value)}
-              className="w-full bg-white border border-stone-100 rounded-lg px-3 py-2 text-[13px] text-stone-900 outline-none focus:border-stone-400 font-bold text-center uppercase"
+              readOnly
+              tabIndex={-1}
+              className="w-full bg-stone-100/70 border border-stone-200/70 rounded-lg px-3 py-2 text-[13px] text-stone-700 outline-none font-bold text-center uppercase cursor-not-allowed"
               placeholder="PCS"
             />
           </div>

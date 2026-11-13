@@ -169,9 +169,9 @@ export function calculateProjectLaborCost(
       SELECT 
         pos.id, pos.project_id, pos.manpower_id, pos.date, pos.overtime_hours, pos.reason, pos.status,
         pos.hourly_rate, pos.estimated_cost,
-        pm.name as operator_name, pm.role as operator_role, pm.user_username,
+        pm.name as operator_name, pm.role_title as operator_role, pm.user_username,
         COALESCE(pm.hourly_rate, 45000) as default_rate,
-        ps.name as station_name
+        ps.station_name as station_name
       FROM project_overtime_schedules pos
       LEFT JOIN production_manpower pm ON pos.manpower_id = pm.id
       LEFT JOIN project_stations ps ON pos.station_id = ps.id
@@ -224,7 +224,7 @@ export function calculateProjectLaborCost(
         `
       SELECT 
         pma.id, pma.assigned_date, pma.planned_hours, pma.actual_hours, pma.status, pma.shift,
-        pm.name as operator_name, pm.role as operator_role, pm.user_username,
+        pm.name as operator_name, pm.role_title as operator_role, pm.user_username,
         COALESCE(pm.hourly_rate, 45000) as hourly_rate
       FROM production_manpower_assignments pma
       LEFT JOIN production_manpower pm ON pma.manpower_id = pm.id
@@ -337,11 +337,11 @@ export function getProjectMaterialBreakdown(
       .prepare(
         `
       SELECT 
-        pri.id, pri.item_id, pri.qty, pri.unit_price, pri.uom,
+        pri.id, pri.item_id, pri.qty, pri.unit_price, COALESCE(i.uom, 'PCS') as uom,
         pr.pr_number,
         po.po_number,
         s.name as supplier_name,
-        COALESCE(i.code, pri.item_id) as item_code,
+        COALESCE(i.item_code, pri.item_id) as item_code,
         COALESCE(i.name, pri.item_id) as item_name
       FROM pr_items pri
       JOIN purchase_requests pr ON pri.pr_id = pr.id
@@ -393,9 +393,9 @@ export function getProjectMaterialBreakdown(
       .prepare(
         `
       SELECT 
-        b.id, b.item_id, b.required_qty, b.unit_price, b.uom,
+        b.id, b.item_id, b.required_qty, b.unit_price, COALESCE(i.uom, 'PCS') as uom,
         p.qty as project_qty,
-        COALESCE(i.code, b.item_id) as item_code,
+        COALESCE(i.item_code, b.item_id) as item_code,
         COALESCE(i.name, b.item_id) as item_name
       FROM boms b
       JOIN projects p ON b.project_id = p.id

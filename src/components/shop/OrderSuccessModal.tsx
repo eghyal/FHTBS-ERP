@@ -325,13 +325,20 @@ export function OrderSuccessModal({ orderData, onClose, onTrackOrder }: OrderSuc
         >
           {/* Invoice Header */}
           <div className="flex justify-between items-start pb-8 border-b-2 border-stone-200">
-            <div>
-              <h1 className="text-2xl font-black text-stone-900 tracking-tight">CV. BATU EMAS GROUP</h1>
-              <p className="text-xs text-stone-500 font-bold uppercase tracking-wider mt-1">Produsen Paving Block SNI Bergaransi</p>
-              <div className="text-[11px] text-stone-500 mt-2 space-y-0.5 leading-relaxed font-medium">
-                <div>Dusun Petahunan, Gambiran, Banyuwangi, Jawa Timur</div>
-                <div>Telepon / WhatsApp: +62 811-1111-3993</div>
-                <div>Situs: pavingjoss.com</div>
+            <div className="flex items-start gap-4">
+              <img
+                src="/logo.png"
+                alt="Paving Joss Logo"
+                className="w-14 h-14 object-contain shrink-0"
+              />
+              <div>
+                <h1 className="text-2xl font-black text-stone-900 tracking-tight">CV. BATU EMAS GROUP</h1>
+                <p className="text-xs text-stone-500 font-bold uppercase tracking-wider mt-1">Produsen Paving Block SNI Bergaransi &bull; Paving Joss</p>
+                <div className="text-[11px] text-stone-500 mt-2 space-y-0.5 leading-relaxed font-medium">
+                  <div>Dusun Petahunan, Gambiran, Banyuwangi, Jawa Timur</div>
+                  <div>Telepon / WhatsApp: +62 811-1111-3993</div>
+                  <div>Situs: pavingjoss.com</div>
+                </div>
               </div>
             </div>
             <div className="text-right">
@@ -720,7 +727,7 @@ export function OrderSuccessModal({ orderData, onClose, onTrackOrder }: OrderSuc
                   }}
                   className="py-2 px-3 rounded-xl bg-[#b02524] hover:bg-[#961f1e] active:bg-[#7e1a19] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer"
                 >
-                  <span>Lacak Pesanan</span>
+                  <span>Lihat Pesanan Saya</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>

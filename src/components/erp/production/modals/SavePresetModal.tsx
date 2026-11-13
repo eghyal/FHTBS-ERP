@@ -29,36 +29,36 @@ export const SavePresetModal: React.FC<SavePresetModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       maxWidth="md"
-      title="Simpan BOM Sebagai Preset / Template"
+      title="Save BOM as Preset / Template"
     >
       <div className="space-y-4">
         <p className="text-xs text-stone-600">
-          Simpan susunan final Bill of Materials ({rowsLength} komponen) saat ini sebagai Preset agar dapat digunakan kembali secara instan pada proyek-proyek mendatang.
+          Save the current Bill of Materials structure ({rowsLength} components) as a Preset so it can be reused instantly in future projects.
         </p>
 
         <div className="space-y-1.5">
           <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-            Nama Preset BOM <span className="text-rose-500">*</span>
+            BOM Preset Name <span className="text-rose-500">*</span>
           </label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full px-3.5 py-2.5 bg-white border border-stone-300 rounded-xl text-xs font-bold text-stone-900 outline-none focus:border-stone-900 focus:ring-2 focus:ring-stone-900/10"
-            placeholder="e.g. Standard Panel Listrik 200kW"
+            placeholder="e.g. Standard Electrical Panel 200kW"
           />
         </div>
 
         <div className="space-y-1.5">
           <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-            Deskripsi Catatan (Opsional)
+            Description / Notes (Optional)
           </label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="w-full px-3.5 py-2 bg-white border border-stone-300 rounded-xl text-xs font-medium text-stone-800 outline-none focus:border-stone-900 focus:ring-2 focus:ring-stone-900/10"
             rows={2}
-            placeholder="Target spesifikasi atau kegunaan preset..."
+            placeholder="Target specifications or preset purpose..."
           />
         </div>
 
@@ -67,14 +67,14 @@ export const SavePresetModal: React.FC<SavePresetModalProps> = ({
             variant="secondary"
             onClick={onClose}
           >
-            Batal
+            Cancel
           </Button>
           <Button
             onClick={handleSavePresetConfirm}
             className="bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs gap-1.5"
           >
             <Save className="w-3.5 h-3.5" />
-            Simpan Preset
+            Save Preset
           </Button>
         </div>
       </div>

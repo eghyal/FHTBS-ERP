@@ -33,6 +33,16 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
+import { StatCard } from "@/components/ui/StatCard";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/Table";
 import {
   LineChart,
   Line,
@@ -90,6 +100,23 @@ export default function Pricing() {
   const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
   const [isDeletingQuote, setIsDeletingQuote] = useState(false);
 
+  const isFinishGood = (item: any) => {
+    if (!item) return false;
+    const type = (item.type || item.item_type || "").toUpperCase();
+    const code = (item.item_code || "").trim().toUpperCase();
+    const cat = (item.category || "").toUpperCase();
+    return (
+      type === "FINISHED" ||
+      type === "FINISH_GOOD" ||
+      type === "FINISH_GOODS" ||
+      cat === "FG" ||
+      cat.includes("FINISH") ||
+      code.startsWith("FG - ") ||
+      code.startsWith("FG-") ||
+      code.startsWith("FG ")
+    );
+  };
+
   const fetchData = async () => {
     try {
       setIsLoading(true);
@@ -100,13 +127,11 @@ export default function Pricing() {
       ]);
 
       if (itemsRes.ok && Array.isArray(itemsRes.data)) {
+        // Exclude all Finish Goods from Sourcing & Pricing (only for procurement items)
         setItems(
           itemsRes.data.filter(
             (item: any) =>
-              item.type !== "FINISHED" &&
-              item.type !== "FINISH_GOOD" &&
-              item.category !== "FG" &&
-              !item.item_code?.startsWith("FG-") &&
+              !isFinishGood(item) &&
               !item.item_code?.startsWith("QI-"),
           ),
         );
@@ -149,6 +174,15 @@ export default function Pricing() {
   const handleAddOrUpdateQuote = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!manageQuotesModal.item) return;
+
+    if (isFinishGood(manageQuotesModal.item)) {
+      showToast(
+        "Finish Goods items cannot have their price set in Sourcing & Pricing. Finish Goods prices are managed via Production COGS and Sales Quotations.",
+        "error"
+      );
+      return;
+    }
+
     const itemId = manageQuotesModal.item.id;
     const price = parseCurrency(newQuotePrice);
 
@@ -299,6 +333,7 @@ export default function Pricing() {
   const filteredItems = useMemo(() => {
     return items
       .filter((item) => {
+        if (isFinishGood(item)) return false;
         const query = searchQuery.toLowerCase().trim();
         const matchesSearch =
           !query ||
@@ -395,6 +430,13 @@ export default function Pricing() {
   };
 
   const openManageQuotes = (item: any) => {
+    if (isFinishGood(item)) {
+      showToast(
+        "Finished Goods prices cannot be set in Sourcing & Pricing.",
+        "error"
+      );
+      return;
+    }
     setManageQuotesModal({ isOpen: true, item });
     setNewQuotePrice("");
     setNewQuoteSupplierId("");
@@ -431,121 +473,30 @@ export default function Pricing() {
   currentItemQuotes.sort((a, b) => a.unit_price - b.unit_price);
 
   return (
-    <div className="space-y-8 pb-20 animate-in fade-in duration-500">
+    <div className="space-y-5 pb-20 animate-in fade-in duration-500">
       <PageHeader
         title="Sourcing & Pricing"
-        subtitle="Vendor pricing, market quotes, and item price matrix"
-        icon={<Tag className="w-6 h-6" />}
+        subtitle="Master material & equipment pricing"
+        icon={<Tag className="w-5 h-5" />}
       />
 
-      {/* KPI Overview Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        {/* Total Catalog Items */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200/80 shadow-2xs flex items-center gap-3.5 transition-all hover:border-stone-300">
-          <div className="w-11 h-11 rounded-xl bg-stone-100/90 text-stone-700 flex items-center justify-center shrink-0">
-            <Package className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest truncate">
-              Katalog Barang
-            </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-stone-900 tracking-tight">
-              {items.length}
-            </div>
-            <div className="text-[11px] text-stone-500 font-medium">
-              Item terdaftar
-            </div>
-          </div>
-        </div>
-
-        {/* Sourced Items */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200/80 shadow-2xs flex items-center gap-3.5 transition-all hover:border-stone-300">
-          <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest truncate">
-              Sudah Bersumber
-            </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-emerald-700 tracking-tight">
-              {sourcedItemsCount}
-            </div>
-            <div className="text-[11px] text-stone-500 font-medium">
-              {coveragePercentage}% cakupan harga
-            </div>
-          </div>
-        </div>
-
-        {/* Needs Sourcing */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200/80 shadow-2xs flex items-center gap-3.5 transition-all hover:border-stone-300">
-          <div
-            className={cn(
-              "w-11 h-11 rounded-xl flex items-center justify-center shrink-0",
-              itemsNeedingPrice > 0
-                ? "bg-amber-50 text-amber-600"
-                : "bg-emerald-50 text-emerald-600",
-            )}
-          >
-            {itemsNeedingPrice > 0 ? (
-              <AlertTriangle className="w-5 h-5" />
-            ) : (
-              <CheckCircle2 className="w-5 h-5" />
-            )}
-          </div>
-          <div className="min-w-0">
-            <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest truncate">
-              Perlu Sourcing
-            </div>
-            <div
-              className={cn(
-                "text-xl sm:text-2xl font-extrabold tracking-tight",
-                itemsNeedingPrice > 0 ? "text-amber-600" : "text-emerald-700",
-              )}
-            >
-              {itemsNeedingPrice}
-            </div>
-            <div className="text-[11px] text-stone-500 font-medium">
-              {itemsNeedingPrice > 0 ? "Belum ada penawaran" : "Semua item siap"}
-            </div>
-          </div>
-        </div>
-
-        {/* Total Active Quotes */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200/80 shadow-2xs flex items-center gap-3.5 transition-all hover:border-stone-300">
-          <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-            <Tag className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest truncate">
-              Penawaran Aktif
-            </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-blue-700 tracking-tight">
-              {totalActiveQuotes}
-            </div>
-            <div className="text-[11px] text-stone-500 font-medium">
-              Dari {suppliers.length} vendor rekanan
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Elegant Filter & Search Toolbar */}
-      <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-stone-200/90 shadow-2xs flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
+      <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-stone-200/90 shadow-2xs flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-2.5 sm:gap-3">
         {/* Search input with leading icon and clear button */}
         <div className="relative flex-1 max-w-full xl:max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
           <input
             type="text"
             placeholder="Search items by code or name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-10 pl-9.5 pr-8 bg-stone-50/70 hover:bg-stone-50 focus:bg-white text-stone-800 placeholder-stone-400 text-xs font-medium rounded-xl border border-stone-200/90 transition-all outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-400/15"
+            className="no-base-style w-full h-9 pl-9 pr-8 bg-stone-50/70 hover:bg-stone-50 focus:bg-white text-stone-800 placeholder-stone-400 text-xs font-medium rounded-lg border border-stone-200/90 transition-all outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-400/15"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-600 rounded-md transition-colors"
-              title="Hapus pencarian"
+              title="Clear search"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -556,11 +507,11 @@ export default function Pricing() {
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 justify-end">
           {/* Status Filter */}
           <div className="relative inline-flex items-center min-w-[135px] sm:min-w-[150px] flex-1 sm:flex-initial">
-            <Filter className="absolute left-3 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
+            <Filter className="absolute left-2.5 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as any)}
-              className="w-full h-10 pl-8 pr-7 bg-stone-50/70 hover:bg-stone-100/60 text-stone-700 text-xs font-semibold rounded-xl border border-stone-200/90 transition-all cursor-pointer outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-400/15 appearance-none"
+              className="no-base-style w-full h-9 pl-8 pr-7 bg-stone-50/70 hover:bg-stone-100/60 text-stone-700 text-xs font-semibold rounded-lg border border-stone-200/90 transition-all cursor-pointer outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-400/15 appearance-none"
             >
               <option value="ALL">ALL ITEMS ({items.length})</option>
               <option value="NEEDS_PRICE">NEEDS SOURCING ({itemsNeedingPrice})</option>
@@ -571,11 +522,11 @@ export default function Pricing() {
 
           {/* Sort Selector */}
           <div className="relative inline-flex items-center min-w-[130px] sm:min-w-[145px] flex-1 sm:flex-initial">
-            <ArrowUpDown className="absolute left-3 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
+            <ArrowUpDown className="absolute left-2.5 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="w-full h-10 pl-8 pr-7 bg-stone-50/70 hover:bg-stone-100/60 text-stone-700 text-xs font-semibold rounded-xl border border-stone-200/90 transition-all cursor-pointer outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-400/15 appearance-none"
+              className="no-base-style w-full h-9 pl-8 pr-7 bg-stone-50/70 hover:bg-stone-100/60 text-stone-700 text-xs font-semibold rounded-lg border border-stone-200/90 transition-all cursor-pointer outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-400/15 appearance-none"
             >
               <option value="CODE">SORT: CODE</option>
               <option value="NAME">SORT: NAME</option>
@@ -587,14 +538,14 @@ export default function Pricing() {
           </div>
 
           {/* Separator on desktop */}
-          <div className="hidden sm:block h-6 w-[1px] bg-stone-200 mx-0.5 shrink-0" />
+          <div className="hidden sm:block h-5 w-[1px] bg-stone-200 mx-0.5 shrink-0" />
 
           {/* Sync All Matrix Prices to BOM Button */}
           <button
             onClick={syncAllMatrixToBOMs}
             disabled={isSyncingAllBOMs}
             className={cn(
-              "h-10 px-3.5 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition-all border shrink-0 shadow-2xs active:scale-[0.98]",
+              "h-9 px-3 inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-all border shrink-0 shadow-2xs active:scale-[0.98]",
               isSyncingAllBOMs
                 ? "bg-emerald-50 border-emerald-300 text-emerald-700 opacity-75 cursor-not-allowed"
                 : "bg-emerald-50/80 hover:bg-emerald-100 border-emerald-200/90 text-emerald-700 hover:border-emerald-300",
@@ -614,7 +565,7 @@ export default function Pricing() {
           <button
             onClick={fetchData}
             disabled={isLoading}
-            className="h-10 w-10 inline-flex items-center justify-center rounded-xl border border-stone-200/90 bg-stone-50/70 hover:bg-stone-100 text-stone-600 hover:text-stone-900 transition-all shadow-2xs shrink-0 active:scale-[0.98] disabled:opacity-50"
+            className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-stone-200/90 bg-stone-50/70 hover:bg-stone-100 text-stone-600 hover:text-stone-900 transition-all shadow-2xs shrink-0 active:scale-[0.98] disabled:opacity-50"
             title="Refresh Data"
           >
             <RefreshCw
@@ -631,7 +582,7 @@ export default function Pricing() {
       {(searchQuery || filterStatus !== "ALL") && (
         <div className="flex items-center justify-between px-1 text-xs text-stone-500 font-medium">
           <span>
-            Menampilkan <strong className="text-stone-900">{filteredItems.length}</strong> dari {items.length} item katalog
+            Showing <strong className="text-stone-900">{filteredItems.length}</strong> of {items.length} catalog items
           </span>
           <button
             onClick={() => {
@@ -656,10 +607,10 @@ export default function Pricing() {
           <div className="empty-state m-8 py-16 text-center animate-in fade-in duration-300">
             <Package className="w-10 h-10 text-stone-300 mx-auto mb-3" />
             <div className="text-sm font-bold text-stone-700 mb-1">
-              Tidak Ada Item Ditemukan
+              No Items Found
             </div>
             <p className="text-xs text-stone-400 max-w-sm mx-auto mb-4">
-              Tidak ada data yang cocok dengan kriteria pencarian atau status filter saat ini.
+              No records match your current search query or status filter criteria.
             </p>
             {(searchQuery || filterStatus !== "ALL") && (
               <button
@@ -669,163 +620,155 @@ export default function Pricing() {
                 }}
                 className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
               >
-                Reset Pencarian & Filter
+                Reset Search & Filter
               </button>
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead>
-                <tr className="bg-stone-50/90 border-b border-stone-200 text-stone-500 text-[10px] font-bold uppercase tracking-widest">
-                  <th className="px-6 py-4">Item Details</th>
-                  <th className="px-6 py-4">Status Sourcing</th>
-                  <th className="px-6 py-4">Best Ref. Price</th>
-                  <th className="px-6 py-4">Active Quotes</th>
-                  <th className="px-6 py-4">BOM Linkage</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {filteredItems.map((item) => {
-                  const itemQuotes = supplierPrices[item.id] || [];
-                  const sortedQuotes = [...itemQuotes].sort(
-                    (a, b) => a.unit_price - b.unit_price,
-                  );
-                  const bestQuote =
-                    sortedQuotes.length > 0 ? sortedQuotes[0] : null;
+          <Table unbordered>
+            <TableHeader>
+              <TableRow hoverable={false}>
+                <TableHead>Item Details</TableHead>
+                <TableHead>Sourcing Status</TableHead>
+                <TableHead>Best Ref. Price</TableHead>
+                <TableHead>Active Quotes</TableHead>
+                <TableHead>BOM Linkage</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredItems.map((item) => {
+                const itemQuotes = supplierPrices[item.id] || [];
+                const sortedQuotes = [...itemQuotes].sort(
+                  (a, b) => a.unit_price - b.unit_price,
+                );
+                const bestQuote =
+                  sortedQuotes.length > 0 ? sortedQuotes[0] : null;
 
-                  return (
-                    <tr
-                      key={item.id}
-                      className="group hover:bg-stone-50/50 transition-colors"
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3.5">
-                          <div
-                            className={cn(
-                              "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border",
-                              bestQuote
-                                ? "bg-emerald-50/70 border-emerald-100 text-emerald-600"
-                                : "bg-stone-100 border-stone-200/60 text-stone-400",
-                            )}
-                          >
-                            {bestQuote ? (
-                              <CheckCircle2 className="w-5 h-5" />
-                            ) : (
-                              <Package className="w-5 h-5" />
-                            )}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-mono text-[10px] font-bold text-stone-600 bg-stone-100 px-2 py-0.5 rounded border border-stone-200/60 uppercase">
-                                {item.item_code}
-                              </span>
-                            </div>
-                            <div className="text-sm font-semibold text-stone-900 group-hover:text-stone-950 transition-colors">
-                              {item.name}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 align-middle">
-                        {bestQuote ? (
-                          <span className="px-2.5 py-1 rounded-lg text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/70 uppercase tracking-wider inline-flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Sourced
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded-lg text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200/70 uppercase tracking-wider inline-flex items-center gap-1.5">
-                            <AlertTriangle className="w-3 h-3 text-amber-600" /> Needs Price
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 align-middle">
-                        {bestQuote ? (
-                          <div>
-                            <div className="text-sm font-bold text-stone-900 tracking-tight">
-                              {formatIDR(bestQuote.unit_price)}
-                            </div>
-                            <div className="text-[11px] text-stone-500 font-medium mt-0.5 max-w-[180px] truncate flex items-center gap-1">
-                              <Building2 className="w-3 h-3 text-stone-400 shrink-0" />
-                              <span className="truncate">{bestQuote.supplier_name}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-xs font-medium text-stone-400 italic">
-                            Belum ada harga
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 align-middle">
-                        <button
-                          onClick={() => openManageQuotes(item)}
-                          className="group/q inline-flex items-center gap-1.5 text-xs font-bold text-stone-700 hover:text-stone-950 transition-colors"
-                          title="Lihat penawaran vendor"
-                        >
-                          <span className="px-2 py-0.5 rounded-md bg-stone-100 group-hover/q:bg-stone-200 border border-stone-200/60 font-mono text-[11px]">
-                            {itemQuotes.length}
-                          </span>
-                          <span className="text-[11px] text-stone-500 group-hover/q:text-stone-800">
-                            {itemQuotes.length === 1 ? "quote" : "quotes"}
-                          </span>
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 align-middle">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={cn(
-                              "px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1.5 border",
-                              (item.bom_projects_count || 0) > 0
-                                ? "bg-blue-50 text-blue-700 border-blue-200/70"
-                                : "bg-stone-100 text-stone-500 border-stone-200/60",
-                            )}
-                          >
-                            <Layers className="w-3 h-3" />
-                            {(item.bom_projects_count || 0) > 0
-                              ? `${item.bom_projects_count} Active BOMs`
-                              : "Unlinked"}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 align-middle text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {bestQuote && (
-                            <button
-                              onClick={() => syncItemToBOM(item)}
-                              disabled={isSyncingBOM === item.id}
-                              className="p-2 text-emerald-600 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 rounded-xl transition-all shadow-2xs active:scale-95"
-                              title="Sync Harga Matriks ke BOM Proyek"
-                            >
-                              <DatabaseZap
-                                className={cn(
-                                  "w-3.5 h-3.5",
-                                  isSyncingBOM === item.id && "animate-pulse",
-                                )}
-                              />
-                            </button>
+                return (
+                  <TableRow key={item.id} className="group">
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border",
+                            bestQuote
+                              ? "bg-emerald-50/70 border-emerald-100 text-emerald-600"
+                              : "bg-stone-100 border-stone-200/60 text-stone-400",
                           )}
-                          <button
-                            onClick={() => viewHistory(item.id, item.name)}
-                            className="p-2 text-stone-500 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-200/80 rounded-xl transition-all shadow-2xs active:scale-95"
-                            title="Riwayat Fluktuasi Harga"
-                          >
-                            <History className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => openManageQuotes(item)}
-                            className="h-8 px-3 bg-stone-900 text-white rounded-xl text-xs font-bold hover:bg-stone-800 transition-all flex items-center gap-1.5 shadow-2xs active:scale-95 cursor-pointer ml-1"
-                          >
-                            <DollarSign className="w-3.5 h-3.5 text-stone-400" />
-                            <span>Set Price</span>
-                          </button>
+                        >
+                          {bestQuote ? (
+                            <CheckCircle2 className="w-4 h-4" />
+                          ) : (
+                            <Package className="w-4 h-4" />
+                          )}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="font-mono text-[10px] font-bold text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200/60 uppercase">
+                              {item.item_code}
+                            </span>
+                          </div>
+                          <div className="text-xs font-semibold text-stone-900 group-hover:text-stone-950 transition-colors">
+                            {item.name}
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {bestQuote ? (
+                        <Badge variant="success" size="sm">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Sourced
+                        </Badge>
+                      ) : (
+                        <Badge variant="warning" size="sm">
+                          <AlertTriangle className="w-3 h-3 text-amber-600" /> Needs Price
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {bestQuote ? (
+                        <div>
+                          <div className="text-xs font-bold font-mono tabular-nums text-stone-900 tracking-tight">
+                            {formatIDR(bestQuote.unit_price)}
+                          </div>
+                          <div className="text-[11px] text-stone-500 font-medium mt-0.5 max-w-[180px] truncate flex items-center gap-1">
+                            <Building2 className="w-3 h-3 text-stone-400 shrink-0" />
+                            <span className="truncate">{bestQuote.supplier_name}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-xs font-medium text-stone-400 italic">
+                          No price yet
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        onClick={() => openManageQuotes(item)}
+                        className="group/q inline-flex items-center gap-1.5 text-xs font-bold text-stone-700 hover:text-stone-950 transition-colors"
+                        title="View vendor quotes"
+                      >
+                        <span className="px-2 py-0.5 rounded-md bg-stone-100 group-hover/q:bg-stone-200 border border-stone-200/60 font-mono tabular-nums text-[11px]">
+                          {itemQuotes.length}
+                        </span>
+                        <span className="text-[11px] text-stone-500 group-hover/q:text-stone-800">
+                          {itemQuotes.length === 1 ? "quote" : "quotes"}
+                        </span>
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={(item.bom_projects_count || 0) > 0 ? "info" : "default"}
+                        size="sm"
+                      >
+                        <Layers className="w-3 h-3" />
+                        {(item.bom_projects_count || 0) > 0
+                          ? `${item.bom_projects_count} Active BOMs`
+                          : "Unlinked"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {bestQuote && (
+                          <Button
+                            size="xs"
+                            variant="success_soft"
+                            onClick={() => syncItemToBOM(item)}
+                            disabled={isSyncingBOM === item.id}
+                            title="Sync Matrix Price to Project BOM"
+                          >
+                            <DatabaseZap
+                              className={cn(
+                                "w-3.5 h-3.5",
+                                isSyncingBOM === item.id && "animate-pulse",
+                              )}
+                            />
+                          </Button>
+                        )}
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          onClick={() => viewHistory(item.id, item.name)}
+                          title="Price Fluctuation History"
+                        >
+                          <History className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="primary"
+                          onClick={() => openManageQuotes(item)}
+                          leftIcon={<DollarSign className="w-3.5 h-3.5 text-stone-400" />}
+                        >
+                          Set Price
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         )}
       </div>
 
@@ -961,7 +904,9 @@ export default function Pricing() {
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button
+                        <Button
+                          size="icon-sm"
+                          variant="danger_soft"
                           onClick={() => {
                             setConfirmModal({
                               isOpen: true,
@@ -974,11 +919,10 @@ export default function Pricing() {
                                 ),
                             });
                           }}
-                          className="p-2 text-stone-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           title="Remove Quote"
                         >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        </Button>
                       </div>
                     </div>
                   );

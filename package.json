@@ -15,6 +15,7 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@google/genai": "^1.29.0",
+    "@supabase/supabase-js": "^2.118.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.14",
     "@types/better-sqlite3": "^7.6.13",

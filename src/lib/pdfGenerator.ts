@@ -1,6 +1,7 @@
 export interface PdfOptions {
   orientation?: "portrait" | "landscape";
   format?: "a4" | "a5" | [number, number];
+  marginMm?: number;
 }
 
 /**

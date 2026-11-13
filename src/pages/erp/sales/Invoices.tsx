@@ -1,9 +1,13 @@
 import { safeFetchJson, apiFetch } from "@/utils/api";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useToast } from "@/contexts/ToastContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getDailyAuthKey } from "@/utils/auth";
 import { AuthorizeDocModal } from "@/components/erp/AuthorizeDocModal";
+import { canViewDocFinancials } from "@/utils/rbacFinancials";
+import { ConfidentialBadge } from "@/components/shared/ConfidentialBadge";
+import { hasGodMode, hasPermission, Action } from "@/utils/pbac";
 import {
   RotateCcw,
   FileText,
@@ -23,6 +27,7 @@ import {
   Key,
   QrCode,
   Receipt,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ConfirmModal } from "@/components/shared/ConfirmModal";
@@ -30,6 +35,18 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Badge } from "@/components/ui/Badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  TableEmpty,
+} from "@/components/ui/Table";
 import { generatePDF } from "@/lib/pdfGenerator";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -41,8 +58,9 @@ import { PrintTemplate } from "@/components/erp/PrintTemplate";
 import { PdfPreviewWrapper } from "@/components/shared/PdfPreviewWrapper";
 import { calculateFinancialBreakdown } from "@/lib/financialEngine";
 
-export const getInvoiceDetails = (inv: any) => {
+const getInvoiceDetails = (inv: any) => {
   if (!inv) {
+
     return {
       gross_amount: 0,
       discount_rate: 0,
@@ -99,67 +117,87 @@ export const getInvoiceDetails = (inv: any) => {
 };
 
 function angkaKeTerbilang(nilai: number): string {
-  if (nilai === 0) return "Nol";
+  const n = Math.floor(nilai);
+  if (n === 0) return "Zero";
 
-  const bilangan = [
+  const ones = [
     "",
-    "Satu",
-    "Dua",
-    "Tiga",
-    "Empat",
-    "Lima",
-    "Enam",
-    "Tujuh",
-    "Delapan",
-    "Sembilan",
-    "Sepuluh",
-    "Sebelas",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+  const tens = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
   ];
 
-  let temp = "";
-  const n = Math.floor(nilai);
+  function convertChunk(num: number): string {
+    if (num === 0) return "";
+    if (num < 20) return ones[num];
+    if (num < 100) {
+      return tens[Math.floor(num / 10)] + (num % 10 !== 0 ? " " + ones[num % 10] : "");
+    }
+    return (
+      ones[Math.floor(num / 100)] +
+      " Hundred" +
+      (num % 100 !== 0 ? " " + convertChunk(num % 100) : "")
+    );
+  }
 
-  if (n < 12) {
-    temp = bilangan[n];
-  } else if (n < 20) {
-    temp = bilangan[n - 10] + " Belas";
-  } else if (n < 100) {
-    temp = angkaKeTerbilang(Math.floor(n / 10)) + " Puluh " + bilangan[n % 10];
-  } else if (n < 200) {
-    temp = "Seratus " + angkaKeTerbilang(n - 100);
-  } else if (n < 1000) {
-    temp =
-      angkaKeTerbilang(Math.floor(n / 100)) +
-      " Ratus " +
-      angkaKeTerbilang(n % 100);
-  } else if (n < 2000) {
-    temp = "Seribu " + angkaKeTerbilang(n - 1000);
+  let temp = "";
+  if (n < 1000) {
+    temp = convertChunk(n);
   } else if (n < 1000000) {
     temp =
-      angkaKeTerbilang(Math.floor(n / 1000)) +
-      " Ribu " +
+      convertChunk(Math.floor(n / 1000)) +
+      " Thousand " +
       angkaKeTerbilang(n % 1000);
   } else if (n < 1000000000) {
     temp =
-      angkaKeTerbilang(Math.floor(n / 1000000)) +
-      " Juta " +
+      convertChunk(Math.floor(n / 1000000)) +
+      " Million " +
       angkaKeTerbilang(n % 1000000);
   } else if (n < 1000000000000) {
     temp =
-      angkaKeTerbilang(Math.floor(n / 1000000000)) +
-      " Milyar " +
+      convertChunk(Math.floor(n / 1000000000)) +
+      " Billion " +
       angkaKeTerbilang(n % 1000000000);
-  } else if (n < 1000000000000000) {
+  } else {
     temp =
-      angkaKeTerbilang(Math.floor(n / 1000000000000)) +
-      " Triliun " +
+      convertChunk(Math.floor(n / 1000000000000)) +
+      " Trillion " +
       angkaKeTerbilang(n % 1000000000000);
   }
 
-  return temp.replace(/\s+/g, " ").trim();
+  return temp.replace(/\bZero\b/g, "").replace(/\s+/g, " ").trim();
 }
 
 export default function Invoices() {
+  const [searchParams] = useSearchParams();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [unbilled, setUnbilled] = useState<any[]>([]);
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
@@ -168,8 +206,34 @@ export default function Invoices() {
   const [selectedQuoId, setSelectedQuoId] = useState("");
   const { showToast } = useToast();
   const { user } = useAuth();
+  const canViewPrices = canViewDocFinancials(user, "INVOICE");
+  const isFinanceAuthorized =
+    hasGodMode(user) ||
+    user?.role === "FC" ||
+    user?.role === "FINANCE" ||
+    user?.role === "DIRECTOR" ||
+    user?.role === "BOD" ||
+    user?.role === "ADMIN" ||
+    user?.role === "SUPERADMIN" ||
+    hasPermission(user, Action.VIEW_FINANCE);
+
+  const displayedInvoices = useMemo(() => {
+    if (isFinanceAuthorized) {
+      return Array.isArray(invoices) ? invoices : [];
+    }
+    const highlight = searchParams.get("highlight");
+    if (!highlight) return [];
+    return (Array.isArray(invoices) ? invoices : []).filter(
+      (inv: any) =>
+        inv.id === highlight ||
+        inv.ci_number === highlight ||
+        inv.invoice_number === highlight,
+    );
+  }, [invoices, isFinanceAuthorized, searchParams]);
 
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showDpInvoiceModal, setShowDpInvoiceModal] = useState(false);
+  const [dpPercentage, setDpPercentage] = useState("30");
   const [confirmVoid, setConfirmVoid] = useState<{
     isOpen: boolean;
     id: string;
@@ -298,7 +362,7 @@ export default function Invoices() {
     try {
       await generatePDF(
         printDocRef.current,
-        `Invoice_Resmi_${previewInvoice.ci_number}.pdf`,
+        `Invoice_${previewInvoice.ci_number}.pdf`,
       );
       showToast("Invoice exported as PDF", "success");
     } catch (err) {
@@ -336,6 +400,22 @@ export default function Invoices() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const highlight = searchParams.get("highlight");
+    if (highlight && invoices.length > 0) {
+      const found = invoices.find(
+        (inv: any) =>
+          inv.id === highlight ||
+          inv.ci_number === highlight ||
+          inv.invoice_number === highlight,
+      );
+      if (found) {
+        setPreviewInvoice(found);
+        setShowPreviewModal(true);
+      }
+    }
+  }, [searchParams, invoices]);
+
   const handleSelectDn = async (dn: any) => {
     if (!dn) {
       setSelectedDn(null);
@@ -351,7 +431,7 @@ export default function Invoices() {
       dn.quotation_title ||
       dn.project_names ||
       dn.project_name ||
-      `Pengiriman Niaga (DN: ${dn.dn_number})`;
+      `Commercial Delivery (DN: ${dn.dn_number})`;
     setJobDescription(baseTitle);
 
     setShowInvoiceModal(true);
@@ -374,7 +454,7 @@ export default function Invoices() {
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDn) {
-      showToast("Pilih Surat Jalan terlebih dahulu", "error");
+      showToast("Please select a Delivery Note first", "error");
       return;
     }
     setIsSubmitting(true);
@@ -393,17 +473,58 @@ export default function Invoices() {
       );
 
       if (res.ok) {
-        showToast("Faktur Komersial Berhasil Diterbitkan", "success");
+        showToast("Commercial Invoice issued successfully", "success");
         setShowInvoiceModal(false);
         setJobDescription("");
         setSelectedDn(null);
         setSelectedDnItems([]);
         fetchData();
       } else {
-        showToast(res.error || "Gagal menerbitkan faktur", "error");
+        showToast(res.error || "Failed to issue invoice", "error");
       }
     } catch (err) {
-      showToast("Gagal memproses faktur", "error");
+      showToast("Failed to process invoice", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCreateDpInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedQuoId) {
+      showToast("Please select an approved quotation first", "error");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const res = await apiFetch(
+        `/api/sales/quotations/${selectedQuoId}/create-dp-invoice`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            dp_percentage: Number(dpPercentage) || 30,
+            bank_account_id: bankAccountId || bankAccounts[0]?.id || "BNK-DEFAULT",
+            payment_terms: "Due on Receipt",
+          }),
+        },
+        user?.username,
+      );
+      if (res.ok) {
+        const ciNum = res.data?.data?.ci_number || res.data?.ci_number || "CI-DP";
+        showToast(
+          res.data?.already_exists
+            ? `Down Payment Invoice ${ciNum} was already issued for this quotation.`
+            : `Down Payment Invoice ${ciNum} issued and journaled to COA 2106!`,
+          "success",
+        );
+        setShowDpInvoiceModal(false);
+        setSelectedQuoId("");
+        fetchData();
+      } else {
+        showToast(res.error || "Failed to issue Down Payment Invoice", "error");
+      }
+    } catch {
+      showToast("Network error while issuing Down Payment Invoice", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -495,7 +616,7 @@ export default function Invoices() {
   const roundingFactorVal = grandTotalVal - grandTotalValUnrounded;
 
   return (
-    <div className="space-y-8 pb-24 animate-in fade-in duration-500">
+    <div className="space-y-5 pb-24 animate-in fade-in duration-300">
       <ConfirmModal
         isOpen={confirmVoid.isOpen}
         title="Void Payment"
@@ -513,43 +634,89 @@ export default function Invoices() {
       />
 
       <PageHeader
-        title={t("Account Receivables")}
-        subtitle={t("Customer invoices and payment tracking")}
+        title="Account Receivables"
+        subtitle="Customer billing & settlement"
         icon={<Receipt className="w-5 h-5" />}
         actions={
-          <div className="flex items-center gap-3">
+          isFinanceAuthorized ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                onClick={() => setShowRegisterBankModal(true)}
+                variant="secondary"
+                size="sm"
+                leftIcon={<Landmark className="w-4 h-4" />}
+              >
+                {t("Bank Accounts")}
+              </Button>
+              <Button
+                onClick={() => {
+                  setBankAccountId(bankAccounts[0]?.id || "BNK-DEFAULT");
+                  setShowDpInvoiceModal(true);
+                }}
+                variant="secondary"
+                size="sm"
+                leftIcon={<Percent className="w-4 h-4 text-amber-600" />}
+              >
+                Down Payment Invoice
+              </Button>
+              <Button
+                onClick={() => setShowInvoiceModal(true)}
+                variant="primary"
+                size="sm"
+                leftIcon={<DollarSign className="w-4 h-4" />}
+              >
+                {t("New Invoice")}
+              </Button>
+            </div>
+          ) : (
             <Button
-              onClick={() => setShowRegisterBankModal(true)}
               variant="secondary"
-              className="rounded-xl text-xs font-bold uppercase tracking-widest"
+              size="sm"
+              onClick={() => {
+                window.location.href = "/erp";
+              }}
             >
-              <Landmark className="w-4 h-4 mr-2" />
-              {t("Bank Accounts")}
+              Back to Dashboard
             </Button>
-            <Button
-              onClick={() => setShowInvoiceModal(true)}
-              variant="primary"
-              className="rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2 shadow-sm"
-            >
-              <DollarSign className="w-4 h-4" />
-              {t("New Invoice")}
-            </Button>
-          </div>
+          )
         }
       />
 
-      {/* Unbilled Deliveries section removed per user request */}
+      {/* Cross-Department Read-Only Isolation Banner */}
+      {!isFinanceAuthorized && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl text-xs text-amber-900 dark:text-amber-200 shadow-2xs mb-4">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div>
+              <span className="font-semibold">Cross-Department Read-Only Mode:</span>{" "}
+              <span>
+                Viewing shared invoice strictly in isolation. Full accounting ledger and billing actions are protected.
+              </span>
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            size="xs"
+            onClick={() => {
+              window.location.href = "/erp";
+            }}
+            className="shrink-0 bg-white dark:bg-slate-900"
+          >
+            Return to Dashboard
+          </Button>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-10 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-10 gap-5">
         {/* Pending Invoices (60%) */}
-        <div className="lg:col-span-6 space-y-6">
+        <div className="lg:col-span-6 space-y-3.5">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-stone-900 flex items-center gap-2">
-              <Briefcase className="w-4 h-4 text-amber-500" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-900 flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-stone-500" />
               {t("Unpaid Invoices")}
-              <span className="ml-2 bg-stone-100 text-stone-600 py-0.5 px-2 rounded-full text-[10px]">
+              <span className="ml-1 bg-stone-100 text-stone-700 border border-stone-200/80 py-0.5 px-2 rounded-md text-[10px] font-mono tabular-nums">
                 {
-                  (Array.isArray(invoices) ? invoices : []).filter(
+                  displayedInvoices.filter(
                     (i) => i.status !== "PAID" && i.status !== "FINISHED",
                   ).length
                 }
@@ -557,138 +724,139 @@ export default function Invoices() {
             </h3>
           </div>
 
-          <div className="bg-white border border-stone-200 rounded-3xl shadow-sm overflow-hidden">
-            {isLoading ? (
-              <div className="flex flex-col items-center justify-center h-48 space-y-4">
-                <div className="w-8 h-8 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
-              </div>
-            ) : (Array.isArray(invoices) ? invoices : []).filter(
-                (i) => i.status !== "PAID" && i.status !== "FINISHED",
-              ).length === 0 ? (
-              <div className="p-12 text-center flex flex-col items-center justify-center">
-                <div className="w-16 h-16 rounded-full bg-stone-50 flex items-center justify-center mb-4">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                </div>
-                <p className="text-sm font-bold text-stone-900">
-                  {t("All Clear")}
-                </p>
-                <p className="text-[11px] font-bold uppercase tracking-widest text-stone-500 mt-2">
-                  {t("No pending invoices")}
-                </p>
-              </div>
-            ) : (
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-stone-50/50 border-b border-stone-100">
-                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-stone-500">
-                      {t("Invoice & Customer")}
-                    </th>
-                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-stone-500 text-right">
-                      {t("Amount Detail")}
-                    </th>
-                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-stone-500 text-right">
-                      {t("Action")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-50">
-                  {(Array.isArray(invoices) ? invoices : [])
-                    .filter(
-                      (i) => i.status !== "PAID" && i.status !== "FINISHED",
-                    )
-                    .map((inv) => {
-                      const details = getInvoiceDetails(inv);
-                      return (
-                        <tr
-                          key={inv.id}
-                          className="group hover:bg-stone-50/50 transition-colors"
-                        >
-                          <td className="px-6 py-5">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                                <FileText className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <div className="text-sm font-bold font-mono text-stone-900">
+          <Table>
+            <TableHeader>
+              <TableRow hoverable={false}>
+                <TableHead>{t("Invoice & Customer")}</TableHead>
+                <TableHead className="text-right">{t("Amount Detail")}</TableHead>
+                <TableHead className="text-right">{t("Action")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableEmpty colSpan={3} message="Loading unpaid invoices..." />
+              ) : displayedInvoices.filter(
+                  (i) => i.status !== "PAID" && i.status !== "FINISHED",
+                ).length === 0 ? (
+                <TableEmpty
+                  colSpan={3}
+                  icon={<CheckCircle2 className="w-7 h-7 text-stone-300" />}
+                  message={`${t("All Clear")} — ${t("No pending invoices")}`}
+                />
+              ) : (
+                displayedInvoices
+                  .filter(
+                    (i) => i.status !== "PAID" && i.status !== "FINISHED",
+                  )
+                  .map((inv) => {
+                    const details = getInvoiceDetails(inv);
+                    return (
+                      <TableRow key={inv.id} className="group">
+                        <TableCell>
+                          <div className="flex items-center gap-3.5">
+                            <div className="w-9 h-9 rounded-lg bg-stone-100 border border-stone-200/80 text-stone-600 flex items-center justify-center shrink-0">
+                              <FileText className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs sm:text-sm font-bold font-mono tabular-nums text-stone-900">
                                   {inv.ci_number}
-                                </div>
-                                <div className="text-[10px] font-bold text-stone-500 mt-1 tracking-wider uppercase">
-                                  {inv.customer_name}
-                                </div>
-                                {inv.job_description && (
-                                  <div className="text-[11px] text-stone-500 line-clamp-1 mt-0.5">
-                                    {inv.job_description}
-                                  </div>
+                                </span>
+                                {inv.invoice_category === "DOWN_PAYMENT" && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200/80">
+                                    DP Invoice
+                                  </span>
+                                )}
+                                {inv.invoice_category === "FINAL_SETTLEMENT" && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                                    Settlement
+                                  </span>
                                 )}
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-5">
-                            <div className="flex flex-col items-end">
-                              <div className="text-xs text-stone-500 font-medium">DPP: {formatIDR(details.dpp)}</div>
-                              <div className="text-[10px] text-stone-400 font-medium">PPN: {formatIDR(details.ppn)} | PPh: {formatIDR(details.pph)}</div>
-                              <div className="text-sm font-black font-mono tracking-tight text-amber-600 mt-1">
-                                {formatIDR(details.total_amount)}
+                              <div className="text-[10px] font-bold text-stone-500 mt-0.5 tracking-wider uppercase">
+                                {inv.customer_name}
                               </div>
-                              {details.amount_paid > 0 && (
-                                <div className="text-[10px] text-stone-500 font-bold mt-0.5">
-                                  Sisa: {formatIDR(details.remaining)}
+                              {inv.job_description && (
+                                <div className="text-[11px] text-stone-500 line-clamp-1 mt-0.5">
+                                  {inv.job_description}
                                 </div>
                               )}
                             </div>
-                          </td>
-                          <td className="px-6 py-5 text-right">
-                            <div className="flex flex-col items-end gap-2.5">
-                              <div className="flex items-center gap-2 justify-end">
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  className="rounded-xl px-2.5 py-1.5 shadow-sm text-stone-700 hover:bg-stone-100 flex items-center gap-1 cursor-pointer"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPreviewInvoice(inv);
-                                    setShowPreviewModal(true);
-                                  }}
-                                  title="Pratinjau & Export PDF Invoice"
-                                >
-                                  <Eye className="w-3.5 h-3.5 text-stone-600" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  className="rounded-xl text-xs font-bold px-3.5 py-1.5 flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow transition-all shrink-0 cursor-pointer"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedInvoiceForPay(inv);
-                                    const details = getInvoiceDetails(inv);
-                                    setPaymentAmount(details.remaining > 0 ? details.remaining.toString() : details.total_amount.toString());
-                                    setAuthPin("");
-                                    setShowPayModal(true);
-                                  }}
-                                >
-                                  <Coins className="w-3.5 h-3.5" />
-                                  {t("Receive")}
-                                </Button>
-                              </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-col items-end font-mono tabular-nums">
+                            <div className="text-xs sm:text-sm font-bold tracking-tight text-stone-900">
+                              {canViewPrices ? (
+                                formatIDR(details.total_amount)
+                              ) : (
+                                <ConfidentialBadge />
+                              )}
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            )}
-          </div>
+                            {canViewPrices && (
+                              <div className="text-[10px] text-stone-500 font-medium mt-0.5">
+                                Taxable Base: {formatIDR(details.dpp)}
+                              </div>
+                            )}
+                            {canViewPrices && details.amount_paid > 0 && (
+                              <div className="text-[10px] text-amber-700 font-bold mt-0.5">
+                                Remaining: {formatIDR(details.remaining)}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <Button
+                              size="xs"
+                              action="view"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewInvoice(inv);
+                                setShowPreviewModal(true);
+                              }}
+                              title="Preview & Export Invoice PDF"
+                            />
+                            {isFinanceAuthorized && (
+                              <Button
+                                size="xs"
+                                variant="primary"
+                                leftIcon={<Coins className="w-3.5 h-3.5" />}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedInvoiceForPay(inv);
+                                  const details = getInvoiceDetails(inv);
+                                  setPaymentAmount(
+                                    details.remaining > 0
+                                      ? details.remaining.toString()
+                                      : details.total_amount.toString(),
+                                  );
+                                  setAuthPin("");
+                                  setShowPayModal(true);
+                                }}
+                              >
+                                {t("Receive")}
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+              )}
+            </TableBody>
+          </Table>
         </div>
 
         {/* Paid Invoices (40%) */}
-        <div className="lg:col-span-4 space-y-6">
+        <div className="lg:col-span-4 space-y-3.5">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-stone-900 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-900 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-stone-500" />
               {t("Received Payments")}
-              <span className="ml-2 bg-stone-100 text-stone-600 py-0.5 px-2 rounded-full text-[10px]">
+              <span className="ml-1 bg-stone-100 text-stone-700 border border-stone-200/80 py-0.5 px-2 rounded-md text-[10px] font-mono tabular-nums">
                 {
-                  (Array.isArray(invoices) ? invoices : []).filter(
+                  displayedInvoices.filter(
                     (i) => i.status === "PAID" || i.status === "FINISHED",
                   ).length
                 }
@@ -696,104 +864,91 @@ export default function Invoices() {
             </h3>
           </div>
 
-          <div className="bg-white border border-stone-200 rounded-3xl shadow-sm overflow-hidden">
-            {isLoading ? (
-              <div className="flex flex-col items-center justify-center h-48 space-y-4">
-                <div className="w-8 h-8 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
-              </div>
-            ) : (Array.isArray(invoices) ? invoices : []).filter(
-                (i) => i.status === "PAID" || i.status === "FINISHED",
-              ).length === 0 ? (
-              <div className="p-12 text-center text-[11px] font-bold uppercase tracking-widest text-stone-500">
-                {t("No received payments")}
-              </div>
-            ) : (
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-stone-50/50 border-b border-stone-100">
-                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-stone-500">
-                      {t("Invoice & Customer")}
-                    </th>
-                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-stone-500 text-right">
-                      {t("Amount Detail")}
-                    </th>
-                    <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-stone-500 text-right">
-                      {t("Action")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-50">
-                  {(Array.isArray(invoices) ? invoices : [])
-                    .filter(
-                      (i) => i.status === "PAID" || i.status === "FINISHED",
-                    )
-                    .map((inv) => {
-                      const details = getInvoiceDetails(inv);
-                      return (
-                        <tr
-                          key={inv.id}
-                          className="group hover:bg-stone-50/50 transition-colors"
-                        >
-                          <td className="px-6 py-5">
-                            <div className="text-xs font-bold font-mono text-stone-900 flex items-center gap-2">
-                              {inv.ci_number}
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                            </div>
-                            <div className="text-[10px] font-bold text-stone-500 mt-1.5 tracking-wider uppercase">
-                              {inv.customer_name}
-                            </div>
-                          </td>
-                          <td className="px-6 py-5">
-                            <div className="flex flex-col items-end">
-                              <div className="text-xs text-stone-500 font-medium font-sans">DPP: {formatIDR(details.dpp)}</div>
-                              <div className="text-[10px] text-stone-400 font-medium font-sans">PPN: {formatIDR(details.ppn)} | PPh: {formatIDR(details.pph)}</div>
-                              <div className="text-sm font-black font-mono tracking-tight text-stone-900 mt-1">
-                                {formatIDR(details.total_amount)}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-5 text-right">
-                            <div className="flex items-center justify-end gap-2 mt-2">
-                              <Button
-                                size="xs"
-                                variant="secondary"
-                                className="px-2.5 py-1 shadow-sm border border-stone-200 flex items-center gap-1 cursor-pointer"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPreviewInvoice(inv);
-                                  setShowPreviewModal(true);
-                                }}
-                                title="Pratinjau & Export PDF Invoice"
-                              >
-                                <Eye className="w-3.5 h-3.5 text-stone-600" />
-                              </Button>
-                              {["FC", "BOD"].includes(user?.role || "") && (
-                                <Button
-                                  size="xs"
-                                  variant="danger_soft"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setConfirmVoid({
-                                      isOpen: true,
-                                      id: inv.id,
-                                      amount: details.total_amount,
-                                    });
-                                  }}
-                                  title={t("Void Payment")}
-                                  className="px-2 cursor-pointer"
-                                >
-                                  <RotateCcw className="w-3.5 h-3.5" />
-                                </Button>
+          <Table>
+            <TableHeader>
+              <TableRow hoverable={false}>
+                <TableHead>{t("Invoice & Customer")}</TableHead>
+                <TableHead className="text-right">{t("Amount Detail")}</TableHead>
+                <TableHead className="text-right">{t("Action")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableEmpty colSpan={3} message="Loading received payments..." />
+              ) : displayedInvoices.filter(
+                  (i) => i.status === "PAID" || i.status === "FINISHED",
+                ).length === 0 ? (
+                <TableEmpty colSpan={3} message={t("No received payments")} />
+              ) : (
+                displayedInvoices
+                  .filter(
+                    (i) => i.status === "PAID" || i.status === "FINISHED",
+                  )
+                  .map((inv) => {
+                    const details = getInvoiceDetails(inv);
+                    return (
+                      <TableRow key={inv.id} className="group">
+                        <TableCell>
+                          <div className="text-xs font-bold font-mono tabular-nums text-stone-900 flex items-center gap-1.5">
+                            {inv.ci_number}
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          </div>
+                          <div className="text-[10px] font-bold text-stone-500 mt-1 tracking-wider uppercase">
+                            {inv.customer_name}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-col items-end font-mono tabular-nums">
+                            <div className="text-xs sm:text-sm font-bold tracking-tight text-stone-900">
+                              {canViewPrices ? (
+                                formatIDR(details.total_amount)
+                              ) : (
+                                <ConfidentialBadge />
                               )}
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            )}
-          </div>
+                            {canViewPrices && (
+                              <div className="text-[10px] text-stone-500 font-medium mt-0.5">
+                                Taxable Base: {formatIDR(details.dpp)}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="xs"
+                              action="view"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewInvoice(inv);
+                                setShowPreviewModal(true);
+                              }}
+                              title="Preview & Export Invoice PDF"
+                            />
+                            {["FC", "BOD"].includes(user?.role || "") && (
+                              <Button
+                                size="xs"
+                                variant="danger_soft"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmVoid({
+                                    isOpen: true,
+                                    id: inv.id,
+                                    amount: details.total_amount,
+                                  });
+                                }}
+                                title={t("Void Payment")}
+                                leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                              />
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+              )}
+            </TableBody>
+          </Table>
         </div>
       </div>
 
@@ -870,7 +1025,7 @@ export default function Invoices() {
       <Modal
         isOpen={showInvoiceModal}
         onClose={() => setShowInvoiceModal(false)}
-        title={t("Terbitkan Faktur Komersial (Otomatis)")}
+        title="Issue Commercial Invoice (Automated)"
         maxWidth="lg"
         contentClassName="p-0 border-t border-stone-100"
       >
@@ -881,7 +1036,7 @@ export default function Invoices() {
           <div className="p-6 space-y-6">
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest block">
-                {t("Pilih Surat Jalan / Delivery Note")}
+                Select Delivery Note
               </label>
               <select
                 value={selectedDn?.id || ""}
@@ -893,7 +1048,7 @@ export default function Invoices() {
                 className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm font-bold text-stone-700 focus:bg-white focus:border-stone-400 outline-none transition-all"
               >
                 <option value="" disabled>
-                  Pilih Surat Jalan yang siap ditagih...
+                  Select a Delivery Note ready for billing...
                 </option>
                 {unbilled.map((dn) => (
                   <option key={dn.id} value={dn.id}>
@@ -938,7 +1093,7 @@ export default function Invoices() {
                   <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-                        Customer & Proyek
+                        Customer & Project
                       </div>
                       <div className="text-sm font-bold text-stone-900 mt-0.5">
                         {selectedDn.customer_name}
@@ -949,7 +1104,7 @@ export default function Invoices() {
                     </div>
                     <div className="sm:text-right">
                       <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-                        No. Surat Jalan
+                        Delivery Note No.
                       </div>
                       <div className="font-mono font-bold text-stone-900 text-sm">
                         {selectedDn.dn_number}
@@ -962,82 +1117,80 @@ export default function Invoices() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest block">
-                          {t("Substansi Pengiriman / Delivery Items")}
+                          Delivery Items
                         </label>
                         <span className="text-[10px] text-stone-400 font-medium">
-                          {selectedDnItems.length} baris barang
+                          {selectedDnItems.length} line items
                         </span>
                       </div>
-                      <div className="border border-stone-200 rounded-xl overflow-hidden bg-stone-50/50">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-stone-100/80 border-b border-stone-200 text-stone-600 font-bold uppercase text-[9px] tracking-wider">
-                            <tr>
-                              <th className="py-2 px-3">Item / Deskripsi</th>
-                              <th className="py-2 px-2 text-center w-16">Qty</th>
-                              <th className="py-2 px-2 text-center w-16">Satuan</th>
-                              <th className="py-2 px-3 text-right w-28">Harga Satuan</th>
-                              <th className="py-2 px-3 text-right w-32">Subtotal</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-stone-200/60 bg-white">
-                            {selectedDnItems.map((item, idx) => (
-                              <tr key={idx} className="hover:bg-stone-50/60">
-                                <td className="py-2 px-3 font-semibold text-stone-900">
-                                  {item.item_name || item.remarks || "Item"}
-                                  {item.item_code && (
-                                    <div className="text-[10px] text-stone-400 font-mono">
-                                      {item.item_code}
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="py-2 px-2 text-center font-bold text-stone-800">
-                                  {item.qty}
-                                </td>
-                                <td className="py-2 px-2 text-center text-stone-500 font-medium uppercase text-[10px]">
-                                  {item.uom || "SET"}
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono text-stone-700">
-                                  {formatNumberWithDots(item.unit_price || 0)}
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono font-bold text-stone-900">
-                                  {formatNumberWithDots(item.subtotal || (item.qty * (item.unit_price || 0)))}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <Table compact>
+                        <TableHeader>
+                          <TableRow hoverable={false}>
+                            <TableHead>Item / Description</TableHead>
+                            <TableHead className="text-center w-16">Qty</TableHead>
+                            <TableHead className="text-center w-16">UOM</TableHead>
+                            <TableHead className="text-right w-28">Unit Price</TableHead>
+                            <TableHead className="text-right w-32">Subtotal</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedDnItems.map((item, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="font-semibold text-stone-900">
+                                {item.item_name || item.remarks || "Item"}
+                                {item.item_code && (
+                                  <div className="text-[10px] text-stone-400 font-mono tabular-nums">
+                                    {item.item_code}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center font-bold text-stone-800 font-mono tabular-nums">
+                                {item.qty}
+                              </TableCell>
+                              <TableCell className="text-center text-stone-500 font-medium uppercase text-[10px]">
+                                {item.uom || "SET"}
+                              </TableCell>
+                              <TableCell className="text-right font-mono tabular-nums text-stone-700">
+                                {formatNumberWithDots(item.unit_price || 0)}
+                              </TableCell>
+                              <TableCell className="text-right font-mono tabular-nums font-bold text-stone-900">
+                                {formatNumberWithDots(item.subtotal || (item.qty * (item.unit_price || 0)))}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
                     </div>
                   )}
 
-                  {/* Financial Breakdown Card (100% Mengikuti Quotation) */}
-                  <div className="p-5 bg-gradient-to-br from-stone-50 via-white to-stone-50 border border-stone-200 rounded-2xl space-y-3">
+                  {/* Financial Breakdown Card */}
+                  <div className="p-5 bg-stone-50/70 border border-stone-200 rounded-2xl space-y-3">
                     <div className="flex items-center justify-between pb-2 border-b border-stone-200">
                       <div className="text-[10px] font-bold text-stone-600 uppercase tracking-widest flex items-center gap-1.5">
                         <DollarSign className="w-3.5 h-3.5 text-stone-700" />
-                        Rincian Nilai Faktur (100% Mengikuti Quotation)
+                        Invoice Value Breakdown (100% Aligned with Quotation)
                       </div>
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                        Otomatis Terintegrasi
-                      </span>
+                      <Badge variant="success" size="sm">
+                        Auto-Integrated
+                      </Badge>
                     </div>
 
                     <div className="space-y-1.5 text-xs">
                       <div className="flex justify-between text-stone-700">
-                        <span>Nilai Bruto (Gross Subtotal):</span>
+                        <span>Gross Subtotal:</span>
                         <span className="font-mono font-semibold">{formatIDR(grossVal)}</span>
                       </div>
 
                       {discRate > 0 && (
                         <div className="flex justify-between text-stone-600">
-                          <span>Diskon Quotation ({discRate}%):</span>
+                          <span>Quotation Discount ({discRate}%):</span>
                           <span className="font-mono text-rose-600 font-medium">- {formatIDR(discVal)}</span>
                         </div>
                       )}
 
                       {roundVal !== 0 && (
                         <div className="flex justify-between text-stone-600">
-                          <span>Faktor Pembulatan:</span>
+                          <span>Rounding Factor:</span>
                           <span className="font-mono text-amber-700 font-medium">
                             {roundVal > 0 ? `- ${formatIDR(roundVal)}` : `+ ${formatIDR(Math.abs(roundVal))}`}
                           </span>
@@ -1046,9 +1199,9 @@ export default function Invoices() {
 
                       <div className="flex justify-between items-center py-1.5 px-2.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-emerald-950 font-bold">
                         <div className="flex items-center gap-1.5">
-                          <span>DPP (Dasar Pengenaan Pajak):</span>
+                          <span>Taxable Base:</span>
                           <span className="text-[9px] text-emerald-700 bg-emerald-100 font-medium px-1.5 py-0.5 rounded">
-                            Basis Revenue ERP
+                            ERP Revenue Base
                           </span>
                         </div>
                         <span className="font-mono text-sm">{formatIDR(dppVal)}</span>
@@ -1056,7 +1209,7 @@ export default function Invoices() {
 
                       {isDppNilaiLainVal && (
                         <div className="flex justify-between text-stone-500 bg-stone-50 px-2 py-0.5 rounded text-[10px]">
-                          <span>Basis DPP Nilai Lain (11/12):</span>
+                          <span>Alternative Tax Base (11/12):</span>
                           <span className="font-mono font-bold text-stone-700">
                             {formatIDRWithDecimals(dppNilaiLainVal, 2)}
                           </span>
@@ -1065,20 +1218,20 @@ export default function Invoices() {
 
                       {ppnVal > 0 && (
                         <div className="flex justify-between text-stone-600">
-                          <span>PPN ({isDppNilaiLainVal ? 12 : ppnRateVal}% - Kewajiban Titipan Pajak):</span>
+                          <span>VAT ({isDppNilaiLainVal ? 12 : ppnRateVal}% - Tax Payable):</span>
                           <span className="font-mono text-stone-800 font-medium">+ {formatIDR(ppnVal)}</span>
                         </div>
                       )}
 
                       {pphVal > 0 && (
                         <div className="flex justify-between text-stone-600">
-                          <span>PPh 23 ({pphRateVal}% - Potongan):</span>
+                          <span>Withholding Tax ({pphRateVal}% - Deduction):</span>
                           <span className="font-mono text-stone-800 font-medium">- {formatIDR(pphVal)}</span>
                         </div>
                       )}
 
                       <div className="flex justify-between items-center pt-2 border-t border-stone-200 text-stone-900 font-black text-sm">
-                        <span>Total Tagihan / Grand Total:</span>
+                        <span>Grand Total:</span>
                         <span className="font-mono text-base text-stone-900 bg-stone-100 px-3 py-1 rounded-xl">
                           {formatIDR(grandTotalVal)}
                         </span>
@@ -1090,14 +1243,14 @@ export default function Invoices() {
                   <div className="space-y-4 pt-1">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest block">
-                        {t("Deskripsi Tagihan / Job Description")}
+                        Job Description
                       </label>
                       <input
                         type="text"
                         value={jobDescription}
                         onChange={(e) => setJobDescription(e.target.value)}
                         required
-                        placeholder="Deskripsi pekerjaan tagihan..."
+                        placeholder="Invoice job description..."
                         className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold focus:bg-white focus:border-stone-400 outline-none transition-all"
                       />
                     </div>
@@ -1105,25 +1258,25 @@ export default function Invoices() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest block">
-                          {t("Termin Pembayaran")}
+                          Payment Terms
                         </label>
                         <select
                           value={paymentTerms}
                           onChange={(e) => setPaymentTerms(e.target.value)}
                           className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-700 focus:bg-white focus:border-stone-400 outline-none transition-all"
                         >
-                          <option value="Net 14">Net 14 (14 Hari)</option>
-                          <option value="Net 30">Net 30 (30 Hari)</option>
-                          <option value="Net 45">Net 45 (45 Hari)</option>
-                          <option value="Net 60">Net 60 (60 Hari)</option>
-                          <option value="Net 90">Net 90 (90 Hari)</option>
-                          <option value="Due on Receipt">Due on Receipt (Tunai/Langsung)</option>
+                          <option value="Net 14">Net 14 (14 Days)</option>
+                          <option value="Net 30">Net 30 (30 Days)</option>
+                          <option value="Net 45">Net 45 (45 Days)</option>
+                          <option value="Net 60">Net 60 (60 Days)</option>
+                          <option value="Net 90">Net 90 (90 Days)</option>
+                          <option value="Due on Receipt">Due on Receipt (Immediate)</option>
                         </select>
                       </div>
 
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest block">
-                          {t("Rekening Bank Penerima")}
+                          Beneficiary Bank Account
                         </label>
                         <select
                           value={bankAccountId}
@@ -1146,21 +1299,103 @@ export default function Invoices() {
           </div>
 
           <div className="p-4 md:px-8 md:py-5 border-t border-stone-100 bg-stone-50 flex justify-end gap-3 rounded-b-2xl">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               disabled={isSubmitting}
               onClick={() => setShowInvoiceModal(false)}
-              className="px-6 py-2.5 text-stone-500 hover:text-stone-900 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-colors cursor-pointer"
             >
-              {t("Batal")}
-            </button>
-            <button
+              Cancel
+            </Button>
+            <Button
               type="submit"
-              disabled={isSubmitting || !selectedDn}
-              className="px-6 py-2.5 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 disabled:text-stone-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors shadow-sm cursor-pointer flex items-center gap-2"
+              variant="primary"
+              isLoading={isSubmitting}
+              disabled={!selectedDn}
             >
-              {isSubmitting ? t("Memproses...") : t("Terbitkan Faktur Otomatis")}
-            </button>
+              Issue Automated Invoice
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* B2B Down Payment (DP) Invoice Modal */}
+      <Modal
+        isOpen={showDpInvoiceModal}
+        onClose={() => setShowDpInvoiceModal(false)}
+        title="Issue B2B Down Payment Invoice · COA 2106"
+        maxWidth="md"
+      >
+        <form onSubmit={handleCreateDpInvoice} className="space-y-4 text-xs text-stone-700">
+          <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl text-[11px] text-stone-600">
+            Issuing a Down Payment Invoice from an approved quotation records a <strong>Customer Advance Liability (COA 2106)</strong>. When the Delivery Order is billed, the advance balance is automatically deducted from the final settlement invoice.
+          </div>
+
+          <div className="space-y-1.5">
+            <Select
+              label="Select Approved Quotation"
+              value={selectedQuoId}
+              onChange={(e) => setSelectedQuoId(e.target.value)}
+              required
+            >
+              <option value="" disabled>
+                Select an APPROVED Quotation...
+              </option>
+              {quotations
+                .filter((q: any) => q.status === "APPROVED")
+                .map((q: any) => (
+                  <option key={q.id} value={q.id}>
+                    {q.quotation_number} — {q.customer_name} ({formatIDR(q.grand_total || q.amount || 0)})
+                  </option>
+                ))}
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Input
+                label="Down Payment (%)"
+                type="number"
+                min={5}
+                max={90}
+                value={dpPercentage}
+                onChange={(e) => setDpPercentage(e.target.value)}
+                required
+                className="font-mono tabular-nums font-bold"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Select
+                label="Beneficiary Bank Account"
+                value={bankAccountId}
+                onChange={(e) => setBankAccountId(e.target.value)}
+              >
+                {bankAccounts.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.bank_name} - {b.account_number}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-stone-200">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowDpInvoiceModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={isSubmitting}
+              disabled={!selectedQuoId}
+            >
+              Issue DP Invoice
+            </Button>
           </div>
         </form>
       </Modal>
@@ -1192,12 +1427,14 @@ export default function Invoices() {
                       {bank.account_number} ({bank.account_holder})
                     </div>
                   </div>
-                  <button
+                  <Button
+                    size="icon-sm"
+                    variant="danger_soft"
                     onClick={() => setDeletingBankId(bank.id)}
-                    className="w-8 h-8 flex items-center justify-center text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                    title="Delete Account"
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  </Button>
                 </div>
               ))}
             </div>
@@ -1207,71 +1444,52 @@ export default function Invoices() {
             <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">
               {t("Add New Account")}
             </h4>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest block">
-                {t("Bank Name")}
-              </label>
-              <input
-                type="text"
-                value={newBank.bank_name}
-                onChange={(e) =>
-                  setNewBank({ ...newBank, bank_name: e.target.value })
-                }
-                required
-                placeholder="e.g. Bank Mandiri"
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm font-bold focus:bg-white focus:border-stone-400 outline-none transition-all"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest block">
-                {t("Account Number")}
-              </label>
-              <input
-                type="text"
-                value={newBank.account_number}
-                onChange={(e) =>
-                  setNewBank({ ...newBank, account_number: e.target.value })
-                }
-                required
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm font-bold font-mono focus:bg-white focus:border-stone-400 outline-none transition-all"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest block">
-                {t("Account Holder")}
-              </label>
-              <input
-                type="text"
-                value={newBank.account_holder}
-                onChange={(e) =>
-                  setNewBank({ ...newBank, account_holder: e.target.value })
-                }
-                required
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm font-bold focus:bg-white focus:border-stone-400 outline-none transition-all"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest block">
-                {t("Branch (Optional)")}
-              </label>
-              <input
-                type="text"
-                value={newBank.branch}
-                onChange={(e) =>
-                  setNewBank({ ...newBank, branch: e.target.value })
-                }
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm font-bold focus:bg-white focus:border-stone-400 outline-none transition-all"
-              />
-            </div>
+            <Input
+              label={t("Bank Name")}
+              type="text"
+              value={newBank.bank_name}
+              onChange={(e) =>
+                setNewBank({ ...newBank, bank_name: e.target.value })
+              }
+              required
+              placeholder="e.g. Bank Mandiri"
+            />
+            <Input
+              label={t("Account Number")}
+              type="text"
+              value={newBank.account_number}
+              onChange={(e) =>
+                setNewBank({ ...newBank, account_number: e.target.value })
+              }
+              required
+              className="font-mono tabular-nums"
+            />
+            <Input
+              label={t("Account Holder")}
+              type="text"
+              value={newBank.account_holder}
+              onChange={(e) =>
+                setNewBank({ ...newBank, account_holder: e.target.value })
+              }
+              required
+            />
+            <Input
+              label={t("Branch (Optional)")}
+              type="text"
+              value={newBank.branch}
+              onChange={(e) =>
+                setNewBank({ ...newBank, branch: e.target.value })
+              }
+            />
 
             <div className="pt-4 flex justify-end">
-              <button
+              <Button
                 type="submit"
-                disabled={isSubmitting}
-                className="px-6 py-2.5 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 disabled:text-stone-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors shadow-sm cursor-pointer"
+                variant="primary"
+                isLoading={isSubmitting}
               >
-                {isSubmitting ? t("Processing...") : t("Save Account")}
-              </button>
+                {t("Save Account")}
+              </Button>
             </div>
           </form>
         </div>
@@ -1282,7 +1500,7 @@ export default function Invoices() {
         <Modal
           isOpen={showPreviewModal && !!previewInvoice}
           onClose={() => setShowPreviewModal(false)}
-          title={`Dokumen Faktur Komersial: ${previewInvoice.ci_number}`}
+          title={`Commercial Invoice Document: ${previewInvoice.ci_number}`}
           maxWidth="5xl"
           contentClassName="p-0 flex flex-col h-[85vh] border-t border-stone-100"
         >
@@ -1295,18 +1513,18 @@ export default function Invoices() {
                   <PdfPreviewWrapper>
                     <PrintTemplate
                       ref={printDocRef}
-                      documentTitleId="FAKTUR KOMERSIAL"
+                      documentTitleId="COMMERCIAL INVOICE"
                       documentTitleEn="COMMERCIAL INVOICE"
-                      documentNameId="FAKTUR PENJUALAN"
+                      documentNameId="COMMERCIAL INVOICE"
                       documentNameEn="COMMERCIAL INVOICE"
                       date={
                         previewInvoice.issue_date
-                          ? new Date(previewInvoice.issue_date).toLocaleDateString("id-ID", {
+                          ? new Date(previewInvoice.issue_date).toLocaleDateString("en-US", {
                               day: "2-digit",
                               month: "long",
                               year: "numeric",
                             })
-                          : new Date().toLocaleDateString("id-ID")
+                          : new Date().toLocaleDateString("en-US")
                       }
                       referenceNumber={previewInvoice.ci_number || ""}
                       documentId={previewInvoice.ci_number || previewInvoice.id || ""}
@@ -1317,7 +1535,7 @@ export default function Invoices() {
                           <div className="mb-6 p-4 bg-white rounded-lg border border-stone-200 grid grid-cols-5 gap-8">
                             <div className="col-span-3">
                               <div className="text-[10px] text-stone-500 uppercase tracking-widest font-black mb-1">
-                                KEPADA YTH. / BILLED TO
+                                BILLED TO
                               </div>
                               <div className="text-base font-black text-stone-900 tracking-tight leading-tight uppercase mb-1">
                                 {previewInvoice.customer_name}
@@ -1334,16 +1552,16 @@ export default function Invoices() {
 
                             <div className="col-span-2 text-right flex flex-col items-end justify-center">
                               <div className="text-[10px] text-stone-500 uppercase tracking-widest font-black mb-1">
-                                DESKRIPSI PEKERJAAN / JOB DESCRIPTION
+                                JOB DESCRIPTION
                               </div>
                               <div className="text-sm font-black text-stone-900">
-                                {previewInvoice.job_description || "Pengiriman Commercial Trade Delivery"}
+                                {previewInvoice.job_description || "Commercial Trade Delivery"}
                               </div>
                               <div className="mt-2 text-xs font-semibold text-stone-600">
-                                Surat Jalan / DN: <span className="font-mono font-bold text-stone-900">{previewInvoice.dn_number || "-"}</span>
+                                Delivery Note / DN: <span className="font-mono font-bold text-stone-900">{previewInvoice.dn_number || "-"}</span>
                               </div>
                               <div className="text-xs font-semibold text-stone-600">
-                                Due Date: <span className="font-bold text-stone-900">{previewInvoice.due_date ? new Date(previewInvoice.due_date).toLocaleDateString("id-ID") : "-"}</span>
+                                Due Date: <span className="font-bold text-stone-900">{previewInvoice.due_date ? new Date(previewInvoice.due_date).toLocaleDateString("en-US") : "-"}</span>
                               </div>
                             </div>
                           </div>
@@ -1351,10 +1569,7 @@ export default function Invoices() {
                           {/* Items Table */}
                           <div className="flex-1 mb-6">
                             <div className="text-xl text-stone-900 uppercase tracking-widest font-black mb-4 ml-1">
-                              Rincian Faktur{" "}
-                              <span className="text-sm text-stone-500 font-normal">
-                                / Invoice Details
-                              </span>
+                              Invoice Details
                             </div>
                             <table className="w-full text-left">
                               <thead>
@@ -1363,34 +1578,19 @@ export default function Invoices() {
                                     No
                                   </th>
                                   <th className="py-3 px-3 font-extrabold text-stone-900 uppercase tracking-wider text-sm">
-                                    Deskripsi
-                                    <div className="text-[10px] font-bold text-stone-500 tracking-widest mt-1">
-                                      DESCRIPTION
-                                    </div>
+                                    Description
                                   </th>
                                   <th className="py-3 px-3 font-extrabold text-stone-900 text-center uppercase tracking-wider text-sm w-16">
-                                    Jml
-                                    <div className="text-[10px] font-bold text-stone-500 tracking-widest mt-1">
-                                      QTY
-                                    </div>
+                                    Qty
                                   </th>
                                   <th className="py-3 px-3 font-extrabold text-stone-900 text-center uppercase tracking-wider text-sm w-20">
-                                    Sat
-                                    <div className="text-[10px] font-bold text-stone-500 tracking-widest mt-1">
-                                      UOM
-                                    </div>
+                                    UOM
                                   </th>
                                   <th className="py-3 px-3 font-extrabold text-stone-900 text-right uppercase tracking-wider text-sm w-32">
-                                    Harga / Unit
-                                    <div className="text-[10px] font-bold text-stone-500 tracking-widest mt-1">
-                                      PRICE
-                                    </div>
+                                    Unit Price
                                   </th>
                                   <th className="py-3 px-3 font-extrabold text-stone-900 text-right uppercase tracking-wider text-sm w-36">
-                                    Total
-                                    <div className="text-[10px] font-bold text-stone-500 tracking-widest mt-1">
-                                      AMOUNT
-                                    </div>
+                                    Amount
                                   </th>
                                 </tr>
                               </thead>
@@ -1417,10 +1617,10 @@ export default function Invoices() {
                                           {item.uom || "SET"}
                                         </td>
                                         <td className="py-4 px-3 text-right text-stone-800 font-mono font-bold text-sm">
-                                          {formatNumberWithDots(unitPrice)}
+                                          {canViewPrices ? formatNumberWithDots(unitPrice) : <ConfidentialBadge />}
                                         </td>
                                         <td className="py-4 px-3 text-right text-stone-900 font-mono font-black text-sm">
-                                          {formatNumberWithDots(totalRow)}
+                                          {canViewPrices ? formatNumberWithDots(totalRow) : <ConfidentialBadge />}
                                         </td>
                                       </tr>
                                     );
@@ -1429,12 +1629,12 @@ export default function Invoices() {
                                   <tr>
                                     <td className="py-4 px-3 text-center font-bold text-stone-900 text-sm tabular-nums">1</td>
                                     <td className="py-4 px-3 text-base font-black text-stone-900 uppercase tracking-tight">
-                                      {previewInvoice.job_description || "Pengiriman Niaga / Jasa Kontrak"}
+                                      {previewInvoice.job_description || "Commercial Delivery / Contract Service"}
                                     </td>
                                     <td className="py-4 px-3 text-center font-bold text-stone-900 text-sm tabular-nums">1</td>
                                     <td className="py-4 px-3 text-center text-stone-600 font-extrabold uppercase tracking-wider text-xs">SET</td>
-                                    <td className="py-4 px-3 text-right text-stone-800 font-mono font-bold text-sm">{formatNumberWithDots(pDetails.gross_amount)}</td>
-                                    <td className="py-4 px-3 text-right text-stone-900 font-mono font-black text-sm">{formatNumberWithDots(pDetails.gross_amount)}</td>
+                                    <td className="py-4 px-3 text-right text-stone-800 font-mono font-bold text-sm">{canViewPrices ? formatNumberWithDots(pDetails.gross_amount) : <ConfidentialBadge />}</td>
+                                    <td className="py-4 px-3 text-right text-stone-900 font-mono font-black text-sm">{canViewPrices ? formatNumberWithDots(pDetails.gross_amount) : <ConfidentialBadge />}</td>
                                   </tr>
                                 )}
                               </tbody>
@@ -1445,75 +1645,94 @@ export default function Invoices() {
                               <div className="w-[440px] space-y-1.5 text-xs">
                                 <div className="flex justify-between items-center px-3 py-1 text-stone-800 gap-2">
                                   <span className="font-bold uppercase tracking-wider text-[11px] whitespace-nowrap">
-                                    Subtotal Bruto <span className="text-stone-500 font-normal">/ Gross Amount</span>
+                                    Gross Amount
                                   </span>
                                   <span className="font-mono text-xs font-bold text-stone-900 whitespace-nowrap">
-                                    Rp{"\u00A0"}{formatNumberWithDots(pDetails.gross_amount)}
+                                    {canViewPrices ? <>Rp{"\u00A0"}{formatNumberWithDots(pDetails.gross_amount)}</> : <ConfidentialBadge />}
                                   </span>
                                 </div>
                                 {pDetails.discount_amount > 0 && (
                                   <div className="flex justify-between items-center px-3 py-0.5 text-rose-600 font-semibold text-[11px] gap-2">
                                     <span className="uppercase tracking-wider whitespace-nowrap">
-                                      Diskon <span className="text-stone-500 font-normal">/ Discount ({pDetails.discount_rate}%)</span>
+                                      Discount ({pDetails.discount_rate}%)
                                     </span>
                                     <span className="font-mono text-xs whitespace-nowrap">
-                                      - Rp{"\u00A0"}{formatNumberWithDots(pDetails.discount_amount)}
+                                      {canViewPrices ? <>- Rp{"\u00A0"}{formatNumberWithDots(pDetails.discount_amount)}</> : <ConfidentialBadge />}
                                     </span>
                                   </div>
                                 )}
                                 <div className="flex justify-between items-center px-3 py-1.5 bg-stone-100 border-y border-stone-300 font-bold text-stone-900 text-[11px] gap-2">
                                   <span className="uppercase tracking-wider whitespace-nowrap">
-                                    Dasar Pengenaan Pajak <span className="text-stone-500 font-normal">/ DPP (Net Base)</span>
+                                    Taxable Base (Net Base)
                                   </span>
                                   <span className="font-mono text-xs font-black whitespace-nowrap">
-                                    Rp{"\u00A0"}{formatNumberWithDots(pDetails.dpp)}
+                                    {canViewPrices ? <>Rp{"\u00A0"}{formatNumberWithDots(pDetails.dpp)}</> : <ConfidentialBadge />}
                                   </span>
                                 </div>
+                                {Number(previewInvoice.dpp_nilai_lain) > 0 && (
+                                  <div className="flex justify-between items-center px-3 py-0.5 text-stone-600 font-semibold text-[11px] gap-2">
+                                    <span className="uppercase tracking-wider whitespace-nowrap">
+                                      Alternative Tax Base (11/12)
+                                    </span>
+                                    <span className="font-mono text-xs font-bold whitespace-nowrap">
+                                      {canViewPrices ? <>Rp{"\u00A0"}{formatNumberWithDots(Number(previewInvoice.dpp_nilai_lain))}</> : <ConfidentialBadge />}
+                                    </span>
+                                  </div>
+                                )}
                                 {pDetails.ppn > 0 && (
                                   <div className="flex justify-between items-center px-3 py-0.5 text-stone-800 font-bold text-[11px] gap-2">
                                     <span className="uppercase tracking-wider whitespace-nowrap">
-                                      PPN <span className="text-stone-500 font-normal">/ VAT ({pDetails.ppn_rate}%)</span>
+                                      VAT ({pDetails.ppn_rate}%)
                                     </span>
                                     <span className="font-mono text-xs font-bold whitespace-nowrap">
-                                      + Rp{"\u00A0"}{formatNumberWithDots(pDetails.ppn)}
+                                      {canViewPrices ? <>+ Rp{"\u00A0"}{formatNumberWithDots(pDetails.ppn)}</> : <ConfidentialBadge />}
+                                    </span>
+                                  </div>
+                                )}
+                                {Number(previewInvoice.dp_deduction_amount) > 0 && (
+                                  <div className="flex justify-between items-center px-3 py-1 bg-amber-50 border-y border-amber-200 text-amber-900 font-bold text-[11px] gap-2">
+                                    <span className="uppercase tracking-wider whitespace-nowrap">
+                                      Less: Down Payment Deduction (COA 2106)
+                                    </span>
+                                    <span className="font-mono text-xs font-bold text-rose-600 whitespace-nowrap">
+                                      {canViewPrices ? <>- Rp{"\u00A0"}{formatNumberWithDots(Number(previewInvoice.dp_deduction_amount))}</> : <ConfidentialBadge />}
                                     </span>
                                   </div>
                                 )}
                                 {pDetails.rounding_factor !== 0 && (
                                   <div className="flex justify-between items-center px-3 py-0.5 text-stone-800 font-semibold text-[11px] gap-2">
                                     <span className="uppercase tracking-wider whitespace-nowrap">
-                                      Faktor Pembulatan <span className="text-stone-500 font-normal">/ Rounding</span>
+                                      Rounding Adjustment
                                     </span>
                                     <span className="font-mono text-xs font-bold whitespace-nowrap">
-                                      {pDetails.rounding_factor > 0 ? "+ " : "- "}
-                                      Rp{"\u00A0"}{formatNumberWithDots(Math.abs(pDetails.rounding_factor))}
+                                      {canViewPrices ? <>{pDetails.rounding_factor > 0 ? "+ " : "- "}Rp{"\u00A0"}{formatNumberWithDots(Math.abs(pDetails.rounding_factor))}</> : <ConfidentialBadge />}
                                     </span>
                                   </div>
                                 )}
                                 <div className="flex justify-between items-center pt-3 border-t-2 border-stone-900 px-3 font-black text-sm uppercase tracking-wider text-stone-900 gap-3">
                                   <span className="whitespace-nowrap">
-                                    TOTAL TAGIHAN <span className="text-[10px] text-stone-500 font-bold tracking-normal">/ GRAND TOTAL</span>
+                                    GRAND TOTAL
                                   </span>
                                   <span className="font-mono text-base tracking-tight font-black text-stone-950 whitespace-nowrap">
-                                    Rp{"\u00A0"}{formatNumberWithDots(pDetails.grand_total)}
+                                    {canViewPrices ? <>Rp{"\u00A0"}{formatNumberWithDots(pDetails.grand_total)}</> : <ConfidentialBadge size="sm" />}
                                   </span>
                                 </div>
                                 {pDetails.pph > 0 && (
                                   <>
                                     <div className="flex justify-between items-center px-3 py-1 bg-amber-50/60 border-t border-amber-200 text-amber-900 font-bold text-[11px] gap-2">
                                       <span className="uppercase tracking-wider whitespace-nowrap">
-                                        Potongan PPh <span className="text-stone-500 font-normal">/ WHT ({pDetails.pph_rate}%)</span>
+                                        Withholding Tax / WHT ({pDetails.pph_rate}%)
                                       </span>
                                       <span className="font-mono text-xs font-bold text-rose-600 whitespace-nowrap">
-                                        - Rp{"\u00A0"}{formatNumberWithDots(pDetails.pph)}
+                                        {canViewPrices ? <>- Rp{"\u00A0"}{formatNumberWithDots(pDetails.pph)}</> : <ConfidentialBadge />}
                                       </span>
                                     </div>
                                     <div className="flex justify-between items-center px-3 py-1.5 bg-emerald-50/70 border-t border-emerald-300 font-black text-xs uppercase tracking-wider text-emerald-950 gap-3">
                                       <span className="whitespace-nowrap">
-                                        NILAI PEMBAYARAN BERSIH <span className="text-[9px] text-emerald-700 font-bold tracking-normal">/ NET PAYABLE</span>
+                                        NET PAYABLE
                                       </span>
                                       <span className="font-mono text-sm tracking-tight font-black text-emerald-900 whitespace-nowrap">
-                                        Rp{"\u00A0"}{formatNumberWithDots(pDetails.net_payable)}
+                                        {canViewPrices ? <>Rp{"\u00A0"}{formatNumberWithDots(pDetails.net_payable)}</> : <ConfidentialBadge />}
                                       </span>
                                     </div>
                                   </>
@@ -1525,10 +1744,14 @@ export default function Invoices() {
                           {/* In Words */}
                           <div className="mb-8 p-4 bg-stone-50 rounded-lg">
                             <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">
-                              TERBILANG / AMOUNT IN WORDS:
+                              AMOUNT IN WORDS:
                             </div>
                             <div className="italic text-sm font-bold text-stone-900 leading-relaxed">
-                              ## {angkaKeTerbilang(pDetails.pph > 0 && pDetails.net_payable > 0 ? pDetails.net_payable : pDetails.grand_total)} Rupiah ##
+                              {canViewPrices ? (
+                                <>## {angkaKeTerbilang(pDetails.pph > 0 && pDetails.net_payable > 0 ? pDetails.net_payable : pDetails.grand_total)} Rupiah ##</>
+                              ) : (
+                                <ConfidentialBadge size="sm" />
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1537,17 +1760,17 @@ export default function Invoices() {
                         <div className="grid grid-cols-5 gap-8 pt-6 border-t border-stone-200 mt-4 w-full">
                           <div className="col-span-3 border-r border-stone-200 pr-6">
                             <div className="text-[9px] font-black text-stone-900 uppercase tracking-widest mb-2">
-                              PEMBAYARAN DITERUSKAN KE / PAYMENT TO:
+                              PAYMENT TO:
                             </div>
                             {bankAcc ? (
                               <div className="space-y-1">
                                 <div className="font-black text-stone-900 text-xs uppercase">{bankAcc.bank_name}</div>
                                 <div className="font-mono font-bold text-stone-900 text-sm tracking-tight">{bankAcc.account_number}</div>
-                                <div className="text-stone-600 font-bold text-xs">A/N: {bankAcc.account_holder}</div>
-                                {bankAcc.branch && <div className="text-[10px] text-stone-500 font-medium mt-0.5">Cabang: {bankAcc.branch}</div>}
+                                <div className="text-stone-600 font-bold text-xs">Account Holder: {bankAcc.account_holder}</div>
+                                {bankAcc.branch && <div className="text-[10px] text-stone-500 font-medium mt-0.5">Branch: {bankAcc.branch}</div>}
                               </div>
                             ) : (
-                              <div className="text-xs text-stone-500 italic">Hubungi Bagian Keuangan untuk detail rekening bank.</div>
+                              <div className="text-xs text-stone-500 italic">Contact Finance Department for bank account details.</div>
                             )}
                           </div>
 
@@ -1582,22 +1805,16 @@ export default function Invoices() {
                     onClick={() => setShowPreviewModal(false)}
                     className="px-6 py-2.5 rounded-xl text-sm"
                   >
-                    {language === "id" ? "Tutup" : "Close"}
+                    Close
                   </Button>
                   <Button
-                    variant="primary"
+                    variant="dark"
                     onClick={exportInvoicePdf}
                     isLoading={isSubmittingPdf}
                     className="px-6 py-2.5 rounded-xl text-sm shadow-md"
                   >
                     {!isSubmittingPdf && <Download className="w-4 h-4" />}
-                    {language === "id"
-                      ? isSubmittingPdf
-                        ? "Mengekspor..."
-                        : "Ekspor PDF (A4)"
-                      : isSubmittingPdf
-                        ? "Generating..."
-                        : "Export PDF (A4)"}
+                    {isSubmittingPdf ? "Generating..." : "Export PDF (A4)"}
                   </Button>
                 </div>
               </>

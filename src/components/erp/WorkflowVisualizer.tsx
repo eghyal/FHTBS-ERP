@@ -55,10 +55,10 @@ export default function WorkflowVisualizer({ matrices }: { matrices: any[] }) {
           data: {
             label: (
               <div className="text-xs">
-                <div className="font-bold border-b border-indigo-200 pb-1 mb-1 text-indigo-900">
+                <div className="font-bold border-b border-stone-200 pb-1 mb-1 text-stone-900">
                   {condition}
                 </div>
-                <div className="text-[10px] text-indigo-700">
+                <div className="text-[10px] text-stone-600">
                   Approvers:{" "}
                   {matrix.roles.join(matrix.is_parallel ? " AND " : " OR ")}
                 </div>
@@ -66,9 +66,9 @@ export default function WorkflowVisualizer({ matrices }: { matrices: any[] }) {
             ),
           },
           style: {
-            background: "#e0e7ff",
-            border: "1px solid #818cf8",
-            borderRadius: "8px",
+            background: "#f5f5f4",
+            border: "1px solid #d6d3d1",
+            borderRadius: "12px",
             width: 200,
           },
         });
@@ -79,7 +79,7 @@ export default function WorkflowVisualizer({ matrices }: { matrices: any[] }) {
           source: prevId,
           target: nodeId,
           animated: true,
-          style: { stroke: "#6366f1" },
+          style: { stroke: "#57534e" },
         });
 
         prevId = nodeId;
