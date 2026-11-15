@@ -14,9 +14,27 @@ function blobToDataUrl(blob: Blob | File): Promise<string> {
   });
 }
 
+function getUploadAuthHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const headers: Record<string, string> = {};
+  try {
+    const token = localStorage.getItem("erp_token");
+    if (token && token !== "null" && token !== "undefined") {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const rawUser = localStorage.getItem("erp_user");
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser);
+      if (parsed?.username) {
+        headers["x-user-email"] = parsed.username;
+      }
+    }
+  } catch {}
+  return headers;
+}
+
 /**
- * Uploads a file/blob to the server's local high-speed storage endpoint.
- * This is the primary and fastest storage tier (takes <100ms and never hits CORS/bucket limits).
+ * Uploads a file/blob to the server's durable SQLite + Cloud SSOT storage endpoint.
  */
 async function uploadFileToServer(
   file: File | Blob,
@@ -34,6 +52,8 @@ async function uploadFileToServer(
   try {
     const res = await fetch("/api/upload", {
       method: "POST",
+      credentials: "same-origin",
+      headers: getUploadAuthHeaders(),
       body: formData,
       signal: controller.signal,
     });
@@ -91,26 +111,51 @@ async function uploadFileToCloudStorage(
 
 /**
  * Universal file uploader helper:
- * 1. Tries high-speed server disk storage first (robust & instant).
- * 2. If server upload fails, attempts Firebase Storage with strict timeout.
- * 3. If all network uploads fail, converts to optimized inline Base64 Data URL.
- * NEVER blocks or hangs the user interface.
+ * 1. Tries high-speed server multipart storage -> SQLite + Cloud SSOT (/api/media/:id).
+ * 2. Tries Base64 JSON API upload -> SQLite + Cloud SSOT (/api/media/:id).
+ * 3. Attempts Firebase Cloud Storage with strict 3.5s timeout.
+ * 4. Failsafe inline Base64 Data URL so UI/DB never drops the image.
  */
 export async function uploadUniversalFile(
   file: File | Blob,
   pathPrefix: string = "uploads"
 ): Promise<string> {
-  // Tier 1: Local / Express Server Upload
+  // Tier 1: Server Multipart Upload -> persisted in SQLite WAL + Cloud SSOT (/api/media/:id)
   try {
     const res = await uploadFileToServer(file, pathPrefix);
     if (res.url) {
       return res.url;
     }
   } catch (serverErr) {
-    console.warn("[UniversalUploader] Primary server upload failed:", serverErr);
+    console.warn("[UniversalUploader] Primary multipart upload failed:", serverErr);
   }
 
-  // Tier 2: Cloud Storage with strict 3.5s timeout
+  // Tier 2: Base64 JSON API Upload -> persisted in SQLite WAL + Cloud SSOT (/api/media/:id)
+  let cachedDataUrl: string | null = null;
+  try {
+    cachedDataUrl = await blobToDataUrl(file);
+    const res = await fetch("/api/upload/base64", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        ...getUploadAuthHeaders(),
+      },
+      body: JSON.stringify({
+        dataUrl: cachedDataUrl,
+        filename: file instanceof File ? file.name : "upload.webp",
+        prefix: pathPrefix,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.url) return data.url;
+    }
+  } catch (b64Err) {
+    console.warn("[UniversalUploader] Base64 server upload failed:", b64Err);
+  }
+
+  // Tier 3: Firebase Cloud Storage with strict 3.5s timeout
   try {
     const cloudRes = await uploadFileToCloudStorage(file, pathPrefix, 3500);
     if (cloudRes.url) {
@@ -120,26 +165,6 @@ export async function uploadUniversalFile(
     console.warn("[UniversalUploader] Cloud storage fallback failed/timed out:", cloudErr);
   }
 
-  // Tier 3: Base64 JSON API upload
-  try {
-    const dataUrl = await blobToDataUrl(file);
-    const res = await fetch("/api/upload/base64", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dataUrl,
-        filename: file instanceof File ? file.name : "upload.webp",
-        prefix: pathPrefix,
-      }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.url) return data.url;
-    }
-    // If backend base64 endpoint failed, return the inline Data URL directly
-    return dataUrl;
-  } catch (finalErr) {
-    console.warn("[UniversalUploader] Falling back to direct inline Data URL:", finalErr);
-    return await blobToDataUrl(file);
-  }
+  // Tier 4: Final failsafe inline Data URL so database update never loses image
+  return cachedDataUrl || (await blobToDataUrl(file));
 }

@@ -134,7 +134,7 @@ export const WarehousePendingGrnTab: React.FC<WarehousePendingGrnTabProps> = mem
                             ? "Only Warehouse department can intake items into warehouse stock"
                             : "Confirm physical put-away into warehouse and update stock balance"
                         }
-                        className="h-8 px-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-50"
+                        className="h-8 px-4 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-50"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         <span>Intake</span>

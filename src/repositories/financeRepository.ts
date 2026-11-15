@@ -31,9 +31,11 @@ export class FinanceRepository {
         je.id,
         je.entry_number,
         je.entry_date,
+        je.reference_type,
+        je.reference_id,
         je.reference_number,
         je.description,
-        je.category,
+        je.reference_type as category,
         je.created_by,
         je.created_at,
         je.total_debit,
@@ -67,7 +69,7 @@ export class FinanceRepository {
     const params: any[] = [];
 
     if (filter.category && filter.category !== "ALL") {
-      query += " AND je.category = ?";
+      query += " AND je.reference_type = ?";
       params.push(filter.category);
     }
 
@@ -90,28 +92,33 @@ export class FinanceRepository {
   /**
    * Atomic transactional insert for Journal Entry with Outbox Event
    */
-  createJournalEntry(entry: JournalEntryDto, userEmail: string) {
+  createJournalEntry(entry: JournalEntryDto & { allow_soft_lock_adjustment?: boolean }, userEmail: string) {
     const entryId = "JE-" + Date.now() + "-" + crypto.randomBytes(3).toString("hex").toUpperCase();
     const entryNumber = "JN-" + new Date().toISOString().slice(0, 10).replace(/-/g, "") + "-" + Math.floor(1000 + Math.random() * 9000);
     const nowIso = new Date().toISOString();
 
     const totalDebit = entry.lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
     const totalCredit = entry.lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
+    const refType =
+      entry.category && entry.category !== "GENERAL"
+        ? entry.category
+        : "MANUAL_ADJUSTMENT";
 
     const result = db.transaction(() => {
       // 1. Insert header
       db.prepare(`
         INSERT INTO journal_entries (
-          id, entry_number, entry_date, reference_number, description,
-          category, total_debit, total_credit, created_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, entry_number, entry_date, reference_type, reference_id, reference_number, description,
+          total_debit, total_credit, status, created_by, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'POSTED', ?, ?)
       `).run(
         entryId,
         entryNumber,
         entry.entry_date,
+        refType,
+        entryId,
         entry.reference_number || "",
         entry.description,
-        entry.category || "GENERAL",
         totalDebit,
         totalCredit,
         userEmail,
@@ -148,6 +155,7 @@ export class FinanceRepository {
           id: entryId,
           entry_number: entryNumber,
           entry_date: entry.entry_date,
+          reference_type: refType,
           description: entry.description,
           total_debit: totalDebit,
           total_credit: totalCredit,

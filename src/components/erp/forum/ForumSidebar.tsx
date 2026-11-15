@@ -146,7 +146,7 @@ export const ForumSidebar = React.memo(function ForumSidebar({
                 className={cn(
                   "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap border transition-all cursor-pointer",
                   selectedDeptFilter === dept
-                    ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                    ? "bg-stone-900 text-white border-stone-900 shadow-2xs"
                     : "bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100 hover:text-stone-900",
                 )}
               >

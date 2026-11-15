@@ -116,9 +116,9 @@ export const BopModals: React.FC<BopModalsProps> = React.memo(({
         isOpen={showExplanationModal}
         onClose={() => setShowExplanationModal(false)}
         title="Workflow Logic Concept: Serial vs Parallel"
-        maxWidth="2xl"
+        maxWidth="3xl"
       >
-        <div className="p-6 space-y-6">
+        <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-5 rounded-3xl bg-blue-50/70 border border-blue-200 space-y-3">
               <div className="flex items-center gap-2 text-blue-900 font-black text-sm">
@@ -159,7 +159,7 @@ export const BopModals: React.FC<BopModalsProps> = React.memo(({
               <Workflow className="w-4 h-4" />
               How Does This Work on the Flowchart Canvas?
             </h5>
-            <p className="text-stone-300 text-[11px] leading-relaxed">
+            <p className="text-stone-700 dark:text-stone-300 text-[11px] leading-relaxed">
               • Nodes without incoming connections automatically run as{" "}
               <strong>PARALLEL (Independent)</strong>.<br />
               • Nodes with incoming connections automatically run as{" "}
@@ -169,7 +169,7 @@ export const BopModals: React.FC<BopModalsProps> = React.memo(({
             </p>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end pt-2 border-t border-stone-100">
             <Button
               onClick={() => setShowExplanationModal(false)}
               className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
@@ -185,9 +185,9 @@ export const BopModals: React.FC<BopModalsProps> = React.memo(({
         isOpen={showPresetModal}
         onClose={() => setShowPresetModal(false)}
         title="Load Process Routing Preset Templates (BoP)"
-        maxWidth="2xl"
+        maxWidth="3xl"
       >
-        <div className="p-6 space-y-4">
+        <div className="space-y-4">
           <p className="text-xs text-stone-500">
             Select an industrial standard template to immediately generate a structured process flowchart:
           </p>
@@ -236,9 +236,9 @@ export const BopModals: React.FC<BopModalsProps> = React.memo(({
         isOpen={showSimulationModal}
         onClose={() => setShowSimulationModal(false)}
         title="Process Routing Simulation (Execution Path Validator)"
-        maxWidth="2xl"
+        maxWidth="3xl"
       >
-        <div className="p-6 space-y-5">
+        <div className="space-y-5">
           <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-xs text-blue-950 flex items-start gap-2.5">
             <PlayCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
             <div>
@@ -378,7 +378,7 @@ export const BopModals: React.FC<BopModalsProps> = React.memo(({
             <button
               type="submit"
               disabled={!presetFile}
-              className="px-6 py-2.5 rounded-2xl bg-emerald-500 text-white font-bold text-xs hover:bg-emerald-600 disabled:opacity-50 transition-colors uppercase shadow-sm shadow-emerald-500/20"
+              className="px-6 py-2.5 rounded-2xl bg-stone-900 text-white font-bold text-xs hover:bg-stone-800 disabled:opacity-50 transition-colors uppercase shadow-sm"
             >
               Load Preset
             </button>
@@ -457,9 +457,9 @@ export const BopModals: React.FC<BopModalsProps> = React.memo(({
           setReviseReason("");
         }}
         title="BOP Revision Request"
-        maxWidth="md"
+        maxWidth="lg"
       >
-        <div className="p-6 space-y-4">
+        <div className="space-y-4">
           <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-800 rounded-2xl flex gap-3 text-rose-800 dark:text-rose-300">
             <AlertTriangle className="w-5 h-5 shrink-0" />
             <div className="text-xs leading-relaxed">

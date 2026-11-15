@@ -1,551 +1,455 @@
-# 📱 Master Blueprint: Arsitektur, Standar UI ERP & Integrasi PostgreSQL untuk Aplikasi Mobile (Android & iOS) — Paving Joss
+# Product Requirements Document (PRD) & Cetak Biru Arsitektur Mobile Native
+## Paving Joss ERP — Aplikasi Mobile Android (Kotlin) & iOS (Swift)
 
-> **Status Isolasi Direktori `pwa/`**:  
-> Direktori `pwa/` ini **100% terisolasi** dari kompilasi, *type-checking*, dan *build* produksi Web ERP & HRIS (`"pwa"` telah dikecualikan secara eksplisit di dalam `tsconfig.json`). Seluruh file di dalam direktori ini siap disalin langsung ke repositori baru untuk pembangunan aplikasi **Android** dan **iOS** tanpa memengaruhi sistem Web ERP saat ini.
-
----
-
-## 📑 Daftar Isi
-1. [Cakupan Pengguna & Fitur Aplikasi Mobile (Operator vs Back-Office)](#1-cakupan-pengguna--fitur-aplikasi-mobile-operator-vs-back-office)
-2. [Spesifikasi Lengkap Style & Standar UI Web ERP (Design System Contract)](#2-spesifikasi-lengkap-style--standar-ui-web-erp-design-system-contract)
-   - [2.1 Filosofi Visual & Aturan Proporsi 60-30-10](#21-filosofi-visual--aturan-proporsi-60-30-10)
-   - [2.2 Token Warna Resmi: Light Mode (Default) & Dark Mode (Stealth Gunmetal)](#22-token-warna-resmi-light-mode-default--dark-mode-stealth-gunmetal)
-   - [2.3 Sistem Tipografi, Skala Huruf Mobile & Disiplin `tabular-nums`](#23-sistem-tipografi-skala-huruf-mobile--disiplin-tabular-nums)
-   - [2.4 Geometri Viewport Ponsel (390 × 844 px), Radius, Spacing & Hairline Border](#24-geometri-viewport-ponsel-390--844-px-radius-spacing--hairline-border)
-   - [2.5 Spesifikasi Anatomi Komponen Standar UI ERP (Component Recipes)](#25-spesifikasi-anatomi-komponen-standar-ui-erp-component-recipes)
-   - [2.6 Blueprint Tata Letak Layar per Modul (ASCII Wireframe & Class Contract)](#26-blueprint-tata-letak-layar-per-modul-ascii-wireframe--class-contract)
-   - [2.7 Daftar Pantangan Visual (Anti-Pattern Rules)](#27-daftar-pantangan-visual-anti-pattern-rules)
-3. [Arsitektur Integrasi Database PostgreSQL & Sinkronisasi Data 2-Arah](#3-arsitektur-integrasi-database-postgresql--sinkronisasi-data-2-arah)
-4. [Kontrak API, Endpoint & Payload Pertukaran Data (Mobile $\longleftrightarrow$ Web ERP)](#4-kontrak-api-endpoint--payload-pertukaran-data-mobile--web-erp)
-5. [Batasan & Aturan Ketat Pembuatan Aplikasi (FE & BE Constraints)](#5-batasan--aturan-ketat-pembuatan-aplikasi-fe--be-constraints)
-6. [Peta Referensi File di Dalam Direktori `pwa/`](#6-peta-referensi-file-di-dalam-direktori-pwa)
-7. [Panduan Langkah Demi Langkah Build Android & iOS](#7-panduan-langkah-demi-langkah-build-android--ios)
+> **Status Dokumen**: Final Blueprint & Reference Package (`v1.0`)
+> **Target Platform**: Native iOS (**Swift / SwiftUI**) & Native Android (**Kotlin / Jetpack Compose**)
+> **Pola Integrasi Backend**: Konsumsi Langsung **Express ERP REST API + Socket.IO** dengan **PostgreSQL sebagai Single Source of Truth (SSOT)**
+> **Prioritas Prototipe (Fase 1)**: **HR Portal (HRIS & ESS)** dan **Messages (Chat, Forum & Otorisasi Dokumen ERP)** berjalan sempurna 100% *end-to-end* sebelum ekspansi ke **Fase 2 (Shop Floor 2-Way & Back-Office ERP Hub)**.
+> **Isolasi Direktori**: Seluruh isi direktori `pwa/` ini adalah paket referensi mandiri (*read-only reference blueprint*) dan **tidak terhubung, tidak di-import, serta tidak dikompilasi** oleh proyek Web ERP utama (`tsconfig.json` & `vite.config.ts` mengecualikan `pwa/`).
 
 ---
 
-## 1. Cakupan Pengguna & Fitur Aplikasi Mobile (Operator vs Back-Office)
+## Daftar Isi
 
-Aplikasi mobile dirancang untuk digunakan oleh **seluruh karyawan perusahaan** (baik Operator Lantai Produksi maupun Staf Back-Office/Manajemen) dengan pembagian ruang lingkup (*scope*) otomatis berdasarkan peran pada saat login:
-
-### A. Seluruh Karyawan & Operator Produksi (`app_scope: "OPERATOR_MOBILE"`)
-Mendapatkan navigasi **4 Tab Utama**:
-1. **Shop Floor 2-Arah (`/shopfloor`)**:
-   - Melihat stasiun kerja & mesin aktif yang ditugaskan (`production_manpower` & `items`).
-   - Menjalankan eksekusi *Work Order Ticket (WOT)*: **Start, Pause, Resume, Complete** beserta input kuantitas *Good* & *Scrap*.
-   - **Komunikasi 2-Arah Supervisor $\longleftrightarrow$ Operator**: Menerima instruksi langsung dari Supervisor pada proyek/WOT terkait dan mengirim balasan cepat (*Floor Note*) secara *real-time*.
-   - **Quick Floor Actions**: Meminta pasokan material/tooling (*Floor Request*), melaporkan kerusakan mesin darurat (*NDP Breakdown*), dan menyerahkan laporan pergantian shift (*Shift Handover*).
-2. **Messages & Forum (`/forum`)**:
-   - Percakapan instan (Direct Chat & Grup Proyek/Departemen).
-   - **Pratinjau Dokumen Teknis In-App**: Membuka lampiran dokumen ERP (SOP, BOP, SPK, Gambar Teknik PDF) melalui *In-App Modal Preview* tanpa keluar dari layar percakapan.
-3. **HR Portal / ESS (`/ess`)**:
-   - **Absensi Live Clock-In / Clock-Out**: Pencatatan kehadiran dengan jam digital server Jakarta dan verifikasi titik koordinat lokasi pabrik (*GPS Geofence*).
-   - **Manajemen Cuti & Izin**: Melihat sisa kuota cuti tahunan dan mengajukan permohonan cuti/izin.
-   - **Slip Gaji (Payslip PDF), KPI & Lembur**: Mengunduh rincian slip gaji bulanan, memantau nilai performa KPI pribadi, serta jadwal lembur yang disetujui.
-4. **Profile**:
-   - Identitas digital karyawan, informasi shift/stasiun kerja, status sinkronisasi offline, dan *logout*.
-
-### B. Staf Back-Office, Supervisor & Manajemen (`app_scope: "BACKOFFICE_MOBILE"`)
-Mendapatkan seluruh fitur di atas (**Shop Floor 2-Way**, **Messages**, **ESS**) **DITAMBAH** kapabilitas penuh **ERP & HRIS Mobile (`MobileMonitorHub`)** dalam tata letak responsif mobile bebas tabel horizontal:
-1. **Home Executive Overview (`/erp`)**:
-   - Kartu sapaan peran (`bg-stone-900`), *Daily 6-Digit Auth Key (PIN)*, serta ringkasan KPI *real-time* 2×2 (*Pending Approvals, Active Projects, Low Stock Alerts, Revenue*).
-2. **Role Action Hub (`/erp?tab=hub`) — 8 Kategori Penuh**:
-   - **`APPROVALS`**: Antrean persetujuan dokumen `PR`, `PO`, `Quotation`, `Delivery`, `SPK`, dan `Cuti HR` menggunakan *Bottom Sheet Inspector* & verifikasi **6-Digit Daily Auth PIN**.
-   - **`PROJECTS`**: Monitor proyek aktif, status SPK/NTP, dan tenggat waktu produksi.
-   - **`INVENTORY`**: Pencarian stok gudang (*SKU Lookup*), bahan baku, dan barang jadi.
-   - **`PROCUREMENT`**: Monitor antrean *Purchase Request (PR)* dan *Purchase Order (PO)*.
-   - **`QUOTATIONS`**: Monitor *sales pipeline* dan penawaran harga pelanggan.
-   - **`DELIVERIES`**: Monitor surat jalan (*Delivery Order*) dan pengiriman keluar.
-   - **`CONTACTS`**: Direktori pelanggan (*Customers*) dan pemasok (*Vendors*) dengan tombol *1-Tap Call (`tel:`)* & *Email (`mailto:`)*.
-   - **`FINANCE`**: Ringkasan pendapatan (*Revenue*), HPP/pengeluaran (*COGS/Expenses*), dan estimasi margin bersih yang tersinkronisasi dengan *General Ledger*.
+1. [Visi Produk, Persona Pengguna & Ruang Lingkup Akses](#1-visi-produk-persona-pengguna--ruang-lingkup-akses)
+2. [Peta Struktur Direktori Referensi (`pwa/`)](#2-peta-struktur-direktori-referensi-pwa)
+3. [Standar Desain Visual & UI Parity (Web ERP ke SwiftUI & Jetpack Compose)](#3-standar-desain-visual--ui-parity-web-erp-ke-swiftui--jetpack-compose)
+4. [Arsitektur Backend, PostgreSQL SSOT & Keamanan Autentikasi](#4-arsitektur-backend-postgresql-ssot--keamanan-autentikasi)
+5. [Spesifikasi Fungsional & Kontrak API — Fase 1 (Prototipe: HR Portal/ESS & Message)](#5-spesifikasi-fungsional--kontrak-api--fase-1-prototipe-hr-portaless--message)
+6. [Spesifikasi Fungsional & Kontrak API — Fase 2 (Shop Floor 2-Way & Back-Office ERP Hub)](#6-spesifikasi-fungsional--kontrak-api--fase-2-shop-floor-2-way--back-office-erp-hub)
+7. [Arsitektur Real-Time (Socket.IO) & Dukungan Offline-First (SwiftData / Room)](#7-arsitektur-real-time-socketio--dukungan-offline-first-swiftdata--room)
+8. [Batasan Mutlak, Aturan Bisnis & Guardrails Pengembangan](#8-batasan-mutlak-aturan-bisnis--guardrails-pengembangan)
+9. [Checklist Penerimaan Prototipe (Definition of Done)](#9-checklist-penerimaan-prototipe-definition-of-done)
 
 ---
 
-## 2. Spesifikasi Lengkap Style & Standar UI Web ERP (Design System Contract)
+## 1. Visi Produk, Persona Pengguna & Ruang Lingkup Akses
 
-Bagian ini adalah **acuan tunggal (*Single Source of Truth*)** yang menyalin secara presisi seluruh aturan CSS dan komponen dari Web ERP (`src/index.css`, `src/components/mobile/MobileAppShell.tsx`, `src/components/mobile/hub/*`, dan `src/components/ui/*`). Baik aplikasi dibangun menggunakan **Capacitor/React**, **React Native**, **Flutter**, maupun **Kotlin/Swift Native**, wajib menerapkan token dan geometri di bawah ini secara persis.
+Aplikasi mobile native **Paving Joss ERP** dirancang untuk digunakan oleh **seluruh karyawan perusahaan**—mulai dari operator mesin di lantai pabrik hingga staf back-office, supervisor, manajer departemen, dan jajaran direksi (BOD/FC)—dengan satu basis data terpadu (**PostgreSQL SSOT + SQLite WAL Cache**) yang identik dengan Web ERP.
 
-### 2.1 Filosofi Visual & Aturan Proporsi 60-30-10
-1. **Warm Stone Industrial Minimalist (Default Light Mode)**:
-   - Web ERP Paving Joss menggunakan pendekatan **Warm Stone Neutral** (bukan *cool blue-gray* generik dan bukan *pure white* yang menyilaukan mata).
-   - **60% Canvas Background**: `#FAFAF9` (`stone-50`) sebagai latar belakang kanvas utama agar mata nyaman saat digunakan di lantai pabrik maupun ruang kantor.
-   - **30% Surface Container**: `#FFFFFF` (`bg-white`) dengan garis tepi sangat halus `1px solid #E7E5E4` (`border-stone-200/80`) dan bayangan mikro `0 1px 2px 0 rgba(0, 0, 0, 0.02)` (`shadow-2xs`).
-   - **10% High-Contrast Anchor & Semantic Accents**:
-     - **Signature Dark Hero Card**: `#1C1917` (`bg-stone-900 text-white`) khusus untuk **1 kartu fokus utama di bagian paling atas layar** (Executive Greeting Card, Active WOT Card, atau Live Attendance Clock Card).
-     - **Primary Action / Authorize**: `#059669` (`bg-emerald-600 text-white`) atau `#1C1917` (`bg-stone-900 text-white`).
-     - **Brand Identity**: Monogram resmi **PJ** (`pwa/assets/logo.png`) dengan aksen Crimson (`#B02524`) dan Gold (`#FFD700` / `#F59E0B`).
-2. **Clean Look & Tidak Over-Informatif**:
-   - Satu kartu daftar (*list item card*) maksimal menampilkan **4 titik data**: (1) Kode/Badge Dokumen, (2) Judul Utama, (3) Sub-teks Pelanggan/Pemohon, dan (4) Nilai/Status di sisi kanan.
-   - Seluruh detail panjang (baris item, catatan revisi, riwayat otorisasi, form input PIN) **wajib disembunyikan di dalam Bottom Sheet Inspector** (`MobileInspectorSheet.tsx`) yang baru muncul ketika kartu diketuk.
+### 1.1 Matriks Persona & Hak Akses (`app_scope`)
+
+Saat pengguna login melalui `POST /api/mobile/auth/login`, backend secara otomatis menentukan `app_scope` dan `allowed_modules` berdasarkan peran (`role`) dan jenjang (`level`):
+
+| Persona | Role di Database (`users.role`) | Nilai `app_scope` | Modul yang Diizinkan (`allowed_modules`) | Akses Web ERP Desktop | Navigasi Bawah Mobile (Bottom Bar) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Operator Lantai Produksi** | `OPERATOR` | `OPERATOR_MOBILE` | `MESSAGE`, `ESS`, `SHOPFLOOR_2WAY` | **Diblokir** (`403 OPERATOR_MOBILE_ONLY`) | 1. **Shop Floor** (`/shopfloor`)<br>2. **Messages** (`/forum`)<br>3. **HR Portal / ESS** (`/ess`)<br>4. **System Info / Profil** |
+| **Staf, Supervisor & Manajer Back-Office** | `SALES`, `PURCHASING`, `WAREHOUSE`, `PRODUCTION`, `PPIC`, `QA_QC`, `ENGINEERING`, `FINANCE`, `HR` | `BACKOFFICE_MOBILE` | `MESSAGE`, `ESS`, `SHOPFLOOR_2WAY`, `ERP_MOBILE`, `HRIS_MOBILE` | **Diizinkan** (Sesuai RBAC/PBAC) | 1. **Home** (`/erp`)<br>2. **Role Action Hub** (`/erp?tab=hub`)<br>3. **Messages** (`/forum`)<br>4. **HR Portal** (`/ess` & `/hr`) |
+| **Eksekutif / Full Control** | `FC`, `BOD`, `DIRECTOR`, `ADMIN`, `SUPERADMIN`, `GOD_MODE` | `BACKOFFICE_MOBILE` | Seluruh modul + Otorisasi Penuh Lintas Departemen | **Diizinkan Penuh** | 1. **Home** (`/erp`)<br>2. **Exec Hub** (`/erp?tab=hub`)<br>3. **Messages** (`/forum`)<br>4. **HR Portal** (`/ess` & `/hr`) |
 
 ---
 
-### 2.2 Token Warna Resmi: Light Mode (Default) & Dark Mode (Stealth Gunmetal)
+## 2. Peta Struktur Direktori Referensi (`pwa/`)
 
-Salin nilai variabel warna berikut ke dalam konfigurasi tema aplikasi mobile (`tailwind.config.js`, `index.css`, `colors.xml` Android, atau `Assets.xcassets` iOS):
+Seluruh file sumber Frontend, Backend, Database, Desain UI, dan Starter Native telah disalin dan dikelompokkan berdasarkan fase pengerjaan di dalam direktori `pwa/`:
 
-#### A. Tabel Token Warna Utama (ERP Warm Stone Palette)
-| Peran Elemen UI | CSS Variable / Token | Hex (Light Mode - Default) | Hex (Dark Mode `.erp-dark`) | Kelas Tailwind Standar ERP |
+| Sub-Direktori di `pwa/` | Isi File Referensi Utama | Tujuan Penggunaan bagi Developer iOS & Android |
+| :--- | :--- | :--- |
+| `01-foundation-ui-and-auth/` | `styles/index.css`, `ui-primitives/*`, `mobile-shell/MobileAppShell.tsx`, `DesktopModeNotice.tsx`, `OfflineIndicator.tsx`, `auth-and-pbac/{auth.ts, pbac.ts, rbac.ts}`, `contexts/*` | Acuan sistem desain (token warna, tipografi, komponen kartu/modal/badge), kerangka navigasi mobile, aturan PBAC per-role, dan pembangkit **Daily 6-Digit Auth Key (PIN)**. |
+| `02-phase1-prototype-hr-ess-message/` | **HR Portal & ESS**: `HrPortal.tsx`, `SelfService.tsx`, `IsometricHero.tsx`, `hrisTypes.ts`, `ess/{LeaveRequestModal, PayslipModal}.tsx`, `tabs/{Attendance, Leave, Payroll, Kpi, Directory, Handover, ...}.tsx`, `modals/{RequisitionModal, PrqViewModal, PrqConfirmModal}.tsx`, `engine/{hrisEngine, hrDocuments, closingEngine}.ts`<br>**Message & Forum**: `Forum.tsx`, `forumTypes.ts`, `ForumSidebar.tsx`, `ForumChatHeader.tsx`, `ForumMessageStream.tsx`, `ForumComposer.tsx`, `ForumModals.tsx`, serta modal pratinjau dokumen (`NtpPreviewModal`, `QuotationPreviewModal`, `PoDocumentModal`, `PrDetailsModal`, `InvoicePreviewModal`). | **Acuan Utama Fase 1 (Prototipe)**: Seluruh logika layar, validasi form, kalkulasi jam/gaji/cuti, percakapan chat real-time, terusan pesan multi-penerima, penyematan pesan, dan kartu otorisasi dokumen ERP di dalam chat. |
+| `03-phase2-shopfloor-and-backoffice/` | **Shop Floor Terminal**: `FloorTerminal.tsx`, `ShopFloor.tsx`, `SetupMaster.tsx`, `wotCycle.ts`, `bopGraph.ts`<br>**Back-Office Hub**: `MobileMonitorHub.tsx`, `monitorTypes.ts`, `hub/{MobileHomeDashboard, MobileRoleActionHub, MobileInspectorSheet}.tsx`, `Overview.tsx` | **Acuan Fase 2 (Lanjutan)**: Terminal 2-arah Operator <-> Supervisor (WOT, BOP, Material Request, NDP Downtime, Shift Handover) dan Mobile Monitor Hub 8 kategori untuk Back-Office. |
+| `04-backend-api-and-realtime/` | **Phase 1 Routes**: `mobile.ts`, `auth.ts`, `hr.ts`, `attendance.ts`, `payroll.ts`, `chat.ts`, `forum.ts`, `users.ts`, `upload.ts`<br>**Phase 2 Routes**: `dashboard.ts`, `projects.ts`, `production.ts`, `inventory.ts`, `purchasing.ts`, `sales.ts`, `finance.ts`, `workflow.ts`, `requests.ts`, `system.ts`, `closing.ts`, `integrity.ts`<br>**Middleware & Services**: `server.ts`, `serverBootstrap.ts`, `outboxService.ts`, `workflowEngine.ts`, `financialEngine.ts`, `idempotency.ts` | Kontrak kebenaran (*ground truth*) untuk setiap endpoint REST API, query database, validasi input, aturan otorisasi PIN 6-digit, serta event **Socket.IO**. |
+| `05-database-postgresql-and-offline/` | **Database & PostgreSQL SSOT**: `database.ts`, `postgresClient.ts`, `postgresBridge.ts`, `pgMigrator.ts`, `migrator.ts`, `migrations/01_core.ts` s/d `06_hris.ts`<br>**Client Offline & Sync**: `localDb.ts`, `api.ts`, `smartCache.ts`, `useSyncEngine.ts`, `useOnlineStatus.ts`, `useAutoSave.ts` | Definisi tabel relasional lengkap, mekanisme replikasi dua arah **SQLite WAL <-> Supabase PostgreSQL (`public.erp_sync_records`)**, serta pola antrean offline dan *Stale-While-Revalidate* cache. |
+| `06-native-starter-specs/` | `ios-swift/PavingJossNativeCore.swift`<br>`android-kotlin/PavingJossNativeCore.kt` | Kode starter native siap pakai dalam **Swift** dan **Kotlin** yang mengimplementasikan token warna, algoritma **Daily 6-Digit Auth Key** identik bit-per-bit, model DTO Fase 1, klien HTTP ber-idempotency, dan skema antrean offline. |
+
+---
+
+## 3. Standar Desain Visual & UI Parity (Web ERP ke SwiftUI & Jetpack Compose)
+
+Aplikasi mobile Android dan iOS **wajib memiliki tampilan, nuansa, dan tata letak yang selaras 100% dengan Web ERP** (acuan utama: `01-foundation-ui-and-auth/styles/index.css` dan `01-foundation-ui-and-auth/mobile-shell/MobileAppShell.tsx`).
+
+### 3.1 Sistem Tema Visual Ganda (*Dual Visual Language*)
+
+Web ERP menerapkan dua atmosfer visual yang berbeda berdasarkan konteks modul. Aplikasi mobile native wajib mengganti tema permukaan secara dinamis saat pengguna berpindah tab:
+
+1. **Tema 1 — Warm Monochrome Industrial (Digunakan pada: Shell Utama, Messages/Forum, Shop Floor, & Back-Office ERP Hub)**
+   - **Karakter**: Utilitarian, presisi tinggi, bersih, menggunakan gradasi *Warm Stone* dengan permukaan kartu putih tegas (`#FFFFFF`), garis tepi tipis `1px` (`#E7E5E4`), dan tombol utama hitam-arang (`#1C1917`).
+   - **Aturan Warna Merah**: Warna merah kop surat (`#B02524` / `--color-letterhead-red`) dan merah semantik (`#EF4444`) **dilarang** digunakan sebagai warna tombol aksi primer umum; warna merah hanya boleh digunakan untuk identitas resmi Kop Surat dokumen dan aksi destruktif/darurat (seperti *Reject*, *Delete*, atau *Machine Breakdown NDP*).
+2. **Tema 2 — Airy Frosted Glass `.hris-theme` (Digunakan khusus pada: HR Portal & ESS)**
+   - **Karakter**: Terinspirasi *Apple visionOS / macOS & Amie*—menggunakan permukaan latar *Clean Alabaster* (`#F7F7F9`), kartu putih dengan bayangan lembut berlapis (`rgba(18, 19, 24, 0.06)`), panel kaca buram (*frosted glass* `backdrop-blur`), serta aksen sekunder **Soft Coral-Terracotta** (`#F25730`) dan **Fresh Mint-Emerald** (`#10B981`).
+
+### 3.2 Tabel Pemetaan Token Warna (CSS -> SwiftUI -> Jetpack Compose)
+
+| Nama Token | Nilai Hex | Penggunaan di UI | SwiftUI (`PavingJossTheme`) | Jetpack Compose (`PavingJossTokens`) |
 | :--- | :--- | :--- | :--- | :--- |
-| **App Canvas (Latar Layar)** | `--color-stone-50` | `#FAFAF9` | `#0D0F12` | `bg-stone-50` |
-| **Sub-Panel / Track Tab / Pill** | `--color-stone-100` | `#F5F5F4` | `#181C22` | `bg-stone-100` |
-| **Primary Card / Modal / Sheet** | `bg-white` | `#FFFFFF` | `#13161B` | `bg-white` |
-| **Card Hairline Border** | `--color-stone-200` | `#E7E5E4` | `#242934` | `border-stone-200/80` |
-| **Input & Control Border** | `--color-stone-300` | `#D6D3D1` | `#454D5E` | `border-stone-300` |
-| **Signature Hero Card & Dark CTA** | `--color-stone-900` | `#1C1917` | `#242934` *(Tidak pernah di-invert jadi putih)* | `bg-stone-900 text-white` |
-| **Primary Text (Judul & Angka)** | `--color-stone-900` | `#1C1917` | `#EAEDF2` | `text-stone-900` |
-| **Secondary Text (Sub-judul)** | `--color-stone-700` | `#44403C` | `#C6CDD9` | `text-stone-700` |
-| **Muted Text / Label Metadata** | `--color-stone-500` | `#78716C` | `#949EB0` | `text-stone-500` |
-| **Placeholder & Chevron Icon** | `--color-stone-400` | `#A8A29E` | `#7C8596` | `text-stone-400` |
-| **Official Brand Gold (Key/PIN)** | `--color-paving-yellow` | `#FFD700` | `#FFD700` | `text-[#FFD700]` |
-| **Official Letterhead Crimson** | `--color-letterhead-red` | `#B02524` | `#C96572` | `text-[#b02524]` |
+| `--color-stone-50` | `#FAFAF9` | Latar belakang kanvas utama ERP & Messages | `Stone.s50` | `Stone.S50` |
+| `--color-stone-100` | `#F5F5F4` | Latar tombol sekunder, chip filter, header tabel | `Stone.s100` | `Stone.S100` |
+| `--color-stone-200` | `#E7E5E4` | Garis tepi kartu (`1pt/1dp`), pembagi daftar | `Stone.s200` | `Stone.S200` |
+| `--color-stone-500` | `#78716C` | Teks sekunder, label metadata, waktu pesan | `Stone.s500` | `Stone.S500` |
+| `--color-stone-700` | `#44403C` | Teks isi utama & ikon navigasi aktif | `Stone.s700` | `Stone.S700` |
+| `--color-stone-900` / `--color-brand` | `#1C1917` | Tombol aksi primer, badge jumlah belum dibaca, kartu profil | `Stone.s900` / `Brand.primary` | `Stone.S900` / `Brand.Primary` |
+| `--color-paving-yellow` | `#FFD700` | Aksen ikon kunci **Daily 6-Digit Auth Key** di atas latar `#1C1917` | `Brand.pavingYellow` | `Brand.PavingYellow` |
+| `--color-letterhead-red` | `#B02524` | Garis kop surat dokumen resmi & status kritis | `Brand.letterheadRed` | `Brand.LetterheadRed` |
+| `.hris-theme --color-stone-50` | `#F7F7F9` | Latar belakang utama layar **HR Portal / ESS** | `HrisAlabaster.s50` | `HrisAlabaster.S50` |
+| `.hris-theme --color-stone-200` | `#E2E3EA` | Garis tepi kartu pada layar **HR Portal / ESS** | `HrisAlabaster.s200` | `HrisAlabaster.S200` |
+| `.hris-theme --color-stone-900` | `#121318` | Teks judul & angka utama pada layar **HR Portal / ESS** | `HrisAlabaster.s900` | `HrisAlabaster.S900` |
+| `.hris-theme --color-violet-500` | `#F25730` | Aksen Coral-Terracotta pada highlight HRIS | `HrisAlabaster.coral500` | `HrisAlabaster.Coral500` |
+| `--color-emerald-500` | `#10B981` | Status *Approved*, *Passed*, *Clocked-In*, *Paid*, *Online* | `Brand.emerald500` | `Brand.Emerald500` |
+| `--color-amber-500` | `#F59E0B` | Status *Pending*, *Waiting Approval*, *Draft*, *Paused* | `Brand.amber500` | `Brand.Amber500` |
+| `--color-red-500` | `#EF4444` | Status *Rejected*, *Overdue*, *Urgent*, *Machine Down* | `Brand.red500` | `Brand.Red500` |
+| `--color-blue-500` | `#3B82F6` | Status *In Progress*, *Issued*, *Information* | `Brand.blue500` | `Brand.Blue500` |
 
-#### B. Tabel Token Warna Semantik Status (Badges, Buttons & Alerts)
-| Status Operasional | Background (Light) | Border (Light) | Text / Icon (Light) | Kelas Tailwind Standar ERP |
-| :--- | :--- | :--- | :--- | :--- |
-| **Success / Approved / Running / Good** | `#ECFDF5` (`emerald-50`) | `#A7F3D0` (`emerald-200/80`) | `#047857` (`emerald-700`) | `bg-emerald-50 text-emerald-700 border-emerald-200/80` |
-| **Primary Action Button (Approve/Save)** | `#059669` (`emerald-600`) | `#059669` (`emerald-600`) | `#FFFFFF` (`white`) | `bg-emerald-600 hover:bg-emerald-700 text-white` |
-| **Warning / Pending / Paused / Revise** | `#FFFBEB` (`amber-50`) | `#FDE68A` (`amber-200/80`) | `#92400E` (`amber-800`) | `bg-amber-50 text-amber-800 border-amber-200/80` |
-| **Danger / Breakdown / Rejected / Scrap** | `#FFF1F2` (`rose-50`) | `#FECDD3` (`rose-200/80`) | `#BE123C` (`rose-700`) | `bg-rose-50 text-rose-700 border-rose-200/80` |
-| **Info / Shipped / In-Transit** | `#F0F9FF` (`sky-50`) | `#BAE6FD` (`sky-200/80`) | `#0369A1` (`sky-700`) | `bg-sky-50 text-sky-700 border-sky-200/80` |
-| **Neutral / Draft / Closed** | `#F5F5F4` (`stone-100`) | `#E7E5E4` (`stone-200/90`) | `#44403C` (`stone-700`) | `bg-stone-100 text-stone-700 border-stone-200/90` |
+### 3.3 Tipografi & Aturan Angka Tabular
 
-#### C. Sub-Tema Khusus Modul HRIS / ESS (`.hris-theme`)
-Ketika pengguna membuka tab **HR Portal / ESS (`/ess`)**, Web ERP memiliki nuansa *Clean Alabaster* yang sedikit lebih sejuk namun tetap satu keluarga desain:
-- `--color-stone-50`: `#F7F7F9` (Alabaster Canvas)
-- `--color-stone-200`: `#E2E3EA` (Specular Hairline Border)
-- `--color-stone-900`: `#121318` (Crisp Slate-Charcoal Text)
-- Kartu menggunakan `box-shadow: 0 12px 32px -10px rgba(18, 19, 24, 0.06), 0 2px 6px -1px rgba(18, 19, 24, 0.03)`.
+1. **Keluarga Huruf Wajib**:
+   - **Sans-Serif Utama (`--font-sans`)**: **Plus Jakarta Sans** (fallback ke *SF Pro* di iOS atau *Inter/Roboto* hanya jika font belum termuat; namun bundel aplikasi native **wajib menyertakan file `.ttf` Plus Jakarta Sans** dan **JetBrains Mono**).
+   - **Monospace Teknis (`--font-mono`)**: **JetBrains Mono** — wajib digunakan untuk:
+     - Nomor dokumen (`PR/...`, `PO/...`, `QUO/...`, `NTP/...`, `WOT-...`, `ATT-...`)
+     - Nominal uang Rupiah (`Rp 12.500.000`)
+     - Jam digital berjalan (`08:14:22 WIB`)
+     - **Daily 6-Digit Auth Key (PIN)** (`K7M9P2`)
+     - Badge role & level (`OPERATOR · STAFF`, `PURCHASING · MANAGER`)
+   - **Display Serif (`--font-display`)**: **Fraunces** — hanya digunakan pada tajuk pratinjau dokumen resmi.
+2. **Disiplin `tabular-nums`**:
+   - Di SwiftUI: selalu terapkan `.monospacedDigit()` pada setiap `Text` yang menampilkan jam, hitungan mundur, persentase, kuota cuti, kuantitas barang, dan nominal Rupiah.
+   - Di Jetpack Compose: selalu terapkan `fontFeatureSettings = "tnum"` pada `TextStyle` angka agar tata letak tidak bergeser saat angka berubah secara *real-time*.
+
+### 3.4 Aturan Tata Letak & Ergonomi Mobile Native
+
+1. **Top App Bar Kompak (`56pt / 56dp`)**:
+   - Latar `white/95` dengan blur halus (`ultraThinMaterial` di iOS / `Surface` transparan di Android) dan border bawah `1px` (`#E7E5E4`).
+   - Sisi kiri: Tombol kembali (`36x36` rounded `12dp`) atau logo Paving Joss, diikuti judul layar (`14sp Bold`) dan subjudul monospace (`10sp SemiBold`, misal `PRODUCTION · SUPERVISOR`).
+   - Sisi kanan: Tombol **System Info & Key** (membuka *Bottom Sheet* profil + PIN Harian 6-digit) dan tombol **Loncing Notifikasi** dengan lencana angka merah/hitam.
+2. **Bottom Navigation Bar (`64pt / 64dp`, 4 Tab Tetap)**:
+   - Setiap item memiliki target sentuh minimal `48pt/48dp`, indikator aktif berbentuk kapsul lembut (`bg-stone-100` dengan ikon `16dp` dan label `10sp Bold`), serta lencana *unread count* pada tab **Messages**.
+3. **Anti Horizontal-Scroll Table Rule**:
+   - Di layar mobile, **dilarang menampilkan tabel lebar yang harus digeser ke kanan-kiri**. Seluruh daftar absensi, pengajuan cuti, slip gaji, antrean PR/PO, dan Work Order Ticket wajib dirender sebagai **Vertical Stack Card** (`rounded-2xl` / `16dp`, padding `14dp–16dp`, border `1dp #E7E5E4`) dengan struktur baris *Header (Kode + Badge Status)*, *Isi Utama (Judul + Subjudul)*, dan *Footer Metrik/Tombol Aksi*.
+4. **Zero-Pill Discipline untuk Komponen Input & Tombol**:
+   - Gunakan sudut `12dp` (`rounded-xl`) atau `16dp` (`rounded-2xl`) untuk tombol aksi, input teks, dan kartu. Hindari bentuk *full pill* (`999dp`) pada tombol formulir utama agar tetap konsisten dengan karakter industrial ERP.
 
 ---
 
-### 2.3 Sistem Tipografi, Skala Huruf Mobile & Disiplin `tabular-nums`
+## 4. Arsitektur Backend, PostgreSQL SSOT & Keamanan Autentikasi
 
-Web ERP menetapkan ukuran font dasar (`root html font-size`) sebesar **`14px` pada layar mobile (`max-width: 639px`)** dan **`15px` pada layar desktop** agar kepadatan informasi (*density*) terlihat rapi, proporsional, dan tidak kebesaran di layar ponsel.
+### 4.1 Arsitektur Database Hibrida (PostgreSQL SSOT + SQLite WAL)
 
-#### A. Pasangan Font Resmi (`@theme` di `src/index.css`)
-```css
---font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
---font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+Aplikasi mobile **tidak boleh** membuat database terpisah di cloud lain dan **tidak boleh** mengakses koneksi PostgreSQL secara langsung dari perangkat pengguna. Seluruh aliran data mengikuti arsitektur 2-Engine yang sudah berjalan di server Express ERP (lihat referensi: `05-database-postgresql-and-offline/postgresql-ssot-and-migrations/`):
+
+```
+[Aplikasi iOS (Swift)] ──┐
+                         ├──► [Express ERP API + Socket.IO] ◄──► [SQLite WAL Primary (erp.db + hr_attendance.db)]
+[Aplikasi Android (KT)] ─┘                 │                                       ▲
+                                           ▼                                       │
+                                  [Outbox & Delta Sync Worker] ◄───────────────────┘
+                                           │
+                                           ▼
+                        [Supabase Cloud PostgreSQL SSOT (public.erp_sync_records)]
 ```
 
-#### B. Hirarki Ukuran Huruf Mobile (Proporsional 390 × 844 px)
-| Elemen Teks | Kelas Tailwind ERP | Ukuran Aktual (Mobile) | Font Family & Weight | Aturan Tambahan |
-| :--- | :--- | :--- | :--- | :--- |
-| **Judul Top App Bar** | `text-sm font-bold text-stone-900 leading-tight` | `12.25px – 13px` | `Plus Jakarta Sans` (700) | `truncate` (maksimal 1 baris) |
-| **Sub-label Role Top Bar** | `text-[10px] font-mono font-semibold text-stone-500` | `10px` | `JetBrains Mono` (600) | Format: `ROLE · LEVEL` (contoh: `PRODUCTION · STAFF`) |
-| **Judul Hero Card (`h1`)** | `text-base font-bold tracking-tight text-white` | `14px – 15px` | `Plus Jakarta Sans` (700) | Maksimal 1 baris (`truncate`) |
-| **Angka KPI Utama (2×2 Grid)** | `text-base font-bold font-mono tabular-nums text-stone-900` | `14px – 15px` | `JetBrains Mono` (700) | Wajib `tabular-nums` |
-| **Judul Seksi (`h2`)** | `text-xs font-bold text-stone-900 tracking-tight` | `11px – 12px` | `Plus Jakarta Sans` (700) | Didampingi tombol `View All` (`text-xs font-bold`) |
-| **Judul Item Kartu** | `text-xs font-bold text-stone-900 truncate` | `11px – 12px` | `Plus Jakarta Sans` (700) | Maksimal 1 baris |
-| **Sub-teks / Metadata Kartu** | `text-[11px] text-stone-500` | `11px` | `Plus Jakarta Sans` (500) | Dipisahkan dengan titik tengah `·` |
-| **Badge / Kode Dokumen** | `text-[10px] font-mono font-bold uppercase tracking-wider` | `10px` | `JetBrains Mono` (700) | Contoh: `PR`, `PO`, `QTN`, `DN`, `#WO-2310` |
-| **Label Bottom Navigation** | `text-[10px] tracking-tight leading-none` | `10px` | `Plus Jakarta Sans` (500/700) | Aktif: `font-bold text-stone-900`, Inaktif: `text-stone-400` |
+- **Saat Server Startup**: `rehydrateSqliteFromSupabase()` memulihkan seluruh rekaman dari tabel PostgreSQL `public.erp_sync_records` ke dalam cache SQLite WAL lokal.
+- **Saat Mobile Melakukan Mutasi (POST/PUT/DELETE)**:
+  1. Endpoint Express menulis transaksi secara atomik ke SQLite WAL (`<1ms` latency).
+  2. Endpoint memicu `syncSingleTableToPostgres("<nama_tabel>")` atau memasukkan event ke `outboxService` untuk direplikasi ke PostgreSQL (`public.erp_sync_records`).
+  3. Endpoint memancarkan event **Socket.IO** (`chat:message`, `workflow:updated`, atau `production:updated`) sehingga Web ERP dan perangkat mobile lain langsung terbarui.
+- **Endpoint Verifikasi Paritas Database**:
+  - `GET /api/mobile/bootstrap`: Mengembalikan profil sesi aktif sekaligus blok `database_identity` (jumlah baris live, status jurnal WAL, timestamp sinkronisasi terakhir PostgreSQL).
+  - `GET /api/mobile/db-status`: Mengembalikan telemetri lengkap koneksi PostgreSQL (`EXTERNAL_PG` / `SUPABASE_REST`), daftar seluruh tabel yang dibagi bersama Web ERP, dan status replikasi.
+  - `POST /api/mobile/postgres/sync`: Memicu sinkronisasi paksa seluruh tabel ke PostgreSQL SSOT.
 
-#### C. Hukum Wajib `font-mono tabular-nums`
-Setiap elemen berikut **DILARANG** dirender menggunakan font proporsional biasa dan **WAJIB** memakai `font-mono tabular-nums`:
-1. Nomor Dokumen & Tiket: `PR #104`, `PO-2026-009`, `QTN-042`, `#WO-2026-01`, `NTP-088`.
-2. Nilai Mata Uang: `Rp 485.000.000` (gunakan helper `formatIDR()`).
-3. Kuantitas & Stok: `372 / 500 pcs`, `1.250 Kg`, `14 Items`.
-4. Waktu & Jam Live: `08:15:20`, `2026-11-13`.
-5. 6-Digit Daily Authorization PIN: `A9F42C` (`tracking-[0.25em]`).
+### 4.2 Protokol Autentikasi JWT & Header Wajib
 
----
-
-### 2.4 Geometri Viewport Ponsel (390 × 844 px), Radius, Spacing & Hairline Border
-
-Agar tampilan aplikasi mobile **proporsional dan pas dengan ukuran layar ponsel** (tidak terlalu besar/raksasa), ikuti aturan dimensi fisik berikut:
-
-1. **Batas Rasio Chrome Navigasi ($\le 15\%$ Tinggi Layar)**:
-   - **Top App Bar**: Tinggi tetap `56px` (`h-14`), padding horizontal `14px` (`px-3.5`).
-   - **Bottom Navigation Bar**: Tinggi tetap `64px` (`h-16`), padding horizontal `4px` (`px-1`).
-   - Total ruang yang dipakai navigasi atas + bawah adalah `120px` ($\approx 14.2\%$ dari layar `844px`), menyisakan **85.8% layar murni untuk konten operasional**.
-2. **Container Viewport Konten (`<main>`)**:
-   - Lebar maksimum: `max-w-lg` (`512px`) di ponsel dan `md:max-w-2xl` di tablet.
-   - Padding konten: `px-3 pt-3 pb-24` (`12px` kiri/kanan/atas, `96px` bawah agar konten paling bawah tidak tertutup Bottom Navigation Bar).
-   - Jarak vertikal antar seksi utama: `space-y-4` (`16px`).
-   - Jarak antar kartu di dalam grid 2×2: `gap-2.5` (`10px`).
-3. **Aturan Radius Sudut Mobile (`@media (max-width: 639px)`)**:
-   - Di dalam `src/index.css` baris 343–348, terdapat aturan khusus mobile:
-     ```css
-     @media (max-width: 639px) {
-       /* Scale down oversized rounded corners on mobile */
-       .rounded-\[2\.5rem\], .rounded-\[2rem\], .rounded-3xl {
-         border-radius: 1rem !important; /* 16px */
-       }
+1. **Login Endpoint**: `POST /api/mobile/auth/login`
+   - **Request Body**:
+     ```json
+     {
+       "username": "budi.operator",
+       "password": "password123",
+       "platform": "iOS"
      }
      ```
-   - Artinya, pada layar smartphone:
-     - **Kartu Utama, Hero Card & Container Seksi**: `border-radius: 16px` (`1rem` / `rounded-2xl`).
-     - **Tombol, Input & Kotak Ikon (`w-9 h-9`)**: `border-radius: 12px` (`0.75rem` / `rounded-xl`).
-     - **Badge Kecil (`PR`, `PO`, `QTN`)**: `border-radius: 6px–8px` (`rounded` atau `rounded-lg`).
-     - **Bottom Sheet Modal**: Sudut atas `border-top-left-radius: 24px; border-top-right-radius: 24px` (`rounded-t-3xl`) dengan *drag handle* di tengah atas (`w-10 h-1.5 bg-stone-300 rounded-full mx-auto`).
+   - **Response (`200 OK`)**:
+     ```json
+     {
+       "success": true,
+       "token": "<JWT_7_DAYS>",
+       "user": {
+         "id": "USER-01",
+         "username": "budi.operator",
+         "role": "OPERATOR",
+         "level": "STAFF",
+         "name": "Budi Santoso",
+         "status": "APPROVED",
+         "employee_no": "EMP-2026-014",
+         "work_center_id": "WC-PRESS-01",
+         "contract_type": "PKWT",
+         "join_date": "2025-01-10"
+       },
+       "app_scope": "OPERATOR_MOBILE",
+       "allowed_modules": ["MESSAGE", "ESS", "SHOPFLOOR_2WAY"],
+       "manpower": { "id": "MP-01", "name": "Budi Santoso", "status": "ON_DUTY", "hourly_rate": 45000 },
+       "assigned_machine": { "id": "MC-01", "item_code": "MC - 001", "name": "Hydraulic Paving Press HPP-500", "status": "ACTIVE" }
+     }
+     ```
+2. **Penyimpanan Token di Perangkat Native**:
+   - **iOS**: Simpan `token` di **Keychain Services** (bukan `UserDefaults` biasa).
+   - **Android**: Simpan `token` di **EncryptedSharedPreferences / Jetpack DataStore + Android Keystore**.
+3. **Header Standar pada Setiap Request HTTP**:
+   - `Authorization: Bearer <token>`
+   - `x-user-email: <user.username>`
+   - `x-client-platform: mobile-app`
+   - `x-mobile-os: iOS` atau `Android`
+   - `x-idempotency-key: <unique_key>` (Wajib untuk seluruh request `POST`, `PUT`, `PATCH`, `DELETE` guna mencegah eksekusi ganda saat sinyal tidak stabil).
+
+### 4.3 Algoritma **Daily 6-Digit Auth Key (PIN)**
+
+Dokumen ERP sensitif (PR, PO, Quotation, Delivery, Cuti, SPK, serta Payroll Requisition) memerlukan **6-Digit Daily Auth Key** yang berubah setiap hari per-username.
+- Algoritma deterministik mengombinasikan `username.trim().toLowerCase() + YYYY-MM-DD (UTC) + secretSeed ("_sec_fhtbs_2026")` menggunakan *32-bit signed integer hash* dan memetakannya ke 6 karakter dari himpunan `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (tanpa karakter ambigu `0, O, 1, I`).
+- Implementasi referensi asli ada di `01-foundation-ui-and-auth/auth-and-pbac/auth.ts`, dan sudah diterjemahkan secara presisi ke **Swift** (`PavingJossNativeCore.swift`) serta **Kotlin** (`PavingJossNativeCore.kt`).
+- Selain dihitung secara lokal untuk ditampilkan pada *System Info Bottom Sheet*, aplikasi mobile juga dapat memverifikasi/mengambil kunci harian dari server melalui `GET /api/auth/daily-key`.
 
 ---
 
-### 2.5 Spesifikasi Anatomi Komponen Standar UI ERP (Component Recipes)
+## 5. Spesifikasi Fungsional & Kontrak API — Fase 1 (Prototipe: HR Portal/ESS & Message)
 
-Berikut adalah resep kelas dan struktur DOM yang wajib diikuti saat membuat komponen di aplikasi mobile:
+> **KRUSIAL UNTUK PROTOTIPE**: Pada tahap prototipe pertama, aplikasi iOS dan Android **wajib dapat menjalankan seluruh fitur HR Portal (ESS & Manajemen HR sesuai role) serta Messages (Chat, Forum, Lampiran, & Otorisasi Dokumen ERP) secara utuh dan bebas bug**.
 
-#### 1. Top App Bar (`MobileAppShell.tsx`)
-- **Container**: `sticky top-0 z-40 h-14 bg-white/95 backdrop-blur-md border-b border-stone-200/80 px-3.5 flex items-center justify-between gap-2 shrink-0`
-- **Kotak Logo Resmi (`/public/logo.png` / `pwa/assets/logo.png`)**:
-  - Container: `w-9 h-9 rounded-xl bg-white border border-stone-200/80 flex items-center justify-center shrink-0 shadow-2xs`
-  - Image: `<img src="/logo.png" className="w-5 h-5 object-contain" />`
-- **Tombol Back (Saat berada di sub-halaman)**:
-  - `w-9 h-9 rounded-xl bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-700 shrink-0` dengan ikon `ArrowLeft` (`w-4 h-4`).
-- **Tombol Aksi Kanan (System Info / PIN & Lonceng Notifikasi)**:
-  - Tombol PIN: `h-9 px-2.5 rounded-xl bg-stone-100 hover:bg-stone-200/80 border border-stone-200/80 text-stone-700 text-[11px] font-bold inline-flex items-center gap-1.5`
-  - Tombol Bell: `relative w-9 h-9 rounded-xl bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-700`
-  - Badge Unread: `absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-stone-900 text-white text-[9px] font-mono font-bold flex items-center justify-center`
+### 5.1 Modul 1: HR Portal & Employee Self-Service (ESS)
 
-#### 2. Signature Dark Hero Card (`MobileHomeDashboard.tsx`)
-Digunakan **hanya 1 kali per layar** di bagian paling atas sebagai jangkar fokus utama:
-- **Container**: `bg-stone-900 text-white rounded-2xl p-4 shadow-md relative overflow-hidden`
-- **Baris Role Metadata**: `flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-stone-400`
-- **Judul Sapaan / Mesin**: `text-base font-bold tracking-tight text-white truncate`
-- **Sub-deskripsi**: `text-xs text-stone-300 truncate`
-- **Tombol Refresh Ikonik (Kanan Atas)**: `w-9 h-9 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white shrink-0`
-- **Footer Hero Card**: `mt-3.5 pt-3 border-t border-white/15 flex items-center justify-between gap-2`
-  - Tombol Primer Putih: `min-h-[36px] px-3.5 rounded-xl bg-white hover:bg-stone-100 text-stone-900 text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs`
-  - Tombol Sekunder Translucent: `min-h-[36px] px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold inline-flex items-center gap-1.5` (dengan ikon berwarna `#FFD700`).
+Referensi Frontend:
+- `02-phase1-prototype-hr-ess-message/hr-portal-and-ess/pages/SelfService.tsx`
+- `02-phase1-prototype-hr-ess-message/hr-portal-and-ess/pages/HrPortal.tsx`
+- `02-phase1-prototype-hr-ess-message/hr-portal-and-ess/components/ess/{LeaveRequestModal.tsx, PayslipModal.tsx}`
+- `02-phase1-prototype-hr-ess-message/hr-portal-and-ess/components/tabs/*`
 
-#### 3. Kartu KPI Grid 2×2 (`MobileHomeDashboard.tsx`)
-- **Grid Wrapper**: `grid grid-cols-2 gap-2.5`
-- **Item Kartu**: `bg-white border border-stone-200/80 rounded-2xl p-3.5 shadow-2xs text-left flex flex-col justify-between transition-all active:scale-[0.98] min-h-[104px]`
-  - Varian Tone:
-    - Rose (Alert/Breakdown): `border-rose-200/90 bg-rose-50/20`
-    - Amber (Pending Approval): `border-amber-200/90 bg-amber-50/20`
-    - Emerald (Good/Target): `border-emerald-200/80`
-- **Header Kartu KPI**: Kotak ikon `w-8 h-8 rounded-xl bg-stone-50 border border-stone-200/60 flex items-center justify-center` di kiri + `ChevronRight` (`w-4 h-4 text-stone-300`) di kanan.
-- **Isi Kartu KPI**:
-  - Label: `text-[11px] font-semibold text-stone-500 truncate`
-  - Nilai: `text-base font-bold font-mono tabular-nums text-stone-900 tracking-tight mt-0.5 truncate`
-  - Sub-teks: `text-[10px] text-stone-400 mt-0.5 truncate`
+Referensi Backend:
+- `04-backend-api-and-realtime/routes-phase1-prototype/{mobile.ts, attendance.ts, hr.ts, payroll.ts}`
 
-#### 4. Interactive Touch List Card & Divider List (`Pending Approvals` / `Active Projects`)
-- **Container Seksi**: `bg-white border border-stone-200/90 rounded-2xl p-4 shadow-2xs space-y-3` (gunakan `border-amber-200/90` khusus untuk antrean *Pending Approvals*).
-- **Daftar Item (`divide-y divide-stone-100`)**:
-  - Setiap baris adalah `<button>` dengan kelas: `w-full py-3 first:pt-1 last:pb-1 flex items-center justify-between gap-3 text-left group cursor-pointer`
-  - Sisi Kiri (`min-w-0 flex-1`):
-    - Baris 1 (Metadata): `<span className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-700 font-mono font-bold text-[10px]">PR</span>` + `<span className="font-mono font-bold text-stone-800">PR #104</span>` + `·` + `<span className="truncate">Nama Proyek</span>`
-    - Baris 2 (Judul): `text-xs font-bold text-stone-900 truncate mt-0.5`
-  - Sisi Kanan (`text-right shrink-0 flex items-center gap-2`):
-    - Angka/Nilai: `text-xs font-mono font-bold tabular-nums text-stone-900`
-    - Sub-status: `text-[10px] text-amber-600 font-semibold` (contoh: `Authorize PO`)
-    - Ikon panah: `<ChevronRight className="w-4 h-4 text-stone-300" />`
-
-#### 5. Bottom Sheet Inspector & Kotak Verifikasi 6-Digit Daily PIN (`MobileInspectorSheet.tsx`)
-- **Backdrop**: `fixed inset-0 bg-stone-900/40 backdrop-blur-xs`
-- **Sheet Container**: `relative z-10 w-full max-w-lg bg-white rounded-t-3xl shadow-2xl border-t border-stone-200 max-h-[88vh] overflow-y-auto p-5 pb-8 space-y-4`
-- **Animasi Spring**: `damping: 28, stiffness: 300` (slide dari `y: "100%"` ke `y: 0`).
-- **Kotak Key-Value Detail Dokumen**:
-  - Container: `bg-stone-50 border border-stone-200/80 rounded-2xl p-3.5 space-y-2 text-xs`
-  - Setiap baris: `flex justify-between` dengan label `text-stone-500` di kiri dan nilai `font-bold text-stone-900` (atau `font-mono font-bold`) di kanan.
-- **Kotak Input 6-Digit Daily Authorization PIN**:
-  - Container: `bg-stone-50 border border-stone-200 rounded-2xl p-3.5 space-y-2.5`
-  - Field Input PIN:
-    ```tsx
-    <input
-      type="text"
-      maxLength={6}
-      autoCapitalize="characters"
-      placeholder="ENTER 6-CHAR DAILY PIN"
-      className="no-base-style w-full min-h-[42px] px-3.5 bg-white border border-stone-300 rounded-xl text-center font-mono text-sm font-black tracking-[0.25em] text-stone-900 placeholder:tracking-normal placeholder:font-sans placeholder:font-medium placeholder:text-stone-400 focus:border-stone-700 outline-none uppercase"
-    />
-    ```
-  - Tombol Eksekusi Bawah (Grid 2 Kolom `grid grid-cols-2 gap-2.5`):
-    - Approve: `min-h-[44px] rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5`
-    - Request Revision: `min-h-[44px] rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold flex items-center justify-center gap-1.5`
-
-#### 6. Standar Input Form Elegan (`.input-elegant` di `src/index.css`)
-Semua `<input>`, `<textarea>`, dan `<select>` di aplikasi mobile wajib mengikuti spesifikasi dasar ini:
-- Tinggi minimum: `36px` (`min-height: 2.25rem`) untuk filter/pencarian, atau `42px` (`min-h-[42px]`) untuk input form di dalam Bottom Sheet.
-- Padding: `6px 12px` (`0.375rem 0.75rem`).
-- Background & Border: `background-color: #FFFFFF; border: 1px solid #E7E5E4; border-radius: 12px (0.75rem)`.
-- Ukuran Font: `12px` (`0.75rem`), warna teks `#1C1917`.
-- State Fokus (`:focus`): `border-color: #78716C; box-shadow: 0 0 0 3px rgba(28, 25, 23, 0.06)`.
+#### A. Fitur Wajib di Layar ESS (Untuk Seluruh Karyawan & Operator)
+1. **Header Kartu Identitas & Jam Server Jakarta (`Asia/Jakarta`)**:
+   - Menampilkan nama karyawan, nomor induk (`employee_no`), departemen/role, dan jam digital *real-time* dalam zona waktu `Asia/Jakarta (GMT+7)` dengan format tabular (`HH:mm:ss WIB`).
+   - Memuat data awal secara instan melalui `GET /api/mobile/ess-summary` (mengembalikan profil lengkap, absensi hari ini + 14 hari terakhir, kuota cuti 12 hari + daftar pengajuan, slip gaji 6 bulan terakhir, skor KPI terbaru, dan jadwal lembur).
+2. **Tab 1 — Attendance (Absensi Harian & Shift Pabrik)**:
+   - Menampilkan status kehadiran hari ini (`BELUM CLOCK-IN`, `SEDANG BERTUGAS / CLOCKED-IN`, atau `SELESAI / CLOCKED-OUT`).
+   - Pilihan Shift kerja sesuai konstanta `FACTORY_SHIFTS` (`GET /api/hr/shifts`):
+     - `SHIFT_1`: Shift 1 - Pagi (`07:00 - 15:00`, 8 jam, pengali `1.0x`)
+     - `SHIFT_2`: Shift 2 - Siang/Sore (`15:00 - 23:00`, 8 jam, pengali `1.0x`)
+     - `SHIFT_3`: Shift 3 - Malam (`23:00 - 07:00`, 8 jam, pengali `1.1x` *Night Differential*)
+     - `GENERAL`: General Office (`08:00 - 17:00`, 8 jam, pengali `1.0x`)
+   - **Aksi Clock-In**: Memanggil `POST /api/hr/attendances/clock-in` dengan payload:
+     ```json
+     {
+       "shift": "SHIFT_1",
+       "location": "-7.2575, 112.7521 (Pabrik Paving Joss)",
+       "project_id": "PRJ-2026-001"
+     }
+     ```
+     *(Catatan: Waktu absensi ditentukan oleh jam anti-manipulasi server `getSecureJakartaTime()` di backend, bukan jam lokal perangkat).*
+   - **Aksi Clock-Out**: Memanggil `PUT /api/hr/attendances/clock-out` dengan payload `{"location": "..."}`. Server otomatis menghitung `work_hours` dan `labor_cost`, serta memperbarui HPP proyek terkait.
+   - **Daftar Riwayat Absensi**: Menampilkan kartu riwayat kehadiran beserta jam masuk, jam pulang, durasi kerja, dan status lembur.
+3. **Tab 2 — Leave Management (Saldo & Pengajuan Cuti)**:
+   - Menampilkan 3 kartu ringkasan metrik: **Kuota Tahunan (`12 Hari`)**, **Cuti Terpakai (`used_days`)**, dan **Sisa Kuota (`remaining_days`)**.
+   - **Modal Pengajuan Cuti Baru** (`POST /api/hr/leaves`):
+     - Pilihan `leave_type`: `"Annual Paid Leave"`, `"Sick Leave"`, `"Special Permit / Marriage / Bereavement"`, `"Maternity / Paternity Leave"`, `"Unpaid Leave"`.
+     - Input `start_date` (`YYYY-MM-DD`), `end_date` (`YYYY-MM-DD`), dan `reason`.
+     - Validasi wajib di sisi klien & server: `end_date >= start_date`, serta tidak boleh beririsan (*overlap*) dengan cuti berstatus `PENDING` atau `APPROVED` milik karyawan tersebut.
+     - Jika pemohon berlevel `MANAGER` atau `FC`, cuti langsung berstatus `APPROVED` otomatis; selain itu berstatus `PENDING`.
+   - **Mode Manajer / HR (`TEAM_APPROVALS`)**:
+     - Jika pengguna login memiliki `level == "MANAGER"` atau `role` termasuk `HR` / `FC` / `EXECUTIVE`, tampilkan saklar **Personal View <-> Team Approvals**.
+     - Di tab *Team Approvals*, manajer dapat mengisi catatan (`manager_note`) dan menekan **Approve** atau **Reject** yang memanggil `PUT /api/hr/leaves/:id/status` dengan body `{"status": "APPROVED" | "REJECTED", "manager_note": "..."}`.
+4. **Tab 3 — Payslips (Slip Gaji Digital & Rincian Kompensasi)**:
+   - Memuat daftar slip gaji yang telah diterbitkan (`PUBLISHED` / `PAID`) dari `GET /api/hr/payslips` atau blok `compensation.payslips` pada `ess-summary`.
+   - Menekan kartu slip gaji membuka **Payslip Detail Sheet** (acuan: `PayslipModal.tsx`) yang menampilkan:
+     - Identitas karyawan, periode bulan (`period_month`), status pembayaran.
+     - Rincian Penerimaan: Gaji Pokok (`basic_salary`), Tunjangan & Lembur (`allowances`).
+     - Rincian Potongan: Potongan Absensi, BPJS Kesehatan & Ketenagakerjaan, PPh 21 (`deductions`).
+     - **Take-Home Pay (`net_salary`)** dengan format Rupiah (`Rp ...`) menggunakan huruf monospace tebal.
+5. **Sub-Modul HRIS Lanjutan (Khusus Role `HR`, `FC`, `BOD`, & `MANAGER` di Mobile)**:
+   - Mengacu pada `HrPortal.tsx`, pengguna berwenang dapat mengakses tab **Directory Karyawan** (`GET /api/users`), **Penilaian KPI** (`GET/POST /api/hr/kpis`), **Serah Terima / Handover** (`GET/POST/PUT /api/hr/handovers`), serta **Otorisasi Payroll Requisition (PRq)** (`GET /api/hr/payroll-requisitions`, `GET /api/hr/payroll-requisitions/:id`) menggunakan PIN 6-digit.
 
 ---
 
-### 2.6 Blueprint Tata Letak Layar per Modul (ASCII Wireframe & Class Contract)
+### 5.2 Modul 2: Messages (Chat, Forum & Integrasi Dokumen ERP)
 
-Sebagai pengganti gambar statis, gunakan cetak biru (*wireframe blueprint*) di bawah ini untuk memastikan tata letak setiap layar 100% identik dengan Web ERP:
+Referensi Frontend:
+- `02-phase1-prototype-hr-ess-message/message-and-forum/pages/{Forum.tsx, forumTypes.ts}`
+- `02-phase1-prototype-hr-ess-message/message-and-forum/components/{ForumSidebar.tsx, ForumChatHeader.tsx, ForumMessageStream.tsx, ForumComposer.tsx, ForumModals.tsx}`
 
-#### Layar 1: Shop Floor 2-Arah (`/shopfloor`)
-```text
-+-------------------------------------------------------------------+
-| [PJ Logo]  Shop Floor 2-Way               [Key: PIN]  [Bell: 3]   | <- Top Bar: h-14 bg-white/95 border-b border-stone-200/80
-|            PRODUCTION · OPERATOR                                  |
-+-------------------------------------------------------------------+
-|  +-------------------------------------------------------------+  |
-|  | [RUNNING · MSN-01]          HYDRAULIC PRESS #1     [Refresh]|  | <- Hero Card: bg-stone-900 text-white rounded-2xl p-4
-|  | #WO-2026-042 · Paving Block Hexagonal 8cm                   |  |
-|  | Progress: [=================>       ] 372 / 500 pcs (74.4%) |  | <- Angka: font-mono tabular-nums
-|  | [ || Pause WOT ]             [ ✓ Complete & Input Output ]  |  | <- CTA: min-h-[38px] rounded-xl font-bold
-|  +-------------------------------------------------------------+  |
-|                                                                   |
-|  QUICK FLOOR ACTIONS (grid-cols-3 gap-2)                          |
-|  +-------------------+ +-------------------+ +-----------------+  |
-|  | [Box Icon]        | | [Alert Icon]      | | [Repeat Icon]   |  | <- Card: bg-white border-stone-200/80 rounded-2xl p-3
-|  | Request Material  | | Report Breakdown  | | Shift Handover  |  |
-|  +-------------------+ +-------------------+ +-----------------+  |
-|                                                                   |
-|  +-------------------------------------------------------------+  |
-|  | 2-WAY SUPERVISOR <-> OPERATOR FLOOR NOTES          Live Sync|  | <- Container: bg-white border-stone-200/90 rounded-2xl p-4
-|  |-------------------------------------------------------------|  |
-|  | SUPV. HENDRA · 08:30 (font-mono)                            |  |
-|  | "Pastikan tekanan cetakan stabil di 180 bar untuk batch 2." |  | <- Bubble Supervisor: bg-stone-100 text-stone-900 rounded-2xl
-|  |                                                             |  |
-|  |                                      ANDA (OPERATOR) · 08:34|  |
-|  |               "Siap Pak, tekanan stabil 180 bar, 0 scrap."  |  | <- Bubble Operator: bg-stone-900 text-white rounded-2xl
-|  |-------------------------------------------------------------|  |
-|  | [ Ketik balasan ke Supervisor...              ] [ Kirim -> ]|  | <- Input: input-elegant + Button bg-stone-900
-|  +-------------------------------------------------------------+  |
-+-------------------------------------------------------------------+
-|   [Factory]         [MessageSquare]      [UserCheck]     [User]   | <- Bottom Nav: h-16 bg-white/95 border-t border-stone-200/90
-|   Shop Floor           Messages           HR Portal     Profile   |
-+-------------------------------------------------------------------+
-```
+Referensi Backend:
+- `04-backend-api-and-realtime/routes-phase1-prototype/{chat.ts, forum.ts, upload.ts}`
 
-#### Layar 2: HR Portal / ESS (`/ess`)
-```text
-+-------------------------------------------------------------------+
-| [PJ Logo]  HR Portal (ESS)                [Key: PIN]  [Bell: 1]   | <- Top Bar: h-14 bg-white/95
-|            PRODUCTION · STAFF                                     |
-+-------------------------------------------------------------------+
-|  +-------------------------------------------------------------+  |
-|  | SHIFT PAGI (08:00 - 17:00)               GPS: PABRIK SENTUL |  | <- Hero Card: bg-stone-900 text-white rounded-2xl p-4
-|  | 08:14:52 WIB                             Status: HADIR      |  | <- Jam Live: text-xl font-mono font-black tabular-nums
-|  | Masuk: 07:54 WIB · Pulang: --:--                            |  |
-|  | [ -> Clock-In Masuk ]               [ [x] Clock-Out Pulang ]|  | <- Clock-In: bg-emerald-600 | Clock-Out: bg-white/15
-|  +-------------------------------------------------------------+  |
-|                                                                   |
-|  KEY HR METRICS (grid-cols-2 gap-2.5)                             |
-|  +-----------------------------+ +-----------------------------+  |
-|  | [Calendar]                > | | [Award]                   > |  | <- KPI Card: bg-white border-stone-200/80 rounded-2xl p-3.5
-|  | Remaining Leave             | | KPI Performance Score       |  |
-|  | 9 Days                      | | 94.5 / 100                  |  | <- Nilai: font-mono tabular-nums text-base font-bold
-|  | Annual Quota: 12 Days       | | Grade A (Excellent)         |  |
-|  +-----------------------------+ +-----------------------------+  |
-|                                                                   |
-|  +-------------------------------------------------------------+  |
-|  | SLIP GAJI & PENGAJUAN CUTI                                  |  | <- Container: bg-white border-stone-200/90 rounded-2xl p-4
-|  | [ + Ajukan Cuti / Izin ]       [ Lihat Slip Gaji (PDF) ]    |  | <- Membuka Bottom Sheet Modal In-App
-|  +-------------------------------------------------------------+  |
-+-------------------------------------------------------------------+
-```
+#### A. Fitur Wajib di Layar Messages (Untuk Seluruh Karyawan, Operator & Back-Office)
+1. **Daftar Thread & Lencana Pesan Belum Dibaca (`Unread Badges`)**:
+   - Memanggil `GET /api/chat/threads` untuk menampilkan daftar ruang percakapan (Direct Message 1-on-1, Grup Proyek/Departemen, serta kanal bawaan `THREAD-GENERAL` "General Discussion").
+   - Memanggil `GET /api/chat/unread` untuk mendapatkan total `unread_count` global dan peta `unread_by_sender`.
+   - Menyediakan filter cepat: `ALL`, `UNREAD`, `GROUPS`, dan filter per-Departemen (`DEPT`), serta pencarian nama rekan kerja (`GET /api/users`) untuk memulai percakapan baru (`POST /api/chat/threads`).
+2. **Ruang Percakapan (`Message Stream`) & Status Baca**:
+   - Memuat pesan melalui `GET /api/chat/threads/:id/messages` dan langsung menandai pesan telah dibaca via `POST /api/chat/threads/:id/read`.
+   - Mendukung tampilan:
+     - **Pesan Balasan Berantai (`Quoted Reply`)**: Menampilkan cuplikan `reply_to_sender` dan `reply_to_content` yang jika disentuh akan menggulir ke pesan asli.
+     - **Label Terusan (`Forwarded from ...`)**: Menampilkan indikator jika pesan memiliki `forwarded_from`.
+     - **Banner Pesan Disematkan (`Pinned Message`)**: Menampilkan pesan dengan `is_pinned == 1` di bagian atas ruang chat; pengguna dapat menyematkan/melepas sematan via `POST /api/chat/messages/:id/pin`.
+     - **Lampiran Gambar & Berkas**: Unggah berkas melalui `POST /api/upload` (multipart form-data), pratinjau gambar *inline* dengan *fullscreen zoomable lightbox*, dan unduh berkas dokumen.
+3. **Terusan Multi-Penerima (`Multi-Recipient Forwarding`)**:
+   - Menekan opsi *Forward* pada pesan membuka lembar pemilih multi-penerima (Tab: *Users*, *Managers*, *Groups*) dengan catatan tambahan opsional (`note`), lalu mengirimkannya sekaligus melalui `POST /api/chat/forward`:
+     ```json
+     {
+       "target_thread_ids": ["THR-123"],
+       "target_usernames": ["manager.purchasing", "fc.director"],
+       "content": "Mohon tinjau dokumen PO berikut",
+       "file_url": null,
+       "forwarded_from": "staf.purchasing",
+       "note": "Urgent untuk proyek Surabaya"
+     }
+     ```
+4. **Kartu Referensi Dokumen ERP Interaktif & Otorisasi Langsung dari Chat**:
+   - Di dalam komposer pesan, pengguna dapat menekan tombol **Lampirkan Dokumen ERP** yang memuat daftar dokumen aktif dari `GET /api/chat/erp-references` (mendukung tipe: `NTP`, `QUOTATION`, `PR`, `PO`, `PROJECT`, `INVOICE`).
+   - Saat kartu dokumen ERP dikirim ke dalam chat, semua anggota percakapan melihat kartu status dokumen secara *live*.
+   - **In-Place Document Preview**: Menekan tombol **Preview** pada kartu pesan memanggil `GET /api/chat/erp-document-preview/:type/:id` dan menampilkan lembar pratinjau dokumen lengkap (item, harga, pajak PPN/PPh, total DPP/Grand Total) **tanpa keluar dari layar Messages**.
+   - **Direct Manager Authorization (Dengan PIN Harian 6-Digit)**: Jika dokumen berstatus menunggu persetujuan (`requires_auth == true`) dan pengguna adalah Manajer/Eksekutif, kartu pesan menampilkan tombol **Authorize**. Menekan tombol tersebut membuka dialog input **6-Digit Daily Auth Key**, lalu mengirim `POST /api/chat/erp-authorize`:
+     ```json
+     {
+       "type": "PO",
+       "id": "PO-2026-008",
+       "pin": "K7M9P2",
+       "thread_id": "THR-GENERAL"
+     }
+     ```
 
-#### Layar 3: Messages & In-App Document Preview (`/forum`)
-```text
-+-------------------------------------------------------------------+
-| [<-]       #PRJ-2026-088 · Produksi Paving [Key: PIN] [Bell: 0]   | <- Top Bar: h-14 bg-white/95
-|            4 Partisipan Aktif                                     |
-+-------------------------------------------------------------------+
-|  [ Filter Kanal: Semua | Proyek | Departemen | Direct ]           | <- Segmented Pill Track: bg-stone-100 p-1 rounded-xl
-|                                                                   |
-|  ENG. RAKA · 09:10                                                |
-|  +-----------------------------------------------+                |
-|  | Berikut revisi SOP & Gambar Kerja cetakan:    |                | <- Chat Bubble: bg-white border border-stone-200/80 rounded-2xl
-|  | +-------------------------------------------+ |                |
-|  | | [PDF Icon] SOP-BOP-HEX8CM-V2.pdf          | |                | <- Attachment Card: bg-stone-50 border-stone-200 rounded-xl
-|  | |            245 KB · Ketuk untuk Pratinjau | |                |    (WAJIB membuka In-App Preview Modal saat diketuk!)
-|  | +-------------------------------------------+ |                |
-|  +-----------------------------------------------+                |
-|                                                                   |
-|  +-------------------------------------------------------------+  |
-|  | [Paperclip] [ Tulis pesan atau lampirkan kode... ] [Send ->]|  | <- Composer Bar: sticky bottom-16 bg-white border-t
-|  +-------------------------------------------------------------+  |
-+-------------------------------------------------------------------+
-```
+### 5.3 Ringkasan Tabel Endpoint REST API — Fase 1 (Prototipe)
 
-#### Layar 4: Back-Office Executive Hub (`MobileMonitorHub.tsx`)
-```text
-+-------------------------------------------------------------------+
-| [PJ Logo]  Paving Joss Mobile             [Key: PIN]  [Bell: 4]   | <- Top Bar: h-14 bg-white/95
-|            FINANCE · MANAGER                                      |
-+-------------------------------------------------------------------+
-|  +-------------------------------------------------------------+  |
-|  | FINANCE · MANAGER                                  [Refresh]|  | <- Hero Card: bg-stone-900 text-white rounded-2xl p-4
-|  | Hi, Budi Santoso                                            |  |
-|  | Cashflow, AR/AP & Procurement Authorization                 |  |
-|  | [ Zap: Open Finance Hub ]             [ Monitor: System Info]|  |
-|  +-------------------------------------------------------------+  |
-|                                                                   |
-|  CATEGORY PILLS (Horizontal Scroll - scrollbar-hide)              |
-|  [APPROVALS (4)] [PROJECTS] [INVENTORY] [PROCUREMENT] [FINANCE]   | <- Active Pill: bg-stone-900 text-white rounded-xl
-|                                                                   |    Inactive Pill: bg-white border-stone-200 text-stone-600
-|  +-------------------------------------------------------------+  |
-|  | [Shield] Pending Approvals                      View All (4)|  | <- Container: bg-white border-amber-200/90 rounded-2xl p-4
-|  |-------------------------------------------------------------|  |
-|  | [PO] PO-2026-019 · PT Semen Nusantara      Rp 128.500.000 > |  | <- Ketuk baris -> Membuka MobileInspectorSheet + Input PIN
-|  |      Procurement Purchase Order              Authorize PO   |  |
-|  +-------------------------------------------------------------+  |
-+-------------------------------------------------------------------+
-```
-
----
-
-### 2.7 Daftar Pantangan Visual (Anti-Pattern Rules)
-
-Untuk menjaga agar tampilan aplikasi mobile **100% selaras dengan Web ERP**, pengembang Android & iOS **DILARANG KERAS** melakukan hal-hal berikut:
-1. **Dilarang Menggunakan Tema Gelap Kebiruan/Neon sebagai Default**: Default tema wajib **Warm Stone Light Theme (`#FAFAF9` & `#FFFFFF`)**. Jika mengaktifkan Dark Mode, wajib menggunakan token **Stealth Gunmetal (`#0D0F12` & `#13161B`)**, bukan hitam pekat `#000000` atau biru tua `#0F172A`.
-2. **Dilarang Memakai Garis Tepi Samping Tebal (`border-l-4`)**: Kartu di Web ERP menggunakan border keliling 1px merata (`border border-stone-200/80`). Jangan menambahkan garis aksen tebal di sisi kiri kartu.
-3. **Dilarang Membuat Ukuran Font & Padding Raksasa**: Jangan menggunakan `text-2xl` / `text-3xl` atau `p-8` di layar mobile. Gunakan proporsi `text-xs` (`11px–12px`), `text-sm` (`13px`), dan `text-base` (`14px–15px`) dengan padding kartu `p-3.5` (`14px`) atau `p-4` (`16px`).
-4. **Dilarang Menampilkan Lebih dari 1 Kartu Gelap (`bg-stone-900`) per Layar**: Hanya *Hero Card* paling atas yang boleh memakai `bg-stone-900`. Seluruh kartu di bawahnya wajib `bg-white`.
-5. **Dilarang Menampilkan Tabel Scroll Horizontal (`<table>` lebar)**: Di layar ponsel, semua tabel Web ERP wajib ditransformasi menjadi *Interactive Touch Card List* (`divide-y divide-stone-100`) dengan *Bottom Sheet Inspector*.
-6. **Dilarang Mengganti Logo Resmi**: Selalu gunakan file `pwa/assets/logo.png` (identik dengan `/public/logo.png` di Web ERP).
-
----
-
-## 3. Arsitektur Integrasi Database PostgreSQL & Sinkronisasi Data 2-Arah
-
-Aplikasi mobile **TIDAK** menggunakan database terpisah yang terisolasi, melainkan membaca dan menulis ke **Database Utama ERP Paving Joss yang berbasis PostgreSQL**:
-
-```text
-┌────────────────────────────────────────────────────────────────────────────┐
-│                   ARSITEKTUR DATA MOBILE <-> POSTGRESQL ERP                │
-└────────────────────────────────────────────────────────────────────────────┘
-  [ Aplikasi Android & iOS ]
-              │
-              │ 1. REST API (/api/mobile/*, /api/hr/*, /api/chat/*)
-              │    + Header: Authorization: Bearer <JWT>
-              │    + Header: X-Client-Platform: mobile-app
-              │    + Header: X-Idempotency-Key: <UUID>
-              │ 2. WebSocket Real-Time (Socket.IO: production:updated,
-              │    chat:message, workflow:updated)
-              ▼
-  [ Express Server & Mobile Gateway (src/routes/mobile.ts) ]
-              │
-              ├──► Engine Transaksional Cepat & CDC Trigger (src/db/database.ts)
-              │
-              └──► PostgreSQL Engine & Cloud Bridge (src/db/postgresClient.ts
-                   & src/db/postgresBridge.ts & src/db/pgMigrator.ts)
-                     ├─ Koneksi Pool Langsung: pg.Pool via DATABASE_URL /
-                     │  SUPABASE_DB_URL (PostgreSQL Connection Pooler :6543)
-                     ├─ Replikasi Real-Time & Delta Pull: public.erp_sync_records
-                     │  (JSONB Document + Relational Checksum Index)
-                     └─ 68 Tabel Terbagi Utuh (users, work_order_tickets,
-                        production_manpower, floor_requests, hr_attendances,
-                        hr_leaves, hr_payslips, chat_threads, chat_messages,
-                        purchase_requests, purchase_orders, quotations, projects)
-```
-
-### File Referensi PostgreSQL di `pwa/reference-backend/db/`:
-- `postgresClient.ts` : Konfigurasi `pg.Pool` langsung (`DATABASE_URL` / `SUPABASE_DB_URL`), eksekusi query parameter `pgQuery()`, dan auto-DDL.
-- `postgresBridge.ts` : Jembatan sinkronisasi dua arah antara transaksi lokal dan PostgreSQL (`public.erp_sync_records`), CDC watermark, serta kebijakan keamanan RLS `service_role`.
-- `pgMigrator.ts` & `migrator.ts` : Orkestrator migrasi penuh dan per-tabel (`syncAllTablesToPostgres()`, `syncSingleTableToPostgres()`, verifikasi checksum MD5/SHA).
-- `schema.ts` & `migrations/01_core.ts` s/d `06_hris.ts` : Definisi skema tabel relasional inti ERP, Sales, Inventory, Production, Finance, dan HRIS.
-
----
-
-## 4. Kontrak API, Endpoint & Payload Pertukaran Data (Mobile $\longleftrightarrow$ Web ERP)
-
-### A. Header Standar Wajib di Setiap Request Mobile
-```http
-Content-Type: application/json
-Authorization: Bearer <JWT_TOKEN>
-X-Client-Platform: mobile-app
-X-Mobile-OS: android   # atau ios
-X-Idempotency-Key: MOB-<timestamp>-<random>   # Wajib untuk POST/PUT/PATCH
-```
-
-### B. Daftar Endpoint Utama & Struktur Data
-
-#### 1. Autentikasi, Bootstrap & Status PostgreSQL
-| Method & Endpoint | Fungsi | Payload Request | Response Utama |
+| Kategori | Method & Path Endpoint | Fungsi Utama | Role Akses |
 | :--- | :--- | :--- | :--- |
-| `POST /api/mobile/auth/login` | Login Operator & Back-Office | `{ "username": "...", "password": "...", "platform": "Android" }` | `{ token, user, app_scope: "OPERATOR_MOBILE" \| "BACKOFFICE_MOBILE", allowed_modules, manpower, assigned_machine }` |
-| `GET /api/mobile/bootstrap` | Handshake sesi & identitas DB | - | `{ user, app_scope, database_identity: { unified_with_web_erp: true, supabase_table: "public.erp_sync_records", live_table_counts } }` |
-| `GET /api/mobile/db-status` | Verifikasi koneksi PostgreSQL | - | `{ same_database_guaranteed: true, engine_summary, postgres_engine, supabase_sync }` |
-| `POST /api/mobile/postgres/sync` | Memicu sinkronisasi penuh ke PostgreSQL | `{ "source": "mobile-app" }` | `{ success: true, sync_result: { batchId, totalTables, totalRowsSynced } }` |
-
-#### 2. Modul 2-Way Shop Floor (Supervisor $\longleftrightarrow$ Operator)
-| Method & Endpoint | Fungsi | Payload Request | Efek Database & Socket.IO |
-| :--- | :--- | :--- | :--- |
-| `GET /api/mobile/shopfloor/workstation` | Memuat mesin aktif, WOT, BOP, Floor Notes 2-Arah, Floor Requests, & NDP | Query opsional: `?project_id=PRJ-...` | Membaca `production_manpower`, `items`, `work_order_tickets`, `bill_of_processes`, `chat_threads`, `floor_requests`, `notice_to_down_processes` |
-| `POST /api/mobile/shopfloor/thread-reply` | Mengirim/membalas catatan 2-arah antara Operator & Supervisor | `{ "project_id": "...", "wot_id": "...", "content": "Tekanan press stabil 180 bar" }` | Insert ke `chat_messages` + replikasi PostgreSQL + broadcast Socket.IO `chat:message` & `production:updated` |
-| `POST /api/mobile/shopfloor/quick-action` | Eksekusi WOT, Minta Material/Tooling, Lapor NDP, atau Shift Handover | `{ "action_type": "WOT_STATUS" \| "FLOOR_REQUEST" \| "REPORT_NDP" \| "SHIFT_HANDOVER", ... }` | Update `work_order_tickets` / insert `floor_requests` / `notice_to_down_processes` / `hr_handovers` + replikasi PostgreSQL + broadcast `production:updated` |
-
-#### 3. Modul ESS (HR Portal — Absensi, Cuti, Payslip, KPI, Lembur)
-| Method & Endpoint | Fungsi | Payload Request | Response / Efek Database |
-| :--- | :--- | :--- | :--- |
-| `GET /api/mobile/ess-summary` | Ringkasan ESS lengkap karyawan | - | `{ profile, attendance: { today, recent }, leave: { annual_quota, remaining_days, requests }, compensation: { salary_master, payslips }, kpi, overtime_schedules }` |
-| `POST /api/hr/attendance/clock` | Clock-In / Clock-Out Absensi GPS | `{ "action": "CLOCK_IN" \| "CLOCK_OUT", "location_name": "Pabrik Sentul", "notes": "..." }` | Mencatat jam hadir ke `hr_attendances` dan mereplikasi ke PostgreSQL |
-| `POST /api/hr/leaves` | Pengajuan Cuti / Izin | `{ "leave_type": "Annual Paid Leave", "start_date": "2026-11-20", "end_date": "2026-11-21", "reason": "..." }` | Insert ke tabel `hr_leaves` dengan status `PENDING` |
-
-#### 4. Modul Message, Forum & In-App Document Preview
-| Method & Endpoint | Fungsi | Payload Request | Response / Efek Database |
-| :--- | :--- | :--- | :--- |
-| `GET /api/chat/threads` | Daftar kanal diskusi & grup proyek | - | Array `chat_threads` beserta partisipan dan pesan terakhir |
-| `GET /api/chat/threads/:id/messages` | Riwayat pesan & lampiran dokumen | - | Array `chat_messages` (termasuk metadata `file_url`, `file_name`, `file_type`) |
-| `POST /api/chat/messages` | Kirim pesan teks atau lampiran | `{ "thread_id": "...", "content": "...", "file_url": "..." }` | Insert ke `chat_messages` + emit Socket.IO `chat:message` |
-
-#### 5. Modul Back-Office MobileMonitorHub & Approval PIN
-| Method & Endpoint | Fungsi | Payload Request | Response / Efek Database |
-| :--- | :--- | :--- | :--- |
-| `GET /api/mobile/backoffice/hub` | Mengambil seluruh 8 kategori `MobileMonitorHub` dalam 1 panggilan | - | `{ summary, projects, quotations, purchaseRequests, purchaseOrders, inventory, deliveries, customers, vendors, hrLeaves, postgres_bridge }` |
-| `POST /api/mobile/backoffice/authorize` | Otorisasi (`APPROVE` / `REVISE` / `REJECT`) dokumen dengan PIN 6-Digit Harian | `{ "doc_type": "PR" \| "PO" \| "QUOTATION" \| "DELIVERY" \| "HR_LEAVE" \| "PROJECT_SPK", "doc_id": "...", "action": "APPROVE", "pin": "123456", "notes": "..." }` | Memvalidasi `getDailyAuthKey(username)`, mengupdate status tabel terkait di PostgreSQL/SQLite, mencatat `audit_logs`, dan menyiarkan Socket.IO `workflow:updated` |
+| **Auth** | `POST /api/mobile/auth/login` | Login mobile, menghasilkan JWT 7 hari, `app_scope`, `allowed_modules`, profil manpower & mesin | Publik -> Semua Karyawan |
+| **Auth** | `GET /api/mobile/bootstrap` | Memuat profil sesi aktif & identitas paritas database PostgreSQL SSOT | Semua Karyawan |
+| **Auth** | `GET /api/auth/daily-key` | Mengambil 6-Digit Daily Auth Key (PIN) hari ini untuk akun aktif | Semua Karyawan |
+| **ESS / HR** | `GET /api/mobile/ess-summary` | Satu panggilan ringkas untuk seluruh kartu ESS (Profil, Absensi, Cuti, Slip Gaji, KPI, Lembur) | Semua Karyawan |
+| **ESS / HR** | `GET /api/hr/shifts` | Daftar definisi 4 shift pabrik (`SHIFT_1`, `SHIFT_2`, `SHIFT_3`, `GENERAL`) | Semua Karyawan |
+| **ESS / HR** | `GET /api/hr/attendances` | Riwayat absensi (mendukung query `?date=`, `?project_id=`, `?shift=`) | Semua Karyawan |
+| **ESS / HR** | `POST /api/hr/attendances/clock-in` | Mencatat kehadiran masuk dengan jam server Jakarta GMT+7 & sinkron status `ON_DUTY` | Semua Karyawan |
+| **ESS / HR** | `PUT /api/hr/attendances/clock-out` | Mencatat jam pulang, menghitung jam kerja & biaya tenaga kerja proyek | Semua Karyawan |
+| **ESS / HR** | `GET /api/hr/leaves` | Daftar riwayat permohonan cuti & status persetujuan | Semua Karyawan |
+| **ESS / HR** | `POST /api/hr/leaves` | Mengajukan cuti baru dengan validasi anti-overlap tanggal | Semua Karyawan |
+| **ESS / HR** | `PUT /api/hr/leaves/:id/status` | Menyetujui (`APPROVED`) atau menolak (`REJECTED`) permohonan cuti anggota tim | Manager, HR, FC, Exec |
+| **ESS / HR** | `GET /api/hr/payslips` | Daftar slip gaji karyawan (filter otomatis untuk staf, semua untuk HR/Exec) | Semua Karyawan |
+| **HR Portal** | `GET /api/users` | Direktori rekan kerja untuk kontak chat & direktori HRIS | Semua Karyawan |
+| **HR Portal** | `GET /api/hr/kpis` & `POST /api/hr/kpis` | Melihat & mengirim penilaian KPI karyawan | Semua (GET) / Manager & HR (POST) |
+| **HR Portal** | `GET /api/hr/handovers` & `POST/PUT /api/hr/handovers` | Pelacak serah terima tugas & shift | Semua Karyawan |
+| **HR Portal** | `GET /api/hr/payroll-requisitions` | Daftar dokumen pengajuan payroll bulanan (PRq) | HR, Finance, FC, BOD |
+| **Message** | `GET /api/chat/unread` | Jumlah pesan belum dibaca total, per pengirim, dan pesan terbaru | Semua Karyawan |
+| **Message** | `GET /api/chat/threads` & `POST /api/chat/threads` | Mengambil daftar percakapan & membuat DM/Grup baru | Semua Karyawan |
+| **Message** | `GET /api/chat/threads/:id/messages` | Mengambil seluruh pesan dalam satu thread secara kronologis | Peserta Thread |
+| **Message** | `POST /api/chat/threads/:id/messages` | Mengirim pesan teks, kutipan balasan, lampiran berkas, atau kartu ERP | Peserta Thread |
+| **Message** | `POST /api/chat/threads/:id/read` | Menandai seluruh pesan masuk di thread tersebut sebagai sudah dibaca | Peserta Thread |
+| **Message** | `POST /api/chat/forward` | Meneruskan pesan ke banyak pengguna dan/atau grup sekaligus | Semua Karyawan |
+| **Message** | `POST /api/chat/messages/:id/pin` | Menyematkan atau melepas sematan pesan penting di dalam thread | Peserta Thread |
+| **Message** | `DELETE /api/chat/messages/:id` | Menghapus pesan (soft/hard delete sesuai izin) | Pengirim / Admin |
+| **Message** | `GET /api/chat/erp-references` | Daftar dokumen ERP aktif (NTP, PR, PO, Quotation, Project, Invoice) untuk komposer chat | Semua Karyawan |
+| **Message** | `GET /api/chat/erp-document-preview/:type/:id` | Data lengkap untuk modal pratinjau dokumen ERP langsung di dalam layar chat | Semua Karyawan |
+| **Message** | `POST /api/chat/erp-authorize` | Otorisasi langsung dokumen PR/PO/Quotation/NTP dari kartu chat dengan PIN 6-digit | Manager & Executive |
+| **Forum** | `GET/POST /api/forum/posts` & `GET/POST /api/forum/posts/:id/comments` | Papan pengumuman & diskusi terbuka perusahaan | Semua Karyawan |
 
 ---
 
-## 5. Batasan & Aturan Ketat Pembuatan Aplikasi (FE & BE Constraints)
+## 6. Spesifikasi Fungsional & Kontrak API — Fase 2 (Shop Floor 2-Way & Back-Office ERP Hub)
 
-1. **Pemisahan Mutlak Akun `OPERATOR` vs `BACK-OFFICE`**:
-   - Akun dengan `role === "OPERATOR"` hanya boleh login melalui aplikasi mobile (menggunakan header `X-Client-Platform: mobile-app`) dan ditolak jika mencoba login ke Web ERP desktop.
-   - Staf kantor (`SALES`, `FINANCE`, `HR`, `ENGINEERING`, `PRODUCTION` Supervisor/Manager) mendapatkan `app_scope === "BACKOFFICE_MOBILE"` dan tidak boleh dimasukkan ke dalam tabel operator mesin fisik (`production_manpower`).
-2. **Larangan Membuka Dokumen di Luar Aplikasi pada Modul Message**:
-   - Setiap lampiran dokumen teknis (SOP, BOP, SPK, Quotation, PDF) yang diklik di dalam tab **Messages** wajib ditampilkan menggunakan **In-App Preview Modal / Bottom Sheet** agar operator atau supervisor tidak keluar dari konteks percakapan.
-3. **Larangan Tabel Horizontal di Layar Mobile (`Zero Horizontal Scroll Table`)**:
-   - Seluruh data ERP pada layar mobile (baik daftar WOT, antrean PR/PO, stok gudang, maupun slip gaji) wajib dirender sebagai **Interactive Touch Cards** (`rounded-2xl`, tinggi sentuh minimum `44px–48px`) dengan *Bottom Sheet Inspector* saat diketuk.
-4. **Dukungan Antrean Offline (`Offline-First Mutation Queue`)**:
-   - Area pabrik rawan mengalami *blank-spot* sinyal. Semua mutasi (`POST/PUT/PATCH`) yang gagal karena jaringan terputus wajib masuk ke antrean penyimpanan lokal (`enqueueOfflineMutation`) dan dikirim ulang secara otomatis (`flushOfflineQueue`) beserta `X-Idempotency-Key` ketika koneksi pulih.
+Setelah Fase 1 (HR Portal/ESS & Message) lulus verifikasi prototipe, pengembangan dilanjutkan ke **Fase 2** dengan mengacu pada direktori `03-phase2-shopfloor-and-backoffice/` dan `04-backend-api-and-realtime/routes-phase2-advanced/`.
 
----
+### 6.1 Modul 3: Shop Floor 2-Way Workstation (Operator & Supervisor Produksi)
 
-## 6. Peta Referensi File di Dalam Direktori `pwa/`
+1. **Data Workstation Terpadu (`GET /api/mobile/shopfloor/workstation?project_id=...`)**:
+   - Mengembalikan profil manpower operator, mesin yang ditugaskan (`assigned_machine`), daftar proyek aktif (`active_projects`), tiket kerja (`work_order_tickets`), tahapan proses (`bop_steps`), permintaan lantai produksi (`floor_requests`), laporan mesin rusak (`active_ndps`), serah terima shift (`shift_handovers`), dan thread catatan lantai produksi (`floor_threads`).
+2. **Aksi Cepat Operator 2-Arah (`POST /api/mobile/shopfloor/quick-action`)**:
+   - Mendukung 4 jenis `action_type` dalam satu pintu yang langsung menyinkronkan tabel PostgreSQL dan memancarkan Socket.IO `production:updated`:
+     - `"WOT_STATUS"`: Memperbarui status Work Order Ticket (`IN_PROGRESS`, `PAUSED`, `COMPLETED`) beserta `good_qty` dan `scrap_qty` (atau melalui pemindai QR `POST /api/wots/scan` dan `POST /api/wots/complete`).
+     - `"FLOOR_REQUEST"`: Mengajukan permintaan material atau alat kerja mendesak dari workstation ke gudang/supervisor.
+     - `"REPORT_NDP"`: Melaporkan *Notice to Down Process* (kerusakan mesin/cetakan) dan mengubah status mesin terkait menjadi `MAINTENANCE`.
+     - `"SHIFT_HANDOVER"`: Mencatat laporan serah terima tugas dan kendala kepada operator shift berikutnya.
+3. **Catatan Lantai Produksi (`POST /api/mobile/shopfloor/thread-reply`)**:
+   - Mengirim catatan langsung pada konteks proyek atau WOT tertentu yang otomatis terhubung ke kanal `chat_messages` dan memancarkan notifikasi real-time ke Supervisor.
 
-Seluruh file sumber dari proyek ERP utama telah disalin dan dikelompokkan berdasarkan fungsinya di dalam `pwa/`:
+### 6.2 Modul 4: Back-Office Mobile Monitor & Role Action Hub
 
-- **`pwa/assets/`**:
-  - `logo.png` & `dm_logo.png` (Logo monogram resmi Paving Joss dari `/public`).
-- **`pwa/reference-backend/`**:
-  - `db/` : `postgresClient.ts`, `postgresBridge.ts`, `pgMigrator.ts`, `migrator.ts`, `database.ts`, `schema.ts`, `firebaseSync.ts`, `firestoreAdapter.ts`, serta seluruh skema `migrations/01_core.ts` s/d `06_hris.ts`.
-  - `routes/` : `mobile.ts` (Gateway utama), `auth.ts`, `users.ts`, `chat.ts`, `forum.ts`, `documents.ts`, `hr.ts`, `attendance.ts`, `payroll.ts`, `production.ts`, `projects.ts`, `purchasing.ts`, `sales.ts`, `inventory.ts`, `finance.ts`, `workflow.ts`, `migration.ts`, `datacenter.ts`, `integrity.ts`, beserta seluruh sub-rute `production/`, `projects/`, `purchasing/`, `sales/`, `hr/`.
-  - `middleware/` & `utils/` : `auth.ts`, `idempotency.ts`, `validate.ts`, `audit.ts`, `qrCrypto.ts`, `supabase.ts`.
-- **`pwa/reference-frontend/`**:
-  - `design-system/` : `index.css` (Token warna Warm Stone & tipografi ERP) serta seluruh komponen dasar `ui/` (`Card.tsx`, `Button.tsx`, `Badge.tsx`, `Modal.tsx`, `Tabs.tsx`, `StatCard.tsx`, dll.).
-  - `auth-and-rbac/` : `AuthContext.tsx`, `MonitoringContext.tsx`, `NotificationContext.tsx`, `ThemeContext.tsx`, `rbac.ts`, `pbac.ts`, `api.ts`, `offlineSyncStore.ts`.
-  - `shopfloor-2way/` : `ShopFloorProjectDetail.tsx`, `ShopFloorExecution.tsx`, `ShopFloor.tsx`, `FloorTerminal.tsx`, `shopFloorTypes.ts`.
-  - `ess/` : `SelfService.tsx`, `HrPortal.tsx`, `AttendanceReminder.tsx`.
-  - `message/` : `Forum.tsx` beserta komponen `ForumChatHeader.tsx`, `ForumMessageStream.tsx`, `ForumComposer.tsx`, `ForumSidebar.tsx`, `ForumModals.tsx`.
-  - `backoffice-monitor/` : `MobileAppShell.tsx`, `MobileMonitorHub.tsx`, `DesktopModeNotice.tsx`, `monitorTypes.ts`, `SupabaseSyncPanel.tsx`, serta `hub/MobileHomeDashboard.tsx`, `hub/MobileRoleActionHub.tsx`, `hub/MobileInspectorSheet.tsx`.
-- **`pwa/mobile-starter-kit/`**:
-  - Aplikasi mandiri siap *build* untuk Android & iOS (`package.json`, `capacitor.config.ts`, `index.html`, `vite.config.ts`, `tsconfig.json`, `public/logo.png`, `src/main.tsx`, `src/index.css`, `src/services/mobileApiClient.ts`, dan `src/App.tsx`).
+Mengacu pada `MobileMonitorHub.tsx`, `MobileHomeDashboard.tsx`, `MobileRoleActionHub.tsx`, dan `MobileInspectorSheet.tsx`:
+1. **8 Kategori Hub Responsif (`GET /api/mobile/backoffice/hub` & `GET /api/mobile/approvals/pending`)**:
+   - `OVERVIEW`: Ringkasan KPI bisnis, total pendapatan, biaya, laba bersih, proyek aktif, dan stok kritis.
+   - `APPROVALS`: Antrean dokumen lintas departemen yang membutuhkan persetujuan segera.
+   - `PROJECTS`, `QUOTATIONS`, `PROCUREMENT` (PR & PO), `INVENTORY` (Stok Gudang), `DELIVERIES` (Surat Jalan), `CONTACTS` (Pelanggan & Vendor), serta `FINANCE`.
+2. **Mobile Inspector Sheet & Otorisasi PIN 6-Digit (`POST /api/mobile/backoffice/authorize`)**:
+   - Menekan item dokumen apa pun membuka lembar inspektur bawah (*bottom sheet*) yang merangkum metadata dokumen.
+   - Manajer/Eksekutif dapat memilih aksi `APPROVE`, `REVISE`, atau `REJECT` dengan memasukkan **Daily 6-Digit Auth Key (`pin`)** dan catatan (`notes`).
+3. **Batas Layar Desktop-Only (`DesktopModeNotice.tsx`)**:
+   - Sesuai permintaan pengguna ("*dalam keterbatasan seperti responsive mobile saat ini*"), modul penyuntingan kanvas kompleks seperti **Document Studio A4 (`/document-workspace`)**, **Engineering BOM/BOP Graph (`/engineering`)**, **Vendor Price Matrix (`/pricing`)**, **General Ledger Penuh (`/general-ledger`)**, **Master Data Studio (`/data-center`)**, dan **RBAC Account Matrix (`/manage-accounts`)** tidak di-render sebagai tabel/kanvas penuh di mobile, melainkan diarahkan ke ringkasan baca/approval di **Role Action Hub** atau menampilkan informasi bahwa penyuntingan skema penuh tersedia di Web ERP Desktop.
 
 ---
 
-## 7. Panduan Langkah Demi Langkah Build Android & iOS
+## 7. Arsitektur Real-Time (Socket.IO) & Dukungan Offline-First (SwiftData / Room)
 
-Untuk memindahkan paket ini ke repositori proyek aplikasi mobile baru:
+### 7.1 Koneksi & Kanal Event Socket.IO
 
-```bash
-# 1. Salin starter kit ke folder repositori baru di luar proyek Web ERP
-mkdir paving-joss-mobile && cp -r pwa/mobile-starter-kit/* paving-joss-mobile/
-cd paving-joss-mobile
+Referensi Backend: `04-backend-api-and-realtime/middleware-and-socket/serverBootstrap.ts` (`attachSocketServer`).
 
-# 2. Instal seluruh dependensi (React, Capacitor, Socket.IO, Supabase Client, Tailwind)
-npm install
+1. **Inisialisasi Handshake Klien Native**:
+   - Gunakan pustaka resmi `Socket.IO-Client-Swift` (iOS) dan ` io.socket:socket.io-client` (Android).
+   - Kirimkan token JWT pada objek `auth` atau header `Authorization`:
+     ```json
+     {
+       "auth": { "token": "<JWT_TOKEN>" },
+       "extraHeaders": { "Authorization": "Bearer <JWT_TOKEN>" }
+     }
+     ```
+2. **Daftar Event Real-Time yang Wajib Didengarkan (`socket.on`)**:
 
-# 3. Atur URL Server Web ERP & PostgreSQL Gateway pada file .env
-echo "VITE_ERP_API_URL=https://erp.pavingjoss.com" > .env
+| Nama Event Socket.IO | Contoh Payload | Aksi yang Wajib Dilakukan Aplikasi Mobile |
+| :--- | :--- | :--- |
+| `chat:message` | `{"id": "MSG-...", "thread_id": "THR-...", "sender_username": "...", "content": "...", "created_at": "..."}` | Jika pengguna sedang membuka `thread_id` tersebut, tambahkan pesan ke layar secara instan dan panggil `/read`. Jika sedang di layar lain, tambahkan *badge* `unreadForumCount` dan simpan notifikasi lokal. |
+| `workflow:updated` | `{"doc_type": "PO", "doc_id": "PO-01", "status": "APPROVED", "actor": "fc"}` | Segarkan cache lokal untuk antrean persetujuan, kartu dokumen ERP di dalam chat, dan status dokumen di Back-Office Hub. |
+| `production:updated` | `{"type": "WOT_STATUS" \| "FLOOR_REQUEST" \| "REPORT_NDP" \| "SHIFT_HANDOVER" \| "FLOOR_NOTE", "project_id": "...", "wot_id": "..."}` | Segarkan state layar Shop Floor Workstation dan tampilkan banner/toast pemberitahuan kepada Operator & Supervisor. |
 
-# 4. Build aset web dan sinkronkan ke proyek native Android & iOS
-npm run build
-npx cap add android
-npx cap add ios
-npx cap sync
+### 7.2 Strategi Cache Lokal & Sinkronisasi Offline-First
 
-# 5. Buka di Android Studio (untuk build APK/AAB) atau Xcode (untuk build iOS/IPA)
-npx cap open android
-npx cap open ios
-```
+Referensi:
+- `05-database-postgresql-and-offline/client-offline-and-sync/localDb.ts`
+- `05-database-postgresql-and-offline/client-offline-and-sync/useSyncEngine.ts`
+- `05-database-postgresql-and-offline/client-offline-and-sync/api.ts`
+
+1. **Penyimpanan Lokal Terstruktur (SwiftData di iOS / Room Database di Android)**:
+   - Buat 5 tabel lokal utama pada perangkat:
+     1. `CachedEssSummary`: Menyimpan respons terakhir `GET /api/mobile/ess-summary` dan daftar `payslips` agar karyawan tetap bisa melihat jadwal shift, sisa cuti, dan slip gaji saat berada di area pabrik tanpa sinyal.
+     2. `CachedChatThread` & `CachedChatMessage`: Menyimpan daftar thread dan 50 pesan terakhir per thread agar riwayat percakapan langsung terbuka (`0ms` *cold start*) sebelum jaringan merespons.
+     3. `CachedNotification`: Menyimpan hingga 50 notifikasi terakhir (`id`, `type`, `title`, `message`, `timestamp`, `isRead`, `link`) persis seperti `NotificationContext.tsx`.
+     4. `OfflineActionQueue`: Menyimpan mutasi yang dilakukan saat perangkat *offline* (`id`, `entity`, `action`, `endpoint`, `method`, `payloadJson`, `idempotencyKey`, `timestamp`, `status`: `"pending" | "synced" | "failed"`, `error`).
+2. **Aturan *Stale-While-Revalidate* & Daftar Prefix Non-Cache**:
+   - Untuk endpoint `GET` umum, tampilkan data lokal terlebih dahulu sembari memperbarui data di latar belakang (jendela segar `25 detik`).
+   - Sesuai `src/utils/api.ts`, **jangan pernah menyajikan cache basi** untuk prefix kritis berikut: `/api/auth/`, `/api/time`, `/api/health`, `/api/notifications`.
+3. **Pemrosesan Antrean Offline (`SyncEngine` Worker)**:
+   - Pantau status jaringan menggunakan `NWPathMonitor` (iOS) dan `ConnectivityManager` + `WorkManager` (Android).
+   - Saat perangkat offline, tampilkan komponen banner **Offline Indicator** (acuan: `OfflineIndicator.tsx`).
+   - Saat koneksi kembali online, jalankan antrean `OfflineActionQueue` secara berurutan (*FIFO*) berdasarkan `timestamp` menggunakan header `x-idempotency-key` yang dibuat saat aksi direkam agar server Express menolak duplikasi (`idempotency.ts`).
+
+---
+
+## 8. Batasan Mutlak, Aturan Bisnis & Guardrails Pengembangan
+
+Untuk memastikan aplikasi Android dan iOS tidak menyimpang dari sistem ERP utama, tim pengembang wajib mematuhi **8 aturan pembatas (*guardrails*)** berikut:
+
+1. **Dilarang Mengakses PostgreSQL / Supabase Langsung dari Aplikasi Mobile**:
+   - Aplikasi mobile **hanya boleh** berkomunikasi melalui endpoint Express ERP (`/api/*`). Kredensial `DATABASE_URL` dan `SUPABASE_SERVICE_ROLE_KEY` adalah rahasia server-side murni karena tabel `public.erp_sync_records` dilindungi kebijakan RLS khusus `service_role`.
+2. **Kepatuhan Zona Waktu Server (`Asia/Jakarta` GMT+7)**:
+   - Seluruh pencatatan absensi (`clock-in` / `clock-out`) dan batas periode penggajian menggunakan waktu otoritatif server Jakarta. Aplikasi mobile tidak boleh mengandalkan jam perangkat lokal untuk memvalidasi keterlambatan atau tanggal absensi.
+3. **Aturan Jendela Tutup Buku Payroll (Tanggal 15–24)**:
+   - Sesuai `closingEngine.ts` dan `payroll.ts`, pembuatan/pengajuan dokumen Payroll Requisition (PRq) tunduk pada evaluasi jendela periode akuntansi (`assertClosingWindowOpen()` & `assertAccountingPeriodOpen()`). Tampilkan pesan error dari server apa adanya jika periode sedang terkunci.
+4. **Wajib Verifikasi 6-Digit Daily Auth Key pada Setiap Otorisasi Dokumen**:
+   - Setiap aksi persetujuan manajerial (`POST /api/chat/erp-authorize`, `POST /api/mobile/backoffice/authorize`, dan pengajuan/persetujuan `payroll-requisitions`) **wajib** menyertakan PIN 6-digit harian yang valid. Jangan pernah membuat bypass persetujuan tanpa PIN di sisi UI mobile.
+5. **Isolasi Peran `OPERATOR` vs `BACK_OFFICE`**:
+   - Jika `user.role == "OPERATOR"` (`app_scope == "OPERATOR_MOBILE"`), aplikasi mobile **dilarang** menampilkan tab keuangan, penjualan, pengadaan, atau manajemen gaji staf lain. Operator hanya boleh mengakses **Shop Floor 2-Way**, **Messages**, **HR Portal / ESS Pribadi**, dan **Profil/System Info**.
+6. **Penanganan Format Mata Uang & Pembulatan Keuangan**:
+   - Seluruh nominal mata uang adalah **Rupiah (IDR)** tanpa sen desimal (`Rp 1.250.000`). Kalkulasi PPN (`11%` / DPP Nilai Lain `11/12`), PPh 21/23, dan BPJS wajib menggunakan nilai yang dihitung oleh server (`financialEngine.ts` & `hrisEngine.ts`), bukan dihitung ulang secara berbeda di klien.
+7. **Tanpa Fitur AI / Chatbot Tambahan**:
+   - Jaga antarmuka aplikasi tetap bersih, cepat, dan fokus pada operasional ERP/HRIS/Messages tanpa menambahkan asisten AI, tombol *Ask AI*, atau panel telemetri internal.
+8. **Isolasi Direktori `pwa/` dari Proyek Web ERP**:
+   - Jangan pernah meng-import file dari `pwa/` ke dalam `src/` atau `server.ts`. Direktori `pwa/` harus tetap 100% independen sebagai repositori referensi pengembangan aplikasi mobile.
+
+---
+
+## 9. Checklist Penerimaan Prototipe (Definition of Done)
+
+Sebelum melangkah dari **Fase 1 (Prototipe)** ke **Fase 2**, pastikan seluruh skenario uji berikut berjalan mulus di iOS (Swift) dan Android (Kotlin):
+
+- [ ] **Login & Sesi Multi-Role**: Login menggunakan akun `OPERATOR`, `STAFF`, `MANAGER`, dan `FC` berhasil memperoleh token JWT, mendeteksi `app_scope` dengan benar, dan menampilkan *Daily 6-Digit Auth Key* di *System Info Bottom Sheet* yang **sama persis** dengan Web ERP.
+- [ ] **Parity Visual & Tema**: Layar *Messages* menggunakan tema *Warm Monochrome Stone* (`#FAFAF9` / `#1C1917`), sedangkan layar *HR Portal / ESS* menggunakan tema *Airy Frosted Glass Alabaster* (`#F7F7F9` / `#121318`) dengan font *Plus Jakarta Sans* dan angka tabular *JetBrains Mono*.
+- [ ] **ESS Attendance**: Menampilkan jam live Jakarta GMT+7, memilih shift pabrik (`SHIFT_1` s/d `GENERAL`), melakukan *Clock-In* dan *Clock-Out*, serta langsung tercermin di tabel absensi Web ERP.
+- [ ] **ESS Leave & Persetujuan Manajer**: Menampilkan kuota 12 hari, mengajukan cuti baru (dengan pencegahan *overlap* tanggal), serta menyetujui/menolak cuti dari akun Manajer/HR yang langsung memperbarui saldo cuti karyawan.
+- [ ] **ESS Payslip**: Menampilkan daftar slip gaji bulanan dan membuka rincian lengkap (Gaji Pokok, Tunjangan, Potongan BPJS/PPh21, dan *Take-Home Pay* Rupiah).
+- [ ] **Messages & Forum Real-Time**: Membuka daftar thread dengan *unread badge* akurat, mengirim pesan teks & gambar, membalas pesan (*quoted reply*), menyematkan pesan (*pin*), meneruskan pesan ke banyak pengguna/grup sekaligus (*multi-forward*), serta menerima pesan masuk secara instan melalui **Socket.IO** (`chat:message`).
+- [ ] **In-Chat ERP Document Preview & PIN Authorization**: Melampirkan kartu dokumen ERP (PR/PO/Quotation/NTP/Invoice) ke dalam chat, membuka pratinjau dokumen lengkap di tempat (*in-place modal*), dan melakukan otorisasi dokumen menggunakan **Daily 6-Digit Auth Key** yang langsung memperbarui status dokumen di PostgreSQL SSOT & Web ERP.
+- [ ] **Dukungan Offline & Sinkronisasi**: Tetap dapat membuka ringkasan ESS, slip gaji, dan riwayat chat saat mode pesawat (*airplane mode*) aktif, menampilkan *Offline Indicator*, serta menyinkronkan antrean aksi secara aman dengan `x-idempotency-key` saat kembali online.

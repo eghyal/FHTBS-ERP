@@ -63,11 +63,27 @@ export const BomPreviewModal: React.FC<BomPreviewModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="5xl"
+      maxWidth="6xl"
       title="BOM Price Estimate Preview"
-      contentClassName="p-0 flex flex-col h-[85vh] bg-stone-100 border-t border-stone-100"
+      contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+      footer={
+        <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            variant="dark"
+            size="sm"
+            onClick={handleExportPdf}
+            isLoading={isExporting}
+            leftIcon={!isExporting ? <Download className="w-4 h-4" /> : undefined}
+          >
+            {isExporting ? "Generating..." : "Export PDF (A4)"}
+          </Button>
+        </div>
+      }
     >
-      <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+      <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
         <PdfPreviewWrapper>
 <PrintTemplate
           ref={printDocRef}
@@ -259,24 +275,6 @@ export const BomPreviewModal: React.FC<BomPreviewModalProps> = ({
           </div>
         </PrintTemplate>
 </PdfPreviewWrapper>
-      </div>
-      <div className="p-6 border-t border-stone-100 bg-white flex justify-center gap-4">
-        <Button
-          variant="secondary"
-          onClick={onClose}
-          className="px-6 py-2.5 rounded-xl text-sm"
-        >
-          Close
-        </Button>
-        <Button
-          variant="dark"
-          onClick={handleExportPdf}
-          isLoading={isExporting}
-          className="px-6 py-2.5 rounded-xl text-sm shadow-md"
-        >
-          {!isExporting && <Download className="w-4 h-4" />}
-          {isExporting ? "Generating..." : "Export PDF (A4)"}
-        </Button>
       </div>
     </Modal>
   );

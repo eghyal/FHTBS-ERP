@@ -8,6 +8,16 @@ export function runCoreAndSystemMigrations(db: any) {
         value TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
+      CREATE TABLE IF NOT EXISTS media_assets (
+        id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        size_bytes INTEGER DEFAULT 0,
+        data_base64 TEXT NOT NULL,
+        prefix TEXT DEFAULT 'uploads',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_media_assets_filename ON media_assets(filename);
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,

@@ -166,17 +166,17 @@
   transform: none;
 }
 
-.hris-theme button.bg-stone-900 {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
-  border-color: rgba(4, 120, 87, 0.4) !important;
-  color: #FFFFFF !important;
-  box-shadow: 0 8px 20px -6px rgba(5, 150, 105, 0.28);
+html:not(.dark) .hris-theme button.bg-stone-900 {
+  background: #1c1917;
+  border-color: #1c1917;
+  color: #ffffff;
+  box-shadow: 0 8px 20px -6px rgba(28, 25, 23, 0.22);
   border-radius: 1rem;
   font-weight: 700;
 }
 
-.hris-theme button.bg-stone-900:hover {
-  background: linear-gradient(135deg, #047857 0%, #065f46 100%) !important;
+html:not(.dark) .hris-theme button.bg-stone-900:hover {
+  background: #292524;
   transform: translateY(-1px);
 }
 

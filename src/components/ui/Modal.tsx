@@ -72,17 +72,17 @@ export const Modal = memo(function Modal({
 
   const effectiveMaxWidth = maxWidth || size || "lg";
   const maxWidthClass = {
-    sm: "max-w-sm",
-    md: "max-w-md",
-    lg: "max-w-lg",
-    xl: "max-w-xl",
-    "2xl": "max-w-2xl",
-    "3xl": "max-w-3xl",
-    "4xl": "max-w-4xl",
-    "5xl": "max-w-5xl",
-    "6xl": "max-w-6xl",
-    "7xl": "max-w-7xl",
-    full: "max-w-full m-4",
+    sm: "max-w-md",
+    md: "max-w-xl",
+    lg: "max-w-2xl",
+    xl: "max-w-3xl",
+    "2xl": "max-w-4xl",
+    "3xl": "max-w-5xl",
+    "4xl": "max-w-[min(92vw,68rem)]",
+    "5xl": "max-w-6xl",
+    "6xl": "max-w-7xl",
+    "7xl": "max-w-[min(95vw,88rem)]",
+    full: "max-w-[96vw] sm:m-4",
   }[effectiveMaxWidth];
 
   if (typeof document === "undefined") return null;
@@ -92,6 +92,8 @@ export const Modal = memo(function Modal({
     (uiTheme === "auto" &&
       (document.documentElement.classList.contains("hris-dark") ||
         Boolean(document.querySelector(".hris-theme"))));
+
+  const hasCustomMaxWidthInClassName = /\bmax-w-/.test(className || "");
 
   return createPortal(
     <AnimatePresence>
@@ -107,7 +109,7 @@ export const Modal = memo(function Modal({
           />
           <div
             className={cn(
-              "fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-3 md:p-4 pointer-events-none",
+              "fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 pointer-events-none",
               isHrisContext && "hris-theme",
             )}
           >
@@ -120,13 +122,13 @@ export const Modal = memo(function Modal({
               transition={{ duration: 0.18, ease: "easeOut" }}
               className={cn(
                 "bg-white w-full flex flex-col pointer-events-auto border border-stone-200/90",
-                "max-h-[90dvh] sm:max-h-[86vh]",
+                "max-h-[92dvh] sm:max-h-[90vh]",
                 isHrisContext
                   ? "rounded-t-2xl sm:rounded-2xl hris-glass-panel"
                   : "rounded-t-xl sm:rounded-xl",
                 "mt-auto sm:mt-0",
                 "shadow-[0_-10px_35px_-12px_rgba(0,0,0,0.18)] sm:shadow-2xl",
-                maxWidthClass,
+                !hasCustomMaxWidthInClassName && maxWidthClass,
                 className,
               )}
             >
@@ -138,25 +140,25 @@ export const Modal = memo(function Modal({
               {(title || headerActions) && (
                 <div
                   className={cn(
-                    "sticky top-0 bg-white z-10 flex items-center justify-between gap-3 px-4 py-3 sm:px-5 sm:py-3.5 border-b border-stone-200/80 shrink-0",
+                    "sticky top-0 bg-white z-10 flex items-start justify-between gap-4 px-4 py-3.5 sm:px-6 sm:py-4 border-b border-stone-200/80 shrink-0",
                     isHrisContext ? "rounded-t-2xl" : "rounded-t-xl",
                   )}
                 >
                   <div className="flex-1 min-w-0">
                     {typeof title === "string" ? (
-                      <h3 className="text-sm sm:text-base font-bold tracking-tight text-stone-900 truncate">
+                      <h3 className="text-sm sm:text-base font-bold tracking-tight text-stone-900 leading-snug">
                         {title}
                       </h3>
                     ) : (
                       title
                     )}
                     {description && (
-                      <p className="text-[10px] sm:text-[11px] text-stone-500 font-semibold uppercase tracking-wider mt-0.5 truncate">
+                      <p className="text-[10px] sm:text-[11px] text-stone-500 font-semibold uppercase tracking-wider mt-1 leading-relaxed">
                         {description}
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     {headerActions}
                     {!hideCloseButton && (
                       <button
@@ -173,7 +175,7 @@ export const Modal = memo(function Modal({
               )}
               <div
                 className={cn(
-                  "overflow-y-auto p-4 sm:p-5 custom-scrollbar flex-1",
+                  "overflow-y-auto p-4 sm:p-6 custom-scrollbar flex-1 min-h-0",
                   contentClassName,
                 )}
               >
@@ -182,7 +184,7 @@ export const Modal = memo(function Modal({
               {footer && (
                 <div
                   className={cn(
-                    "sticky bottom-0 bg-stone-50/95 backdrop-blur-xs z-10 flex flex-wrap items-center justify-end gap-2 px-4 py-3 sm:px-5 sm:py-3.5 border-t border-stone-200/80 shrink-0",
+                    "sticky bottom-0 bg-stone-50/95 backdrop-blur-xs z-10 flex flex-wrap items-center justify-end gap-2.5 px-4 py-3 sm:px-6 sm:py-3.5 border-t border-stone-200/80 shrink-0",
                     isHrisContext ? "sm:rounded-b-2xl" : "sm:rounded-b-xl",
                   )}
                 >

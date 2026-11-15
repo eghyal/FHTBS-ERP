@@ -241,18 +241,20 @@ export function ShopFloorExecution() {
         subtitle="Work order dispatch & station WIP"
         icon={<Factory className="w-5 h-5" />}
         actions={
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon-sm"
-            onClick={fetchShopFloorData}
-            disabled={isLoading}
-            title="Refresh Shop Floor Data"
-          >
-            <RefreshCw
-              className={cn("w-3.5 h-3.5", isLoading && "animate-spin")}
-            />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon-sm"
+              onClick={fetchShopFloorData}
+              disabled={isLoading}
+              title="Refresh Shop Floor Data"
+            >
+              <RefreshCw
+                className={cn("w-3.5 h-3.5", isLoading && "animate-spin")}
+              />
+            </Button>
+          </div>
         }
       />
 
@@ -583,7 +585,6 @@ export function ShopFloorExecution() {
                           navigate(`/production/projects/${proj.id}`)
                         }
                         rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
-                        className="bg-emerald-700 hover:bg-emerald-800 text-white"
                       >
                         Execute Floor
                       </Button>
@@ -683,7 +684,6 @@ export function ShopFloorExecution() {
                               onClick={() => handleOpenProjectFgr(proj)}
                               disabled={isOpeningFgrId === proj.id}
                               leftIcon={<Printer className="w-3.5 h-3.5" />}
-                              className="bg-emerald-700 hover:bg-emerald-800 text-white"
                             >
                               Export FGR
                             </Button>

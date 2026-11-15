@@ -34,69 +34,9 @@ export const PrqConfirmModal: React.FC<PrqConfirmModalProps> = ({
       isOpen={prqConfirmModal.isOpen}
       onClose={() => setPrqConfirmModal((prev: any) => ({ ...prev, isOpen: false }))}
       title={prqConfirmModal.title}
-      maxWidth="md"
-    >
-      <div className="space-y-4 p-2 text-left">
-        <div className="flex items-start gap-3 p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-stone-700 text-xs">
-          <AlertCircle className="w-5 h-5 text-stone-700 shrink-0 mt-0.5" />
-          <p className="font-semibold leading-relaxed">
-            {prqConfirmModal.message}
-          </p>
-        </div>
-
-        {prqConfirmModal.type === "CANCEL_PRQ" && (
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-stone-500 uppercase tracking-widest block">
-              Reason for PRq Cancellation
-            </label>
-            <textarea
-              rows={3}
-              value={prqConfirmModal.reasonInput || ""}
-              onChange={(e) =>
-                setPrqConfirmModal((prev: any) => ({
-                  ...prev,
-                  reasonInput: e.target.value,
-                }))
-              }
-              placeholder="State the cancellation reason for audit archives..."
-              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold focus:outline-none focus:border-stone-900"
-            />
-          </div>
-        )}
-
-        {(prqConfirmModal.type === "SUBMIT_PRQ" ||
-          prqConfirmModal.type === "CANCEL_PRQ") && (
-          <div className="space-y-1.5 p-3.5 bg-stone-100/80 rounded-2xl border border-stone-200 text-left">
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] font-black text-stone-700 uppercase tracking-widest flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-stone-800" />
-                <span>Auth System: ERP Authorization PIN</span>
-              </label>
-              <span className="text-[10px] font-mono bg-white px-2 py-0.5 rounded-md text-stone-600 font-extrabold border border-stone-200">
-                Daily Key: {dailyAuthKey}
-              </span>
-            </div>
-            <input
-              type="password"
-              value={prqConfirmModal.authPin || ""}
-              onChange={(e) =>
-                setPrqConfirmModal((prev: any) => ({
-                  ...prev,
-                  authPin: e.target.value,
-                }))
-              }
-              placeholder="Enter Authorization PIN (e.g. 123456)"
-              className="w-full p-2.5 bg-white border border-stone-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-stone-900 transition-all"
-            />
-            <p className="text-[10px] text-stone-500 font-medium leading-normal">
-              HR Manager authorization verification. Default PIN:{" "}
-              <span className="font-mono font-bold text-stone-800">123456</span>{" "}
-              or Daily Key.
-            </p>
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
+      maxWidth="lg"
+      footer={
+        <div className="flex flex-wrap justify-end gap-2.5 w-full">
           <button
             type="button"
             onClick={() =>
@@ -149,6 +89,65 @@ export const PrqConfirmModal: React.FC<PrqConfirmModalProps> = ({
             </button>
           )}
         </div>
+      }
+    >
+      <div className="space-y-4 text-left">
+        <div className="flex items-start gap-3 p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-stone-700 text-xs">
+          <AlertCircle className="w-5 h-5 text-stone-700 shrink-0 mt-0.5" />
+          <p className="font-semibold leading-relaxed">
+            {prqConfirmModal.message}
+          </p>
+        </div>
+
+        {prqConfirmModal.type === "CANCEL_PRQ" && (
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-stone-500 uppercase tracking-widest block">
+              Reason for PRq Cancellation
+            </label>
+            <textarea
+              rows={3}
+              value={prqConfirmModal.reasonInput || ""}
+              onChange={(e) =>
+                setPrqConfirmModal((prev: any) => ({
+                  ...prev,
+                  reasonInput: e.target.value,
+                }))
+              }
+              placeholder="State the cancellation reason for audit archives..."
+              className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold focus:outline-none focus:border-stone-900"
+            />
+          </div>
+        )}
+
+        {(prqConfirmModal.type === "SUBMIT_PRQ" ||
+          prqConfirmModal.type === "CANCEL_PRQ") && (
+          <div className="space-y-1.5 p-3.5 bg-stone-100/80 rounded-2xl border border-stone-200 text-left">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-black text-stone-700 uppercase tracking-widest flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-stone-800" />
+                <span>Auth System: ERP Authorization PIN</span>
+              </label>
+              <span className="text-[10px] font-mono bg-white px-2 py-0.5 rounded-md text-stone-600 font-extrabold border border-stone-200">
+                Daily Key: {dailyAuthKey}
+              </span>
+            </div>
+            <input
+              type="password"
+              value={prqConfirmModal.authPin || ""}
+              onChange={(e) =>
+                setPrqConfirmModal((prev: any) => ({
+                  ...prev,
+                  authPin: e.target.value,
+                }))
+              }
+              placeholder="Enter Daily Authorization Key shown above"
+              className="w-full p-2.5 bg-white border border-stone-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-stone-900 transition-all"
+            />
+            <p className="text-[10px] text-stone-500 font-medium leading-normal">
+              HR Manager authorization verification using your active Daily Key.
+            </p>
+          </div>
+        )}
       </div>
     </Modal>
   );

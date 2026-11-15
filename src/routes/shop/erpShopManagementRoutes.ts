@@ -2,12 +2,66 @@ import { Router } from "express";
 import db from "../../db/database.ts";
 import { requireRole } from "../../middleware/auth.ts";
 import crypto from "crypto";
+import { cacheService } from "../../services/cacheService.ts";
+import { hybridDb } from "../../db/firestoreAdapter.ts";
+import { scheduleImmediateWriteThrough } from "../../services/outboxService.ts";
 import {
   postJournalEntry,
   postDeliveryDispatchJournal,
   postDownPaymentInvoiceJournal,
   postFinalSettlementInvoiceJournal,
 } from "../../utils/accountingBridge.ts";
+
+function parseGalleryUrls(raw: unknown): string[] {
+  let list: unknown[] = [];
+  if (Array.isArray(raw)) {
+    list = raw;
+  } else if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      list = [];
+    }
+  }
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  for (const entry of list) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    cleaned.push(trimmed);
+  }
+  return cleaned;
+}
+
+function normalizeLockedCatalogMedia(coverInput: unknown, galleryInput: unknown): {
+  primaryUrl: string | null;
+  gallery: string[];
+  galleryJson: string;
+} {
+  const cleanCover = typeof coverInput === "string" ? coverInput.trim() : "";
+  let gallery = parseGalleryUrls(galleryInput);
+
+  if (cleanCover) {
+    // Locked Main Cover invariant: keep primaryUrl locked strictly at index 0
+    gallery = [cleanCover, ...gallery.filter((u) => u !== cleanCover)];
+    return {
+      primaryUrl: cleanCover,
+      gallery,
+      galleryJson: JSON.stringify(gallery),
+    };
+  }
+
+  // Only promote gallery[0] if admin explicitly cleared/removed the cover photo
+  const promoted = gallery[0] || null;
+  return {
+    primaryUrl: promoted,
+    gallery,
+    galleryJson: JSON.stringify(gallery),
+  };
+}
 
 export function registerErpShopManagementRoutes(shopRouter: Router) {
   shopRouter.get(
@@ -1166,7 +1220,15 @@ export function registerErpShopManagementRoutes(shopRouter: Router) {
 
         sql += ` ORDER BY i.is_published_shop DESC, i.name ASC`;
 
-        const catalog = db.prepare(sql).all(...params);
+        const rawCatalog = db.prepare(sql).all(...params) as any[];
+        const catalog = rawCatalog.map((row) => {
+          const media = normalizeLockedCatalogMedia(row.shop_image_url, row.shop_gallery_urls);
+          return {
+            ...row,
+            shop_image_url: media.primaryUrl || "",
+            shop_gallery_urls: media.galleryJson,
+          };
+        });
 
         res.json({
           success: true,
@@ -1202,24 +1264,33 @@ export function registerErpShopManagementRoutes(shopRouter: Router) {
           description,
         } = req.body;
 
-        const item = db.prepare("SELECT id, name FROM items WHERE id = ?").get(id) as any;
+        const item = db.prepare("SELECT * FROM items WHERE id = ?").get(id) as any;
         if (!item) {
           return res.status(404).json({ success: false, error: "Item not found" });
         }
 
-        const galleryJson = Array.isArray(shop_gallery_urls)
-          ? JSON.stringify(shop_gallery_urls)
-          : typeof shop_gallery_urls === "string"
-          ? shop_gallery_urls
-          : null;
+        const hasMediaUpdate = shop_image_url !== undefined || shop_gallery_urls !== undefined;
+        let nextImageUrl: string | null = item.shop_image_url ?? null;
+        let nextGalleryJson: string = item.shop_gallery_urls ?? "[]";
+
+        if (hasMediaUpdate) {
+          // If only gallery is updated without specifying shop_image_url, keep existing cover locked
+          const effectiveCover =
+            shop_image_url !== undefined ? shop_image_url : item.shop_image_url;
+          const effectiveGallery =
+            shop_gallery_urls !== undefined ? shop_gallery_urls : item.shop_gallery_urls;
+          const normalized = normalizeLockedCatalogMedia(effectiveCover, effectiveGallery);
+          nextImageUrl = normalized.primaryUrl;
+          nextGalleryJson = normalized.galleryJson;
+        }
 
         db.prepare(`
           UPDATE items
           SET unit_price = COALESCE(?, unit_price),
               selling_price = COALESCE(?, unit_price, selling_price),
               is_published_shop = COALESCE(?, is_published_shop),
-              shop_image_url = COALESCE(?, shop_image_url),
-              shop_gallery_urls = COALESCE(?, shop_gallery_urls),
+              shop_image_url = ?,
+              shop_gallery_urls = ?,
               shop_promo_price = COALESCE(?, shop_promo_price),
               shop_weight_kg = COALESCE(?, shop_weight_kg),
               shop_badge = COALESCE(?, shop_badge),
@@ -1235,8 +1306,8 @@ export function registerErpShopManagementRoutes(shopRouter: Router) {
           unit_price !== undefined ? Number(unit_price) : null,
           unit_price !== undefined ? Number(unit_price) : null,
           is_published_shop !== undefined ? (is_published_shop ? 1 : 0) : null,
-          shop_image_url !== undefined ? shop_image_url : null,
-          galleryJson !== null ? galleryJson : null,
+          nextImageUrl,
+          nextGalleryJson,
           shop_promo_price !== undefined ? Number(shop_promo_price) : null,
           shop_weight_kg !== undefined ? Number(shop_weight_kg) : null,
           shop_badge !== undefined ? shop_badge : null,
@@ -1250,9 +1321,35 @@ export function registerErpShopManagementRoutes(shopRouter: Router) {
           id
         );
 
+        const updatedRow = db.prepare("SELECT * FROM items WHERE id = ?").get(id) as any;
+
+        // 1. Invalidate backend memory cache
+        cacheService.invalidateNamespace("items");
+
+        // 2. Push immediately to Cloud SSOT (PostgreSQL Primary) & flush WAL outbox
+        scheduleImmediateWriteThrough();
+        if (updatedRow) {
+          void hybridDb.write("items", id, updatedRow).catch((syncErr) => {
+            console.warn("[ERP Shop API] Non-fatal Cloud SSOT catalog sync note:", syncErr?.message || syncErr);
+          });
+        }
+
+        // 3. Broadcast real-time update to all connected Shop & ERP clients via WebSocket
+        try {
+          const io = (global as any).io;
+          if (io) {
+            io.emit("shop:catalog_updated", {
+              itemId: id,
+              updatedAt: Date.now(),
+              action: "CATALOG_UPDATED",
+            });
+          }
+        } catch {}
+
         res.json({
           success: true,
           message: `Product ${item.name} shop configuration updated.`,
+          data: updatedRow,
         });
       } catch (err: any) {
         console.error("[ERP Shop API] Catalog update error:", err);

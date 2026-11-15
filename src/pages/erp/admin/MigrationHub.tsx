@@ -456,6 +456,8 @@ export default function CloudMigrationHub() {
       [
         "chart_of_accounts",
         "accounting_periods",
+        "closing_required_items",
+        "closing_snapshots",
         "finance_transactions",
         "journal_entries",
         "journal_entry_lines",

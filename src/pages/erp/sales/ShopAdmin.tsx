@@ -52,6 +52,8 @@ import { ShopOrder } from "@/types/shop";
 import { ProductImageUploader } from "@/components/shared/ProductImageUploader";
 import { ShopCmsEditor } from "@/components/shop/ShopCmsEditor";
 import { ShopOrderDetailModal } from "@/components/shop/ShopOrderDetailModal";
+import { invalidateSmartCache } from "@/utils/smartCache";
+import { broadcastCatalogUpdate, subscribeToCatalogUpdates } from "@/utils/shopLiveSync";
 
 interface CatalogItem {
   id: string;
@@ -105,6 +107,7 @@ export default function ShopManagement() {
   const [isCreatingInvoiceId, setIsCreatingInvoiceId] = useState<string | null>(null);
   const [isTriggeringSpkId, setIsTriggeringSpkId] = useState<string | null>(null);
   const [isSyncingIntegrity, setIsSyncingIntegrity] = useState(false);
+  const [brokenThumbIds, setBrokenThumbIds] = useState<Record<string, boolean>>({});
 
   // Fetch KPI statistics
   const fetchStats = useCallback(async () => {
@@ -169,6 +172,18 @@ export default function ShopManagement() {
     }
   }, [activeTab, orderStatusFilter, fetchStats, fetchCatalog, fetchOrders]);
 
+  useEffect(() => {
+    const unsubscribe = subscribeToCatalogUpdates(() => {
+      if (activeTab === "catalog") {
+        fetchCatalog();
+      }
+      fetchStats();
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [activeTab, fetchCatalog, fetchStats]);
+
   // Toggle publish state directly
   const handleTogglePublish = useCallback(async (item: CatalogItem) => {
     try {
@@ -182,6 +197,9 @@ export default function ShopManagement() {
         user?.username,
       );
       if (res.ok) {
+        invalidateSmartCache("/api/shop");
+        invalidateSmartCache("/api/public");
+        broadcastCatalogUpdate(item.id, "PUBLISH_TOGGLED");
         showToast(
           newState === 1
             ? `SKU ${item.item_code} published on storefront`
@@ -248,7 +266,43 @@ export default function ShopManagement() {
         throw new Error(res.error || "Failed to save configuration");
       }
 
-      showToast("Showroom display settings saved successfully", "success");
+      const savedRow = res.data?.data || null;
+      if (savedRow) {
+        setBrokenThumbIds((prev) => {
+          const next = { ...prev };
+          delete next[editingItem.id];
+          return next;
+        });
+        setCatalog((prev) =>
+          prev.map((it) =>
+            it.id === editingItem.id
+              ? {
+                  ...it,
+                  unit_price: Number(savedRow.unit_price ?? finalUnitPrice),
+                  is_published_shop: Number(savedRow.is_published_shop ?? editingItem.is_published_shop),
+                  shop_promo_price: Number(savedRow.shop_promo_price ?? finalPromoPrice),
+                  shop_weight_kg: Number(savedRow.shop_weight_kg ?? editingItem.shop_weight_kg),
+                  shop_badge: savedRow.shop_badge ?? editingItem.shop_badge,
+                  shop_featured: Number(savedRow.shop_featured ?? editingItem.shop_featured),
+                  shop_availability_type: savedRow.shop_availability_type ?? availType,
+                  shop_lead_time_days: Number(savedRow.shop_lead_time_days ?? editingItem.shop_lead_time_days),
+                  shop_moq: Number(savedRow.shop_moq ?? editingItem.shop_moq),
+                  shop_specs: savedRow.shop_specs ?? editingItem.shop_specs,
+                  shop_image_url: savedRow.shop_image_url || "",
+                  shop_gallery_urls: savedRow.shop_gallery_urls || "[]",
+                  category: savedRow.category ?? editingItem.category,
+                  description: savedRow.description ?? editingItem.description,
+                }
+              : it,
+          ),
+        );
+      }
+
+      invalidateSmartCache("/api/shop");
+      invalidateSmartCache("/api/public");
+      broadcastCatalogUpdate(editingItem.id, "CATALOG_UPDATED");
+
+      showToast("Showroom display settings saved & synced live", "success");
       setEditingItem(null);
       fetchCatalog();
       fetchStats();
@@ -534,7 +588,7 @@ export default function ShopManagement() {
               href="/shop"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 h-9 px-3.5 py-2 text-xs font-bold tracking-wide rounded-xl bg-emerald-600 hover:bg-emerald-700 border border-emerald-600 text-white shadow-xs transition-all active:scale-[0.98]"
+              className="inline-flex items-center gap-2 h-9 px-3.5 py-2 text-xs font-bold tracking-wide rounded-xl bg-stone-900 hover:bg-stone-800 border border-stone-900 text-white shadow-xs transition-all active:scale-[0.98]"
             >
               <ExternalLink className="w-4 h-4 text-white/90" />
               <span>View Storefront</span>
@@ -661,10 +715,14 @@ export default function ShopManagement() {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-lg bg-stone-100 border border-stone-200/80 overflow-hidden shrink-0 flex items-center justify-center relative">
-                              {item.shop_image_url ? (
+                              {item.shop_image_url && !brokenThumbIds[item.id] ? (
                                 <img
                                   src={item.shop_image_url}
                                   alt={item.name}
+                                  referrerPolicy="no-referrer"
+                                  onError={() =>
+                                    setBrokenThumbIds((prev) => ({ ...prev, [item.id]: true }))
+                                  }
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
@@ -1161,9 +1219,29 @@ export default function ShopManagement() {
           isOpen={true}
           onClose={() => setEditingItem(null)}
           title={`Configure Showroom Display: ${editingItem.name}`}
-          maxWidth="5xl"
+          maxWidth="6xl"
+          footer={
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setEditingItem(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="shopadmin-showroom-form"
+                variant="primary"
+                isLoading={isSavingItem}
+                leftIcon={<Check className="w-3.5 h-3.5" />}
+              >
+                Save Configuration
+              </Button>
+            </div>
+          }
         >
-          <form onSubmit={handleSaveItemDisplay} className="space-y-4 text-xs text-stone-700">
+          <form id="shopadmin-showroom-form" onSubmit={handleSaveItemDisplay} className="space-y-4 text-xs text-stone-700">
             {/* Read-only Item Master Bar */}
             <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
@@ -1283,7 +1361,7 @@ export default function ShopManagement() {
             </div>
 
             {/* Pricing, Category, Weight & Marketing Badge */}
-            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <Select
                 label="Product Category"
                 value={editingItem.category || "Paving & Precast"}
@@ -1386,11 +1464,15 @@ export default function ShopManagement() {
                 }
               })()}
               onImagesChange={(primaryUrl, allGalleryUrls) => {
-                setEditingItem({
-                  ...editingItem,
-                  shop_image_url: primaryUrl,
-                  shop_gallery_urls: allGalleryUrls,
-                });
+                setEditingItem((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        shop_image_url: primaryUrl,
+                        shop_gallery_urls: allGalleryUrls,
+                      }
+                    : prev,
+                );
               }}
               pathPrefix="catalog_products"
             />
@@ -1409,24 +1491,6 @@ export default function ShopManagement() {
               placeholder="Compressive strength, application area, laying pattern..."
             />
 
-            {/* Modal Buttons */}
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setEditingItem(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={isSavingItem}
-                leftIcon={<Check className="w-3.5 h-3.5" />}
-              >
-                Save Configuration
-              </Button>
-            </div>
           </form>
         </Modal>
       )}

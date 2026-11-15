@@ -80,206 +80,31 @@ manpowerRouter.get("/api/production/manpower", (req, res) => {
       }
     });
 
-manpowerRouter.post("/api/production/manpower/reset-defaults", (req, res) => {
+manpowerRouter.post("/api/production/manpower/reset-defaults", async (req, res) => {
       try {
-        const defaultOperators = [
-          {
-            id: "mp-001",
-            user_username: "bambang_cnc",
-            nik: "MP-2024-001",
-            name: "Bambang Sudirman",
-            role_title: "Senior CNC Machinist & Programmer",
-            skill_level: "MASTER",
-            specialization: "Machining (CNC / Milling)",
-            shift: "SHIFT_1",
-            status: "ON_DUTY",
-            phone: "+62 812-3456-7801",
-            email: "bambang.cnc@factory.local",
-            hourly_rate: 65000,
-            certifications: JSON.stringify(["Fanuc 5-Axis Certified", "ISO 9001:2015 Machining"]),
-            active_project_id: null,
-            active_task_name: "CNC Milling Impeller Shaft Housing",
-            total_hours_worked: 320.5,
-            completed_tasks_count: 48,
-            efficiency_rating: 98.4,
-            notes: "Lead machinist for high-precision components and turbine casings."
-          },
-          {
-            id: "mp-002",
-            user_username: "agus_welder",
-            nik: "MP-2024-002",
-            name: "Agus Pratama",
-            role_title: "Certified ASME TIG/MIG Welder",
-            skill_level: "SENIOR",
-            specialization: "Welding & Fabrication",
-            shift: "SHIFT_1",
-            status: "AVAILABLE",
-            phone: "+62 813-9876-5402",
-            email: "agus.welder@factory.local",
-            hourly_rate: 55000,
-            certifications: JSON.stringify(["ASME Section IX 6G 6GR", "MIG/MAG Heavy Structure"]),
-            active_project_id: null,
-            active_task_name: null,
-            total_hours_worked: 245.0,
-            completed_tasks_count: 36,
-            efficiency_rating: 96.2,
-            notes: "Expert in stainless steel piping and pressure vessel welding."
-          },
-          {
-            id: "mp-003",
-            user_username: "dedi_fitter",
-            nik: "MP-2024-003",
-            name: "Dedi Supriyanto",
-            role_title: "Mechanical Assembly Technician",
-            skill_level: "SENIOR",
-            specialization: "Assembly & Fitting",
-            shift: "SHIFT_2",
-            status: "ON_DUTY",
-            phone: "+62 818-1234-5603",
-            email: "dedi.assembly@factory.local",
-            hourly_rate: 48000,
-            certifications: JSON.stringify(["Hydraulic Systems Specialist", "Torque Tightening QA"]),
-            active_project_id: null,
-            active_task_name: "Hydraulic Pump Sub-assembly & Torque Alignment",
-            total_hours_worked: 210.0,
-            completed_tasks_count: 29,
-            efficiency_rating: 94.8,
-            notes: "Precision gearbox alignment and bearing press-fitting specialist."
-          },
-          {
-            id: "mp-004",
-            user_username: "rian_qc",
-            nik: "MP-2024-004",
-            name: "Rian Hidayat",
-            role_title: "Quality Control & NDT Inspector",
-            skill_level: "SENIOR",
-            specialization: "Quality Control",
-            shift: "SHIFT_1",
-            status: "AVAILABLE",
-            phone: "+62 819-5566-7704",
-            email: "rian.qc@factory.local",
-            hourly_rate: 52000,
-            certifications: JSON.stringify(["NDT Ultrasonic Testing Level II", "CMM Mitutoyo Operator"]),
-            active_project_id: null,
-            active_task_name: null,
-            total_hours_worked: 180.0,
-            completed_tasks_count: 52,
-            efficiency_rating: 99.1,
-            notes: "Authorized final dimensional report and CMM coordinate verifier."
-          },
-          {
-            id: "mp-005",
-            user_username: "hendra_finishing",
-            nik: "MP-2024-005",
-            name: "Hendra Wijaya",
-            role_title: "Surface Finishing & Epoxy Specialist",
-            skill_level: "JUNIOR",
-            specialization: "Finishing & Coating",
-            shift: "SHIFT_2",
-            status: "AVAILABLE",
-            phone: "+62 811-9988-3305",
-            email: "hendra.finishing@factory.local",
-            hourly_rate: 42000,
-            certifications: JSON.stringify(["Sandblasting Safety SA 2.5", "High-Solid Polyurethane Painting"]),
-            active_project_id: null,
-            active_task_name: null,
-            total_hours_worked: 140.0,
-            completed_tasks_count: 18,
-            efficiency_rating: 91.5,
-            notes: "Expert in heavy duty marine-grade blasting and primer spray."
-          },
-          {
-            id: "mp-006",
-            user_username: "fajar_electric",
-            nik: "MP-2024-006",
-            name: "Fajar Nugroho",
-            role_title: "Electrical & Control Wiring Tech",
-            skill_level: "SENIOR",
-            specialization: "Electrical & Wiring",
-            shift: "GENERAL",
-            status: "ON_DUTY",
-            phone: "+62 812-7711-4406",
-            email: "fajar.electric@factory.local",
-            hourly_rate: 58000,
-            certifications: JSON.stringify(["PLC Schneider Wiring", "K3 Listrik Kemnaker RI"]),
-            active_project_id: null,
-            active_task_name: "Control Panel Terminal Termination & Wire Harnessing",
-            total_hours_worked: 310.0,
-            completed_tasks_count: 41,
-            efficiency_rating: 97.0,
-            notes: "Control panel layout wiring and PLC I/O loop verification."
-          },
-          {
-            id: "mp-007",
-            user_username: "wahyu_lathe",
-            nik: "MP-2024-007",
-            name: "Wahyu Setiawan",
-            role_title: "Junior CNC Lathe Operator",
-            skill_level: "JUNIOR",
-            specialization: "Machining (CNC / Milling)",
-            shift: "SHIFT_3",
-            status: "AVAILABLE",
-            phone: "+62 856-1122-3307",
-            email: "wahyu.s@factory.local",
-            hourly_rate: 38000,
-            certifications: JSON.stringify(["Basic G-Code Machining", "Tool Offset Calibration"]),
-            active_project_id: null,
-            active_task_name: null,
-            total_hours_worked: 95.0,
-            completed_tasks_count: 14,
-            efficiency_rating: 89.2,
-            notes: "Third shift CNC night turning operator under supervision."
-          },
-          {
-            id: "mp-008",
-            user_username: "tri_toolmaker",
-            nik: "MP-2024-008",
-            name: "Tri Wibowo",
-            role_title: "Tool & Die Maker",
-            skill_level: "MASTER",
-            specialization: "Machining (CNC / Milling)",
-            shift: "SHIFT_1",
-            status: "ON_LEAVE",
-            phone: "+62 813-2233-4408",
-            email: "tri.wibowo@factory.local",
-            hourly_rate: 62000,
-            certifications: JSON.stringify(["Progressive Die Design", "Jig & Fixture Prototyping"]),
-            active_project_id: null,
-            active_task_name: null,
-            total_hours_worked: 410.0,
-            completed_tasks_count: 65,
-            efficiency_rating: 98.9,
-            notes: "Jig & fixture fabrication expert with 15+ years experience."
-          }
-        ];
+        const existingMp = db.prepare(`SELECT id FROM production_manpower`).all() as Array<{ id: string }>;
+        const existingAssignments = db.prepare(`SELECT id FROM production_manpower_assignments`).all() as Array<{ id: string }>;
 
         const tx = db.transaction(() => {
-          // Clear existing manpower and assignments
           db.prepare(`DELETE FROM production_manpower_assignments`).run();
           db.prepare(`DELETE FROM production_manpower`).run();
-
-          const insertStmt = db.prepare(`
-            INSERT INTO production_manpower (
-              id, user_username, nik, name, role_title, skill_level, specialization, shift, status,
-              phone, email, hourly_rate, certifications, active_project_id, active_task_name,
-              total_hours_worked, completed_tasks_count, efficiency_rating, notes
-            ) VALUES (
-              @id, @user_username, @nik, @name, @role_title, @skill_level, @specialization, @shift, @status,
-              @phone, @email, @hourly_rate, @certifications, @active_project_id, @active_task_name,
-              @total_hours_worked, @completed_tasks_count, @efficiency_rating, @notes
-            )
-          `);
-
-          for (const op of defaultOperators) {
-            insertStmt.run(op);
-          }
         });
 
         tx();
 
-        res.json({ success: true, message: "Manpower data reset to standard default production roster." });
+        for (const a of existingAssignments) {
+          deleteDocFromFirestore("production_manpower_assignments", a.id).catch(() => {});
+        }
+        for (const m of existingMp) {
+          deleteDocFromFirestore("production_manpower", m.id).catch(() => {});
+        }
+
+        res.json({
+          success: true,
+          message: "Manpower roster cleared. Register approved operators via HRIS Directory to populate Shop Floor Manpower.",
+        });
       } catch (err: any) {
-        console.error("Error resetting manpower defaults:", err);
+        console.error("Error clearing manpower defaults:", err);
         res.status(500).json({ error: err.message });
       }
     });

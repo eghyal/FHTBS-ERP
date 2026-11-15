@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/contexts/ToastContext";
 import { apiFetch } from "@/utils/api";
-import { fetchJsonWithSmartCache } from "@/utils/smartCache";
+import { fetchJsonWithSmartCache, invalidateSmartCache } from "@/utils/smartCache";
 import { trackPageView, trackSearch, trackFilter, trackProductView, trackCartAdd, rotateVisitorSession } from "@/lib/tracker";
 import { signOutGoogleStoreCustomer } from "@/lib/googleStoreAuth";
 import {
@@ -56,6 +56,7 @@ import {
   recordServerCmsSnapshot,
   subscribeToCmsUpdates,
 } from "@/utils/cmsLiveSync";
+import { subscribeToCatalogUpdates } from "@/utils/shopLiveSync";
 
 export default function Shop() {
   const { showToast } = useToast();
@@ -276,8 +277,26 @@ export default function Shop() {
   }, [cartItems, customer?.id]);
 
   const isInitialSearchMount = useRef(true);
+  const fetchProductsRef = useRef<((opts?: { forceRefresh?: boolean }) => Promise<void>) | null>(null);
 
-  const fetchProducts = async () => {
+  const applyCatalogResponse = (json: any) => {
+    if (json?.success) {
+      const nextProducts: ShopProduct[] = json.data || [];
+      setProducts(nextProducts);
+      if (json.categories && json.categories.length > 0) {
+        setCategories(json.categories);
+      }
+      setSelectedProduct((prev) => {
+        if (!prev) return prev;
+        const updatedMatch = nextProducts.find((p) => String(p.id) === String(prev.id));
+        return updatedMatch || prev;
+      });
+    } else {
+      setProducts([]);
+    }
+  };
+
+  const fetchProducts = async (options?: { forceRefresh?: boolean }) => {
     setHasError(false);
     const params = new URLSearchParams();
     if (selectedCategory && selectedCategory !== "ALL") {
@@ -291,31 +310,19 @@ export default function Shop() {
     }
     const url = `/api/shop/products?${params.toString()}`;
 
-    // Only show skeleton spinner if we have no products yet
     if (products.length === 0) {
       setIsLoading(true);
     }
 
     try {
       const json = await fetchJsonWithSmartCache<any>(url, {
-        ttlMs: 60_000,
+        ttlMs: 10_000,
+        forceRefresh: options?.forceRefresh,
         onRevalidate: (freshJson) => {
-          if (freshJson?.success) {
-            setProducts(freshJson.data || []);
-            if (freshJson.categories && freshJson.categories.length > 0) {
-              setCategories(freshJson.categories);
-            }
-          }
+          applyCatalogResponse(freshJson);
         },
       });
-      if (json?.success) {
-        setProducts(json.data || []);
-        if (json.categories && json.categories.length > 0) {
-          setCategories(json.categories);
-        }
-      } else {
-        setProducts([]);
-      }
+      applyCatalogResponse(json);
     } catch (err) {
       console.error("Failed to load shop products:", err);
       setHasError(true);
@@ -323,6 +330,8 @@ export default function Shop() {
       setIsLoading(false);
     }
   };
+
+  fetchProductsRef.current = fetchProducts;
 
   useEffect(() => {
     trackPageView("SHOP", "Katalog Produk & Toko Online Paving Joss", "/shop");
@@ -332,6 +341,11 @@ export default function Shop() {
         setShopCms(mergeShopCms(data));
       },
     );
+
+    const unsubscribeCatalog = subscribeToCatalogUpdates(() => {
+      invalidateSmartCache("/api/shop/products");
+      fetchProductsRef.current?.({ forceRefresh: true });
+    });
 
     apiFetch("/api/cms/shop")
       .then((res) => {
@@ -345,6 +359,7 @@ export default function Shop() {
 
     return () => {
       unsubscribeLive();
+      unsubscribeCatalog();
     };
   }, []);
 
@@ -928,7 +943,7 @@ export default function Shop() {
             </p>
             <button
               type="button"
-              onClick={() => fetchProducts()}
+              onClick={() => fetchProducts({ forceRefresh: true })}
               className="px-5 py-2.5 bg-[#b02524] hover:bg-[#8e1d1c] text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-2 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
@@ -1134,10 +1149,10 @@ export default function Shop() {
           setSelectedProductForContact(null);
           setRfqResult(null);
         }}
-        maxWidth="lg"
+        maxWidth="2xl"
         title="Ajukan Penawaran Proyek (RFQ) & Kontak Sales"
       >
-        <div className="p-6 space-y-5 text-stone-800">
+        <div className="space-y-5 text-stone-800">
           {/* Selected Product Pill if opened from a specific product */}
           {selectedProductForContact && (
             <div className="flex items-center gap-3 p-3 bg-stone-50 border border-stone-200/80 rounded-2xl">
@@ -1176,7 +1191,7 @@ export default function Shop() {
                   Permintaan penawaran untuk <strong>{rfqResult.item_name} ({rfqResult.qty} {rfqResult.uom})</strong> telah masuk ke daftar Quotations Sales ERP kami.
                 </p>
               </div>
-              <div className="flex justify-center gap-2 pt-1">
+              <div className="flex flex-wrap justify-center gap-2 pt-1">
                 <a
                   href={`https://wa.me/6281111113993?text=${encodeURIComponent(
                     `Halo Sales Paving Joss, saya sudah mengajukan RFQ di Toko Pabrik dengan Nomor Quotation: ${rfqResult.quotation_number} (${rfqResult.item_name} - ${rfqResult.qty} ${rfqResult.uom}).`
@@ -1317,7 +1332,7 @@ export default function Shop() {
               Atau Hubungi Langsung Tim Komersial
             </span>
             {/* 1. Phone / WhatsApp */}
-            <div className="p-3.5 rounded-2xl border border-stone-200 bg-white hover:border-emerald-300 transition-colors flex items-center justify-between gap-4">
+            <div className="p-3.5 rounded-2xl border border-stone-200 bg-white hover:border-emerald-300 transition-colors flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center shrink-0">
                   <Phone className="w-4 h-4" />
@@ -1348,7 +1363,7 @@ export default function Shop() {
             </div>
 
             {/* 2. Email */}
-            <div className="p-3.5 rounded-2xl border border-stone-200 bg-white hover:border-blue-300 transition-colors flex items-center justify-between gap-4">
+            <div className="p-3.5 rounded-2xl border border-stone-200 bg-white hover:border-blue-300 transition-colors flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center shrink-0">
                   <Mail className="w-4 h-4" />

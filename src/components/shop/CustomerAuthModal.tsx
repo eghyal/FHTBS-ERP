@@ -270,7 +270,7 @@ export function CustomerAuthModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
       <div
-        className="relative w-full max-w-md my-auto bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden text-stone-900 animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-lg max-h-[92dvh] overflow-y-auto my-auto bg-white rounded-2xl shadow-2xl border border-stone-200 text-stone-900 animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Ribbon */}

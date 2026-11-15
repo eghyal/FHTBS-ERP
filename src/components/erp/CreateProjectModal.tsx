@@ -381,7 +381,7 @@ export function CreateProjectModal({
       <Modal
         isOpen={isOpen && !showConfirmModal}
         onClose={onClose}
-        maxWidth="4xl"
+        maxWidth="5xl"
         title={
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center justify-center text-amber-700 shrink-0 shadow-2xs">
@@ -397,14 +397,58 @@ export function CreateProjectModal({
             </div>
           </div>
         }
-        contentClassName="p-0 flex flex-col h-[90vh]"
+        contentClassName="p-0 flex flex-col min-h-0"
+        footer={
+          <div className="flex flex-wrap justify-between items-center gap-3 w-full">
+            <button
+              type="button"
+              onClick={() => {
+                setFormData((prev) => ({
+                  ...prev,
+                  quotation_id: "",
+                  customer: "",
+                  name: "",
+                  remarks: "",
+                }));
+                setBulkMode(false);
+                setBulkProjects([{ id: "", name: "", remarks: "" }]);
+              }}
+              className="px-4 py-2 text-stone-400 hover:text-stone-700 rounded-xl transition-all font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 group cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4 group-hover:rotate-180 transition-transform" />{" "}
+              Reset Form
+            </button>
+            <div className="flex flex-wrap gap-3 ml-auto">
+              <Button type="button" variant="secondary" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="create-project-form"
+                disabled={isSubmitting || isLoading}
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                    Creating Project...
+                  </>
+                ) : bulkMode ? (
+                  `Create Batch (${bulkProjects.filter((p) => (p.name || "").trim() !== "").length} Projects)`
+                ) : (
+                  "Create Project"
+                )}
+              </Button>
+            </div>
+          </div>
+        }
       >
         <form
+          id="create-project-form"
           onSubmit={handleSubmit}
           className="flex flex-col flex-1 overflow-hidden min-h-0"
         >
           {/* Modal Body - Scrollable */}
-          <div className="flex-1 overflow-y-auto px-8 py-8 space-y-8 custom-scrollbar bg-[#F9F9F8]/30">
+          <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-6 custom-scrollbar bg-[#F9F9F8]/30">
             {/* Specific Fields Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
               <div className="space-y-1.5">
@@ -658,7 +702,7 @@ export function CreateProjectModal({
                 </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest ml-1">
                     Delivery Deadline
@@ -787,45 +831,6 @@ export function CreateProjectModal({
                   </div>
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* Modal Footer */}
-          <div className="px-8 py-6 border-t border-stone-100 bg-white flex justify-between items-center shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setFormData((prev) => ({
-                  ...prev,
-                  quotation_id: "",
-                  customer: "",
-                  name: "",
-                  remarks: "",
-                }));
-                setBulkMode(false);
-                setBulkProjects([{ id: "", name: "", remarks: "" }]);
-              }}
-              className="px-4 py-2 text-stone-400 hover:text-stone-700 rounded-xl transition-all font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 group cursor-pointer"
-            >
-              <RotateCcw className="w-4 h-4 group-hover:rotate-180 transition-transform" />{" "}
-              Reset Form
-            </button>
-            <div className="flex gap-3">
-              <Button type="button" variant="secondary" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting || isLoading}>
-                {isSubmitting ? (
-                  <>
-                    <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                    Creating Project...
-                  </>
-                ) : bulkMode ? (
-                  `Create Batch (${bulkProjects.filter((p) => (p.name || "").trim() !== "").length} Projects)`
-                ) : (
-                  "Create Project"
-                )}
-              </Button>
             </div>
           </div>
         </form>

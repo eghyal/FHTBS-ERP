@@ -344,7 +344,7 @@ export function CheckoutModal({
 
       {/* Main Window */}
       <div
-        className="relative bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-stone-200 flex flex-col z-10 animate-in zoom-in-95 duration-150"
+        className="relative bg-white rounded-2xl sm:rounded-3xl max-w-5xl w-full max-h-[92dvh] overflow-y-auto shadow-2xl border border-stone-200 flex flex-col z-10 animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -634,7 +634,7 @@ export function CheckoutModal({
                   <h3 className="text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-2.5">
                     3a. Pilihan Pembayaran & Uang Muka (DP)
                   </h3>
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <label
                       className={`p-3 rounded-xl border cursor-pointer flex flex-col justify-between transition-all ${
                         paymentType === "FULL"

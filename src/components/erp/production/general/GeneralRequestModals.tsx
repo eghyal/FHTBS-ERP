@@ -134,6 +134,7 @@ export const GeneralRequestModals = React.memo(function GeneralRequestModals({
         setSearchTerm={setSearchTerm}
         isSearching={isSearching}
         searchResults={searchResults}
+        minQueryLength={1}
         selectItemFromSearch={selectItemFromSearch}
         title="Non-FG Registry Database Search (SSOT)"
       />
@@ -174,12 +175,33 @@ export const GeneralRequestModals = React.memo(function GeneralRequestModals({
         isOpen={showPreviewModal && !!previewPrData}
         onClose={() => setShowPreviewModal(false)}
         title="Purchase Request Document"
-        maxWidth="5xl"
-        contentClassName="p-0 flex flex-col h-[85vh] border-t border-stone-100"
+        maxWidth="6xl"
+        contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+        footer={
+          previewPrData ? (
+            <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowPreviewModal(false)}
+              >
+                Close
+              </Button>
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={() => handleExportPDF()}
+                isLoading={isSubmitting}
+                leftIcon={!isSubmitting ? <Download className="w-4 h-4" /> : undefined}
+              >
+                {isSubmitting ? "Generating..." : "Export PDF (A4)"}
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {previewPrData && (
-          <>
-            <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+          <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
               <PdfPreviewWrapper>
                 <PrintTemplate
                   ref={printRef}
@@ -417,25 +439,6 @@ export const GeneralRequestModals = React.memo(function GeneralRequestModals({
                 </PrintTemplate>
               </PdfPreviewWrapper>
             </div>
-            <div className="p-6 border-t border-stone-100 bg-white flex justify-center gap-4">
-              <Button
-                variant="secondary"
-                onClick={() => setShowPreviewModal(false)}
-                className="px-6 py-2.5 rounded-xl text-sm"
-              >
-                Close
-              </Button>
-              <Button
-                variant="dark"
-                onClick={() => handleExportPDF()}
-                isLoading={isSubmitting}
-                className="px-6 py-2.5 rounded-xl text-sm shadow-md"
-              >
-                {!isSubmitting && <Download className="w-4 h-4" />}
-                {isSubmitting ? "Generating..." : "Export PDF (A4)"}
-              </Button>
-            </div>
-          </>
         )}
       </Modal>
 
@@ -451,11 +454,38 @@ export const GeneralRequestModals = React.memo(function GeneralRequestModals({
             ? `Revise Purchase Request: ${revisingPr.pr_number}`
             : "Purchase Request Preview"
         }
-        maxWidth="2xl"
-        contentClassName="p-0 border-t border-stone-100"
+        maxWidth="5xl"
+        contentClassName="p-0 flex flex-col min-h-0 bg-stone-50"
+        footer={
+          <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPrModal(false)}
+            >
+              Cancel
+            </Button>
+            {bomRows.filter(
+              (r) =>
+                (r.qty_to_order !== undefined
+                  ? r.qty_to_order
+                  : r.shortage_qty || 0) > 0,
+            ).length > 0 && (
+              <Button
+                onClick={handleSubmitPr}
+                disabled={isSubmitting}
+                isLoading={isSubmitting}
+                variant="primary"
+                size="sm"
+              >
+                {isSubmitting ? "Submitting..." : "Finalize & Print PR"}
+              </Button>
+            )}
+          </div>
+        }
       >
-        <div className="w-full">
-          <div className="p-6 bg-[#F9F9F8]">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
             {revisingPr && revisingPr.revision_note && (
               <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3 shadow-sm mb-6 w-full">
                 <AlertTriangle className="w-5 h-5 text-rose-600 mt-0.5 shrink-0" />
@@ -503,8 +533,8 @@ export const GeneralRequestModals = React.memo(function GeneralRequestModals({
                 </div>
               </div>
 
-              <div className="bg-white border border-stone-200/80 rounded-xl overflow-hidden shadow-2xs">
-                <Table>
+              <div className="bg-white border border-stone-200/80 rounded-xl overflow-x-auto shadow-2xs">
+                <Table className="min-w-[640px]">
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
                       <TableHead>Item</TableHead>
@@ -598,32 +628,6 @@ export const GeneralRequestModals = React.memo(function GeneralRequestModals({
                 </Table>
               </div>
             </div>
-          </div>
-
-          <div className="p-6 border-t border-stone-200/80 bg-white flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowPrModal(false)}
-            >
-              Cancel
-            </Button>
-            {bomRows.filter(
-              (r) =>
-                (r.qty_to_order !== undefined
-                  ? r.qty_to_order
-                  : r.shortage_qty || 0) > 0,
-            ).length > 0 && (
-              <Button
-                onClick={handleSubmitPr}
-                disabled={isSubmitting}
-                isLoading={isSubmitting}
-                variant="primary"
-              >
-                {isSubmitting ? "Submitting..." : "Finalize & Print PR"}
-              </Button>
-            )}
-          </div>
         </div>
       </Modal>
 

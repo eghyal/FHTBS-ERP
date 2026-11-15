@@ -120,7 +120,7 @@ export const WarehouseTerminalTab: React.FC<WarehouseTerminalTabProps> = ({
                               </div>
                               <button
                                 onClick={() => setConsumeStep("SELECT_ITEM")}
-                                className="px-8 py-3.5 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-all tracking-wider uppercase shadow-2xs active:scale-95"
+                                className="px-8 py-3.5 bg-stone-900 text-white text-xs font-bold rounded-xl hover:bg-stone-800 transition-all tracking-wider uppercase shadow-2xs active:scale-95"
                               >
                                 Browse Directory
                               </button>
@@ -176,7 +176,7 @@ export const WarehouseTerminalTab: React.FC<WarehouseTerminalTabProps> = ({
                                     });
                                   }
                                 }}
-                                className="px-6 py-4 bg-emerald-600 text-white rounded-xl flex items-center gap-2 hover:bg-emerald-700 transition-colors shadow-2xs active:scale-95"
+                                className="px-6 py-4 bg-stone-900 text-white rounded-xl flex items-center gap-2 hover:bg-stone-800 transition-colors shadow-2xs active:scale-95"
                               >
                                 <Camera className="w-5 h-5" />
                                 <span className="font-bold text-xs uppercase tracking-widest hidden md:inline">
@@ -635,7 +635,7 @@ export const WarehouseTerminalTab: React.FC<WarehouseTerminalTabProps> = ({
                                     <button
                                       onClick={handleConsume}
                                       disabled={isButtonDisabled}
-                                      className="w-full py-4 bg-emerald-600 border border-emerald-600 text-white rounded-xl font-bold text-sm uppercase tracking-wider hover:bg-emerald-700 transition-all active:scale-[0.99] disabled:opacity-30 disabled:pointer-events-none shadow-2xs"
+                                      className="w-full py-4 bg-stone-900 border border-stone-900 text-white rounded-xl font-bold text-sm uppercase tracking-wider hover:bg-stone-800 transition-all active:scale-[0.99] disabled:opacity-30 disabled:pointer-events-none shadow-2xs"
                                     >
                                       {buttonText}
                                     </button>
@@ -663,7 +663,7 @@ export const WarehouseTerminalTab: React.FC<WarehouseTerminalTabProps> = ({
                                     setSelectedItem(null);
                                     setConsumeQty("1");
                                   }}
-                                  className="px-8 py-3.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold uppercase tracking-wider shadow-2xs hover:bg-emerald-700 transition-all"
+                                  className="px-8 py-3.5 bg-stone-900 text-white rounded-xl text-xs font-semibold uppercase tracking-wider shadow-2xs hover:bg-stone-800 transition-all"
                                 >
                                   Process Next Entity
                                 </button>
@@ -723,7 +723,7 @@ export const WarehouseTerminalTab: React.FC<WarehouseTerminalTabProps> = ({
                                       setSelectedDn(d);
                                       setShowUploadDnModal(true);
                                     }}
-                                    className="w-full md:w-auto px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center justify-center gap-2 active:scale-95"
+                                    className="w-full md:w-auto px-5 py-3 bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center justify-center gap-2 active:scale-95"
                                   >
                                     <Truck className="w-4 h-4 text-white" />
                                     <span>Process Outbound Dispatch</span>

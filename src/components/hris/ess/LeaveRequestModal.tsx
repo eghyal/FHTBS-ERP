@@ -36,9 +36,27 @@ export const LeaveRequestModal: React.FC<LeaveRequestModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="lg"
+      maxWidth="xl"
       uiTheme="hris"
-      contentClassName="p-5 sm:p-6 space-y-4"
+      footer={
+        <div className="flex flex-wrap justify-end gap-2.5">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="hris-leave-form"
+            variant="primary"
+            isLoading={isSubmittingLeave}
+          >
+            Submit Leave Request
+          </Button>
+        </div>
+      }
       title={
         <div className="flex items-center gap-2.5">
           <div className="p-2 bg-stone-900 text-white rounded-lg">
@@ -50,7 +68,7 @@ export const LeaveRequestModal: React.FC<LeaveRequestModalProps> = ({
         </div>
       }
     >
-      <form onSubmit={handleRequestLeave} className="space-y-4 font-bold">
+      <form id="hris-leave-form" onSubmit={handleRequestLeave} className="space-y-4 font-bold">
         <Select
           label="Leave Category"
           value={leaveType}
@@ -94,22 +112,6 @@ export const LeaveRequestModal: React.FC<LeaveRequestModalProps> = ({
           </div>
         )}
 
-        <div className="pt-4 border-t border-stone-100 flex justify-end gap-2.5">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={isSubmittingLeave}
-          >
-            Submit Leave Request
-          </Button>
-        </div>
       </form>
     </Modal>
   );

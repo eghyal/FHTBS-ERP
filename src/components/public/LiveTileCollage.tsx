@@ -318,22 +318,37 @@ export const LiveTileCollage: React.FC<LiveTileCollageProps> = ({
         g = p.shop_gallery_urls;
       }
 
-      const validGallery = Array.isArray(g)
-        ? g.filter((url) => typeof url === "string" && url.trim() !== "")
-        : [];
+      const seen = new Set<string>();
+      const validGallery: string[] = [];
+      if (typeof p.image_url === "string" && p.image_url.trim()) {
+        const cleanCover = p.image_url.trim();
+        seen.add(cleanCover);
+        validGallery.push(cleanCover);
+      }
+      if (Array.isArray(g)) {
+        g.forEach((url) => {
+          if (typeof url === "string" && url.trim()) {
+            const cleanUrl = url.trim();
+            if (!seen.has(cleanUrl)) {
+              seen.add(cleanUrl);
+              validGallery.push(cleanUrl);
+            }
+          }
+        });
+      }
 
       if (validGallery.length > 0) {
         validGallery.forEach((url, photoIdx) => {
           list.push({
             ...p,
             id: `${p.id}-p${photoIdx}`,
-            image_url: url.trim(),
+            image_url: url,
           });
         });
       } else {
         list.push({
           ...p,
-          image_url: typeof p.image_url === "string" ? p.image_url.trim() : "",
+          image_url: "",
         });
       }
     });

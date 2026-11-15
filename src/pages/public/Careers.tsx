@@ -1087,8 +1087,7 @@ export default function Careers() {
       <Modal
         isOpen={isTracking}
         onClose={() => setIsTracking(false)}
-        maxWidth="xl"
-        contentClassName="p-6 sm:p-8"
+        maxWidth="3xl"
         title={
           <h3 className="text-xl font-bold text-stone-900 tracking-tight">
             Portal Pelacakan Lamaran &amp; Offering Letter
@@ -1183,7 +1182,7 @@ export default function Careers() {
               {/* 5-Stage Recruitment Progress Stepper */}
               {trackResult.status !== "REJECTED" && (
                 <div className="pt-3 border-t border-stone-200/80">
-                  <div className="grid grid-cols-5 gap-1.5 text-center">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-center">
                     {[
                       { id: "APPLIED", label: "1. Berkas Masuk" },
                       { id: "SCREENING", label: "2. Skrining Awal" },
@@ -1252,7 +1251,7 @@ export default function Careers() {
                 </div>
 
                 {trackResult.onboarding_token && (
-                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
                         Token Onboarding Aktif (Tersinkronisasi ke HRIS)

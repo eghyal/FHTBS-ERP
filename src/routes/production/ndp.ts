@@ -18,7 +18,6 @@ import {
   handleRescheduleTrigger,
   handleResolveNdp,
   emitProductionUpdate,
-  getHeijunkaThreshold,
   preemptiveAutoPauseConflictingSteps,
 } from "./utils.ts";
 
@@ -78,115 +77,6 @@ ndpRouter.post("/api/production/ndp/:id/reschedule-trigger", handleRescheduleTri
 ndpRouter.post("/api/production/ndp/:id/resolve", handleResolveNdp);
 
 ndpRouter.patch("/api/ndps/:id/resolve", handleResolveNdp);
-
-ndpRouter.get("/api/lean/heijunka/threshold", (req, res) => {
-      res.json({ threshold: getHeijunkaThreshold() });
-    });
-
-ndpRouter.post("/api/lean/heijunka/threshold", (req, res) => {
-      try {
-        const { threshold } = req.body;
-        const num = parseFloat(threshold);
-        if (isNaN(num) || num < 0) {
-          return res.status(400).json({ error: "Invalid threshold value." });
-        }
-        db.prepare(`
-          INSERT INTO system_settings (key, value) VALUES ('heijunka_threshold', ?)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        `).run(num.toString());
-
-        logAudit(
-          getActor(req),
-          "UPDATE_HEIJUNKA_THRESHOLD",
-          "SETTINGS",
-          "heijunka_threshold",
-          `Updated Heijunka Fast-Track threshold to IDR ${num.toLocaleString('id-ID')}`
-        );
-
-        res.json({ success: true, threshold: num });
-      } catch (err: any) { console.error("HEIJUNKA THRESHOLD POST ERROR", err); res.status(500).json({ error: err.message }); }
-    });
-
-ndpRouter.get("/api/lean/andon-summary", (req, res) => {
-      try {
-        const currentThreshold = getHeijunkaThreshold();
-
-        // 1. Critical shortages (available stock <= 0)
-        const criticalShortages = db.prepare(`
-          SELECT COUNT(*) as count FROM items i
-          LEFT JOIN inventory inv ON i.id = inv.item_id
-          WHERE (COALESCE(inv.free_stock, 0) - COALESCE(inv.allocated_stock, 0)) <= 0
-        `).get() as { count: number };
-
-        // 2. ROP alerts (available stock <= min safety threshold)
-        const ropAlerts = db.prepare(`
-          SELECT COUNT(*) as count FROM items i
-          LEFT JOIN inventory inv ON i.id = inv.item_id
-          WHERE (COALESCE(inv.free_stock, 0) - COALESCE(inv.allocated_stock, 0)) <= 10
-        `).get() as { count: number };
-
-        // 3. Pending approval overdue (> 24 hours)
-        const pendingOverdue = db.prepare(`
-          SELECT COUNT(*) as count FROM purchase_requests
-          WHERE status = 'DRAFTED' AND (julianday('now') - julianday(created_at)) * 24 > 24
-        `).get() as { count: number };
-
-        // 4. Unbilled delivered notes
-        const unbilled = db.prepare(`
-          SELECT COUNT(*) as count FROM delivery_notes dn
-          LEFT JOIN commercial_invoices ci ON dn.id = ci.dn_id
-          WHERE dn.status = 'DELIVERED' AND ci.id IS NULL
-        `).get() as { count: number };
-
-        // 5. Heijunka fast-track eligible PRs (< currentThreshold)
-        const fasttrackEligible = db.prepare(`
-          SELECT COUNT(*) as count FROM purchase_requests
-          WHERE status = 'DRAFTED' AND total_estimated_cost <= ?
-        `).get(currentThreshold) as { count: number };
-
-        // Detail items needing replenishment
-        const itemsNeedingReplenish = db.prepare(`
-          SELECT i.id, i.item_code as code, i.name, COALESCE(inv.free_stock, 0) as free_stock, i.uom, COALESCE(i.unit_price, 0) as unit_price
-          FROM items i
-          LEFT JOIN inventory inv ON i.id = inv.item_id
-          WHERE (COALESCE(inv.free_stock, 0) - COALESCE(inv.allocated_stock, 0)) <= 10
-          LIMIT 10
-        `).all() as any[];
-
-        // Detail unbilled delivery notes
-        const unbilledDns = db.prepare(`
-          SELECT dn.id, dn.dn_number, COALESCE(c.name, 'Customer') as customer_name
-          FROM delivery_notes dn
-          LEFT JOIN customers c ON dn.customer_id = c.id
-          LEFT JOIN commercial_invoices ci ON dn.id = ci.dn_id
-          WHERE dn.status = 'DELIVERED' AND ci.id IS NULL
-          LIMIT 5
-        `).all() as any[];
-
-        // Detail fasttrack PRs
-        const fasttrackPrs = db.prepare(`
-          SELECT id, pr_number, total_estimated_cost
-          FROM purchase_requests
-          WHERE status = 'DRAFTED' AND total_estimated_cost <= ?
-          LIMIT 5
-        `).all(currentThreshold) as any[];
-
-        res.json({
-          critical_shortages: criticalShortages.count || 0,
-          rop_alerts: ropAlerts.count || 0,
-          pending_approval_overdue: pendingOverdue.count || 0,
-          unbilled_deliveries: unbilled.count || 0,
-          heijunka_fasttrack_eligible: fasttrackEligible.count || 0,
-          heijunka_threshold: currentThreshold,
-          items_needing_replenish: itemsNeedingReplenish,
-          unbilled_dns: unbilledDns,
-          fasttrack_prs: fasttrackPrs,
-        });
-      } catch (err: any) {
-        console.error("Error fetching Andon summary:", err);
-        res.status(500).json({ error: err.message });
-      }
-    });
 
 ndpRouter.post("/api/production/ndp/:id/resume", (req, res) => {
       try {

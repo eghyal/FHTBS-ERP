@@ -98,7 +98,7 @@ export const ForumComposer = React.memo(function ForumComposer({
                   className={cn(
                     "px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase tracking-wider border cursor-pointer",
                     attachedErpNeedsAuth
-                      ? "bg-emerald-600 text-white border-emerald-600"
+                      ? "bg-stone-900 text-white border-stone-900"
                       : "bg-white text-stone-600 border-stone-200",
                   )}
                 >
@@ -197,7 +197,7 @@ export const ForumComposer = React.memo(function ForumComposer({
             (!newMessage.trim() && !attachingFile && !attachedErpDoc) ||
             uploading
           }
-          className="px-3.5 py-2.5 sm:px-5 sm:py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-40 transition-all shadow-xs flex items-center justify-center shrink-0 cursor-pointer"
+          className="px-3.5 py-2.5 sm:px-5 sm:py-3 bg-stone-900 text-white rounded-xl hover:bg-stone-800 disabled:opacity-40 transition-all shadow-xs flex items-center justify-center shrink-0 cursor-pointer"
         >
           {uploading ? (
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

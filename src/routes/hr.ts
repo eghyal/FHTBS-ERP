@@ -298,6 +298,10 @@ export const hrRouter = Router();
     // Resolving Gap: Katalog Produk Website Publik Terintegrasi Penuh dengan Master Inventory ERP
     hrRouter.get("/api/public/products", (req, res) => {
       try {
+        res.setHeader(
+          "Cache-Control",
+          "no-store, no-cache, must-revalidate, proxy-revalidate",
+        );
         const rawProducts = db
           .prepare(
             `SELECT 
@@ -310,7 +314,7 @@ export const hrRouter = Router();
               COALESCE(i.shop_promo_price, 0) as promo_price,
               i.category,
               i.description,
-              COALESCE(i.shop_image_url, 'https://images.unsplash.com/photo-1584463623578-3062b88137f4?w=800&auto=format&fit=crop&q=80') as image_url,
+              COALESCE(NULLIF(TRIM(i.shop_image_url), ''), '') as image_url,
               COALESCE(i.shop_gallery_urls, '[]') as shop_gallery_urls,
               COALESCE(i.shop_badge, '') as badge,
               COALESCE(i.spec, '') as spec,
@@ -322,7 +326,10 @@ export const hrRouter = Router();
               COALESCE(inv.physical_qty, 0) as physical_qty
             FROM items i
             LEFT JOIN inventory inv ON i.id = inv.item_id
-            WHERE i.deleted_at IS NULL AND COALESCE(i.is_published_shop, 1) = 1 AND (i.type = 'FINISHED' OR i.type = 'FINISH_GOOD')
+            WHERE i.deleted_at IS NULL
+              AND COALESCE(i.is_published_shop, 1) = 1
+              AND ((i.type IN ('FINISHED', 'FINISH_GOOD', 'FINISH_GOODS')) OR (i.item_code LIKE 'FG - %' OR i.item_code LIKE 'FG-%'))
+              AND (i.type != 'MACHINE' OR i.type IS NULL) AND (i.item_code NOT LIKE 'MC - %' AND i.item_code NOT LIKE 'MC-%')
             ORDER BY 
               CASE WHEN i.shop_featured = 1 THEN 0 ELSE 1 END,
               i.name ASC`,
@@ -332,16 +339,20 @@ export const hrRouter = Router();
         const products = rawProducts.map((item) => {
           let gallery: string[] = [];
           try {
-            gallery = JSON.parse(item.shop_gallery_urls || "[]");
-          } catch (e) {
+            const parsed = JSON.parse(item.shop_gallery_urls || "[]");
+            if (Array.isArray(parsed)) {
+              gallery = parsed.filter((u) => typeof u === "string" && u.trim() !== "").map((u) => u.trim());
+            }
+          } catch {
             gallery = [];
           }
-          if (!Array.isArray(gallery)) gallery = [];
-          if (item.image_url && !gallery.includes(item.image_url)) {
-            gallery = [item.image_url, ...gallery];
+          const primaryUrl = typeof item.image_url === "string" ? item.image_url.trim() : "";
+          if (primaryUrl) {
+            gallery = [primaryUrl, ...gallery.filter((u) => u !== primaryUrl)];
           }
           return {
             ...item,
+            image_url: primaryUrl || gallery[0] || "",
             gallery_urls: gallery,
           };
         });

@@ -825,10 +825,17 @@ export function ManPower() {
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
         title="Manpower Profile Details"
-        maxWidth="lg"
+        maxWidth="3xl"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button onClick={() => setShowDetailModal(false)} variant="secondary" size="sm" className="rounded-xl">
+              Close
+            </Button>
+          </div>
+        }
       >
         {selectedOperator && (
-          <div className="p-5 space-y-5">
+          <div className="space-y-5">
             <div className="flex items-start gap-4 p-4 bg-stone-50 rounded-xl border border-stone-200">
               <div className="w-14 h-14 rounded-xl bg-stone-100 text-stone-800 border border-stone-200/90 flex items-center justify-center font-black text-xl shrink-0">
                 {selectedOperator.name.substring(0, 2).toUpperCase()}
@@ -851,7 +858,7 @@ export function ManPower() {
               <div className="mt-1">{getSkillTierBadge(selectedOperator.skill_level)}</div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl">
                 <div className="flex items-center gap-1.5 text-stone-500 mb-1">
                   <Phone className="w-3.5 h-3.5" />
@@ -887,11 +894,6 @@ export function ManPower() {
               </div>
             )}
 
-            <div className="pt-3 border-t border-stone-200 flex justify-end">
-              <Button onClick={() => setShowDetailModal(false)} variant="secondary" size="sm" className="rounded-xl">
-                Close
-              </Button>
-            </div>
           </div>
         )}
       </Modal>
@@ -901,9 +903,19 @@ export function ManPower() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         title="Register Production Operator"
-        maxWidth="lg"
+        maxWidth="3xl"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" onClick={() => setShowAddModal(false)} variant="secondary" size="sm">
+              Cancel
+            </Button>
+            <Button type="submit" form="add-operator-form" size="sm" variant="primary">
+              Save Operator
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleSubmitAdd} className="p-5 space-y-4 text-xs">
+        <form id="add-operator-form" onSubmit={handleSubmitAdd} className="space-y-4 text-xs">
           {/* Mode Switcher: HRIS Sync / Manual Entry */}
           <div className="flex rounded-xl bg-stone-100 p-1 border border-stone-200 gap-1">
             <button
@@ -953,7 +965,7 @@ export function ManPower() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Employee ID *"
               type="text"
@@ -974,7 +986,7 @@ export function ManPower() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Role / Position *"
               type="text"
@@ -997,7 +1009,7 @@ export function ManPower() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Phone / WhatsApp"
               type="text"
@@ -1044,14 +1056,6 @@ export function ManPower() {
             )}
           </div>
 
-          <div className="pt-3 border-t border-stone-200 flex justify-end gap-2">
-            <Button type="button" onClick={() => setShowAddModal(false)} variant="secondary" size="sm">
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" variant="primary">
-              Save Operator
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -1060,10 +1064,20 @@ export function ManPower() {
         isOpen={showEditModal}
         onClose={() => setShowEditModal(false)}
         title="Edit Operator Profile"
-        maxWidth="lg"
+        maxWidth="3xl"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" onClick={() => setShowEditModal(false)} variant="secondary" size="sm">
+              Cancel
+            </Button>
+            <Button type="submit" form="edit-operator-form" size="sm" variant="primary">
+              Save Changes
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleSubmitEdit} className="p-5 space-y-4 text-xs">
-          <div className="grid grid-cols-2 gap-3">
+        <form id="edit-operator-form" onSubmit={handleSubmitEdit} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Employee ID *"
               type="text"
@@ -1082,7 +1096,7 @@ export function ManPower() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Role / Position *"
               type="text"
@@ -1104,7 +1118,7 @@ export function ManPower() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Phone / WhatsApp"
               type="text"
@@ -1120,14 +1134,6 @@ export function ManPower() {
             />
           </div>
 
-          <div className="pt-3 border-t border-stone-200 flex justify-end gap-2">
-            <Button type="button" onClick={() => setShowEditModal(false)} variant="secondary" size="sm">
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" variant="primary">
-              Save Changes
-            </Button>
-          </div>
         </form>
       </Modal>
 

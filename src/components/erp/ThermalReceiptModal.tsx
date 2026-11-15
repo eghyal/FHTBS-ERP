@@ -152,7 +152,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Thermal Sales Receipt (POS Ticket)"
-      maxWidth="3xl"
+      maxWidth="4xl"
     >
       <div className="flex flex-col md:flex-row gap-6">
         {/* Left Options & Actions */}
@@ -222,7 +222,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               disabled={!canViewPrices}
               className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 font-medium text-sm rounded-xl shadow-sm transition-colors ${
                 canViewPrices
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                  ? "bg-stone-900 hover:bg-stone-800 text-white cursor-pointer"
                   : "bg-stone-200 dark:bg-stone-800 text-stone-400 cursor-not-allowed border border-stone-300 dark:border-stone-700"
               }`}
             >

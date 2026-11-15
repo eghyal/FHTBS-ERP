@@ -771,10 +771,27 @@ export default function Customers() {
         onClose={() => setShowEditModal(false)}
         title="Edit Customer Profile"
         description="Update external recipient information"
+        maxWidth="3xl"
+        footer={
+          editingCustomer ? (
+            <div className="flex flex-wrap justify-end gap-3 font-sans">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowEditModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" form="edit-customer-form" disabled={isSubmitting}>
+                {isSubmitting ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {editingCustomer && (
-          <form onSubmit={handleUpdateCustomer} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <form id="edit-customer-form" onSubmit={handleUpdateCustomer} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Customer Name"
                 required
@@ -805,7 +822,7 @@ export default function Customers() {
                 })
               }
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Email"
                 type="email"
@@ -890,18 +907,6 @@ export default function Customers() {
                 })
               }
             />
-            <div className="flex justify-end gap-3 pt-4 border-t border-stone-100 font-sans">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setShowEditModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
           </form>
         )}
       </Modal>
@@ -937,9 +942,24 @@ export default function Customers() {
         onClose={() => setShowAddModal(false)}
         title="Add New Customer Profile"
         description="Register a new external client in the master data"
+        maxWidth="3xl"
+        footer={
+          <div className="flex flex-wrap justify-end gap-3 font-sans">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowAddModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form="add-customer-form" disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save Customer"}
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleAddCustomer} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <form id="add-customer-form" onSubmit={handleAddCustomer} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Customer Name"
               required
@@ -982,7 +1002,7 @@ export default function Customers() {
             }
             placeholder="e.g. Mr. Ahmad"
           />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Email"
               type="email"
@@ -1058,18 +1078,6 @@ export default function Customers() {
             }
             placeholder="Jl. Pahlawan Karya No. 456..."
           />
-          <div className="flex justify-end gap-3 pt-4 border-t border-stone-100 font-sans">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setShowAddModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Save Customer"}
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -1082,11 +1090,11 @@ export default function Customers() {
         }}
         title={
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold shrink-0">
               <Building2 className="w-5 h-5" />
             </div>
-            <div>
-              <div className="text-base font-bold text-stone-900">
+            <div className="min-w-0">
+              <div className="text-base font-bold text-stone-900 truncate">
                 {selectedProfileCustomer?.name}
               </div>
               <div className="text-xs font-mono font-bold text-stone-400">
@@ -1095,7 +1103,7 @@ export default function Customers() {
             </div>
           </div>
         }
-        maxWidth="4xl"
+        maxWidth="5xl"
       >
         {loadingDetails ? (
           <div className="py-16 text-center">
@@ -1195,7 +1203,7 @@ export default function Customers() {
             </div>
 
             {/* Profile Tab Navigation */}
-            <div className="flex border-b border-stone-200 gap-6">
+            <div className="flex border-b border-stone-200 gap-4 sm:gap-6 overflow-x-auto">
               <button
                 onClick={() => setActiveProfileTab("quotations")}
                 className={cn(

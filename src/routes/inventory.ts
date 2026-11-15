@@ -228,7 +228,7 @@ export const inventoryRouter = Router();
 
     // Create new item
     inventoryRouter.post(
-      "/api/items",
+      ["/api/items", "/api/inventory/items"],
       requireRole(["ENGINEERING", "PPIC", "PURCHASING", "WAREHOUSE", "PRODUCTION", "SALES", "FINANCE", "HR", "MAINTENANCE", "QA_QC", "FC", "ADMIN", "SUPERADMIN", "BOD", "DIRECTOR"]),
       (req, res) => {
         try {
@@ -460,7 +460,7 @@ export const inventoryRouter = Router();
 
     // Update existing item
     inventoryRouter.put(
-      "/api/items/:id",
+      ["/api/items/:id", "/api/inventory/items/:id"],
       requireRole(["ENGINEERING", "PPIC", "PURCHASING", "WAREHOUSE", "PRODUCTION", "SALES", "FINANCE", "HR", "MAINTENANCE", "QA_QC", "FC", "ADMIN", "SUPERADMIN", "BOD", "DIRECTOR"]),
       (req, res) => {
         try {
@@ -615,6 +615,16 @@ export const inventoryRouter = Router();
           );
 
           cacheService.invalidateNamespace("items");
+          try {
+            const io = (global as any).io;
+            if (io) {
+              io.emit("shop:catalog_updated", {
+                itemId: id,
+                updatedAt: Date.now(),
+                action: "ITEM_UPDATED",
+              });
+            }
+          } catch {}
           res.json({ success: true, message: "Item updated successfully" });
         } catch (error: any) {
           console.error(error);
@@ -625,7 +635,7 @@ export const inventoryRouter = Router();
 
     // Delete item
     inventoryRouter.delete(
-      "/api/items/:id",
+      ["/api/items/:id", "/api/inventory/items/:id"],
       requireRole(["PURCHASING", "WAREHOUSE", "FC", "ADMIN"]),
       (req, res) => {
         try {

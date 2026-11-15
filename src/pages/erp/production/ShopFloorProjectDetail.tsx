@@ -573,7 +573,7 @@ export default function ShopFloorProjectDetail() {
               {(isProjectCompleted || fgrData) && (
                 <Button
                   onClick={handleOpenFgrDocument}
-                  className="text-xs font-bold px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs"
+                  className="text-xs font-bold px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white shadow-2xs"
                 >
                   <FileCheck2 className="w-4 h-4 mr-1.5" />
                   View &amp; Export FGR
@@ -620,7 +620,7 @@ export default function ShopFloorProjectDetail() {
             <div className="flex items-center gap-2 shrink-0">
               <Button
                 onClick={handleOpenFgrDocument}
-                className="text-xs font-bold px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs"
+                className="text-xs font-bold px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white shadow-2xs"
               >
                 <FileCheck2 className="w-4 h-4 mr-1.5" />
                 View &amp; Export FGR Document

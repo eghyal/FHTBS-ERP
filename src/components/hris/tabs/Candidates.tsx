@@ -763,10 +763,30 @@ export const HrCandidatesTab: React.FC<HrCandidatesTabProps> = React.memo(
           onClose={() => setEvalCandidate(null)}
           title={`Interview Scorecard & Contract Offering — ${evalCandidate?.name}`}
           description={`Position: ${evalCandidate?.job_title || "-"} (${evalCandidate?.job_department || "-"}) • Budget: ${evalCandidate?.job_salary_range || evalCandidate?.job_salary_string || "Negotiable"}`}
-          maxWidth="xl"
+          maxWidth="4xl"
           uiTheme="hris"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2.5">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setEvalCandidate(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="hris-candidate-eval-form"
+                variant="primary"
+                isLoading={isSavingEval}
+              >
+                Save Scorecard &amp; Offering Package
+              </Button>
+            </div>
+          }
         >
           <form
+            id="hris-candidate-eval-form"
             onSubmit={handleSaveEvaluation}
             className="space-y-4 text-left font-bold"
           >
@@ -811,7 +831,7 @@ export const HrCandidatesTab: React.FC<HrCandidatesTabProps> = React.memo(
                 </Badge>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Select
                   label="1. Technical / Skill"
                   value={String(scoreTech)}
@@ -985,22 +1005,6 @@ export const HrCandidatesTab: React.FC<HrCandidatesTabProps> = React.memo(
               placeholder="Record key strengths, technical findings, or salary negotiation notes..."
             />
 
-            <div className="pt-3 border-t border-stone-200 flex justify-end gap-2.5">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setEvalCandidate(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={isSavingEval}
-              >
-                Save Scorecard &amp; Offering Package
-              </Button>
-            </div>
           </form>
         </Modal>
 
@@ -1010,10 +1014,30 @@ export const HrCandidatesTab: React.FC<HrCandidatesTabProps> = React.memo(
           onClose={() => setOnboardCandidate(null)}
           title={`1-Click Atomic Onboard — ${onboardCandidate?.name}`}
           description="Atomically generates Employee ID, creates ERP User Account, syncs Master Salary & Tax/Bank, registers Shop Floor ManPower + Work Center, seeds Initial KPI Baseline, and updates Vacancy Quota."
-          maxWidth="xl"
+          maxWidth="4xl"
           uiTheme="hris"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2.5">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setOnboardCandidate(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="hris-candidate-onboard-form"
+                variant="primary"
+                isLoading={isOnboarding}
+              >
+                Confirm &amp; Atomic Onboard
+              </Button>
+            </div>
+          }
         >
           <form
+            id="hris-candidate-onboard-form"
             onSubmit={handleConfirmOnboard}
             className="space-y-4 text-left font-bold"
           >
@@ -1192,22 +1216,6 @@ export const HrCandidatesTab: React.FC<HrCandidatesTabProps> = React.memo(
               </Select>
             </div>
 
-            <div className="pt-4 border-t border-stone-200 flex justify-end gap-2.5">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setOnboardCandidate(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={isOnboarding}
-              >
-                Confirm &amp; Atomic Onboard
-              </Button>
-            </div>
           </form>
         </Modal>
       </div>

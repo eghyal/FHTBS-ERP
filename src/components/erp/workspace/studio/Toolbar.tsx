@@ -1,13 +1,11 @@
 import React, {
   useState,
-  useMemo,
   useEffect,
   useRef,
-  useCallback,
 } from "react";
-import { QRCodeSVG } from "qrcode.react";
 import {
   FileText,
+  Files,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -21,7 +19,6 @@ import {
   CaseSensitive,
   Plus,
   Minus,
-  Trash2,
   Copy,
   ChevronUp,
   ChevronDown,
@@ -43,11 +40,7 @@ import {
   Table as TableIcon,
   ListOrdered,
   Type,
-  UserCheck,
   Grid3X3,
-  GripVertical,
-  Move,
-  RotateCcw,
   Undo2,
   Redo2,
   Printer,
@@ -57,37 +50,32 @@ import {
   Search,
   Lock,
   Check,
-  Info,
   Upload,
   Download,
   Calculator,
-  Landmark,
   CheckSquare,
   SeparatorHorizontal,
   FileCheck2,
   Image as ImageIcon,
+  GitCompare,
+  Database,
+  Ruler,
+  ShieldAlert,
+  FileCode,
+  FileSpreadsheet,
+  BookOpen,
+  PanelRight,
+  MessageSquare,
+  GitPullRequest,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
-import { generatePDF } from "@/lib/pdfGenerator";
 import {
   DocBlock,
-  DocBlockType,
-  BlockCategory,
   LayoutPreset,
   TargetDepartment,
-  AuthorizationRole,
 } from "@/types/workspace";
-import { ERP_DEPARTMENT_OPTIONS } from "@/constants/rbac";
-import {
-  evaluateTableFormula,
-  parseDocxPackageToBlocks,
-  generateDocxBinaryBuffer,
-  generateDeterministicPdfBuffer,
-  normalizeHorizontalAlign,
-  normalizeVerticalAlign,
-  normalizeBlockAlignment,
-} from "@/services/docxEngine";
+import { ERP_DEPARTMENT_OPTIONS, normalizeDepartmentToRole } from "@/constants/rbac";
 import {
   LIBRARY_ITEMS,
   buildBlock,
@@ -501,10 +489,11 @@ export function StudioToolbar({
     isId,
     requestClose,
     dirty,
-    setShowLeftPanel,
     docTitle,
     setDocTitle,
     setDirty,
+    docType,
+    setDocType,
     layoutPreset,
     setLayoutPreset,
     customWidthMm,
@@ -513,6 +502,9 @@ export function StudioToolbar({
     setCustomHeightMm,
     viewMode,
     setViewMode,
+    layoutMode,
+    pageSetup,
+    updatePageSetup,
     setSelectedBlockId,
     setQuickInsertIndex,
     isEditable,
@@ -532,22 +524,62 @@ export function StudioToolbar({
     onClone,
     handleSave,
     isSaving,
-    setShowRightPanel,
     insertBlock,
     blocks,
     blocksRef,
     applyBlocks,
     department,
+    setDepartment,
     selectedBlock,
     updateBlock,
     notify,
+    versions,
+    isTrackChangesEnabled,
+    setIsTrackChangesEnabled,
+    trackedChanges,
+    acceptAllTrackedChanges,
+    rejectAllTrackedChanges,
+    comments,
+    preflightReport,
+    findOpen,
+    setFindOpen,
+    setMailMergeOpen,
+    activeMergeRecord,
+    isMergePreview,
+    setPageSetupModalOpen,
+    setCompareModalOpen,
+    requestSubmitWithPreflight,
+    activeRibbonTab,
+    setActiveRibbonTab,
+    ribbonCollapsed,
+    setRibbonCollapsed,
+    leftReviewTab,
+    showLeftReviewDrawer,
+    openLeftReviewPanel,
+    toggleLeftReviewRail,
+    rightInspectorOpen,
+    showRightPanel,
+    toggleRightInspector,
   } = state;
-  const { handleImportDocx, handleExportDocx, handleExportPdf } = exportHandlers;
+  const {
+    handleImportDocx,
+    handleExportDocx,
+    handleExportPdf,
+    handleExportHtml,
+    handleExportMarkdown,
+    handleExportTxt,
+  } = exportHandlers;
 
   const [openMenu, setOpenMenu] = useState<
-    "text" | "address" | "signature" | "footer" | null
+    "text" | "address" | "signature" | "footer" | "export" | null
   >(null);
   const ribbonPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingTrackCount = trackedChanges.filter((c) => c.status === "PENDING").length;
+  const openCommentsCount = comments.filter((c) => !c.resolved).length;
+  const reviewAttentionCount =
+    pendingTrackCount + openCommentsCount + preflightReport.errorCount + preflightReport.warningCount;
+  const currentPaperLabel =
+    PAPER_FORMAT_OPTIONS.find((p) => p.value === layoutPreset)?.label || layoutPreset;
 
   useEffect(() => {
     if (!openMenu) return;
@@ -605,8 +637,7 @@ export function StudioToolbar({
       };
 
       const current = blocksRef.current;
-      const footerIdx = current.findIndex((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK");
-      const maxInsertIdx = footerIdx >= 0 ? footerIdx : current.length;
+      const maxInsertIdx = current.length;
       const selIdx = selectedBlock ? current.findIndex((b) => b.id === selectedBlock.id) : -1;
       const insertIdx = selIdx >= 0 ? Math.min(selIdx + 1, maxInsertIdx) : maxInsertIdx;
 
@@ -620,30 +651,37 @@ export function StudioToolbar({
   };
 
   const currentRoleTier = extractTierFromRole(targetAuthRole, targetAuthDept);
+  const isLeftRailVisible = Boolean(leftReviewTab && layoutMode !== "FOCUS") || showLeftReviewDrawer;
+  const isRightRailVisible = (rightInspectorOpen && layoutMode !== "FOCUS") || showRightPanel;
 
   return (
-    <div className="shrink-0 z-20 bg-white border-b border-stone-200">
-      {/* Row 1: Main Studio Header */}
-      <header className="h-14 px-3 sm:px-4 flex items-center justify-between gap-3">
-        {/* Left Zone: Close + Document Title + Save Status */}
-        <div className="flex items-center gap-2 min-w-0 flex-1 max-w-md">
+    <div className="shrink-0 z-20 bg-white border-b border-stone-200 print:hidden">
+      {/* Row 1: Slim Editorial Title & Primary Actions Header (48px) */}
+      <header className="h-12 px-3 sm:px-4 flex items-center justify-between gap-3">
+        {/* Left Zone: Close + Left Rail Toggle + Title + Deterministic Save Indicator */}
+        <div className="flex items-center gap-2 min-w-0 flex-1 max-w-xl">
           <button
             type="button"
             onClick={requestClose}
-            className="p-2 rounded-xl text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors cursor-pointer relative shrink-0"
+            className="p-1.5 rounded-lg text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors cursor-pointer relative shrink-0"
             title="Close Studio"
           >
             <X className="w-4 h-4" />
-            {dirty && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500" />}
+            {dirty && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-600" />}
           </button>
 
           <button
             type="button"
-            onClick={() => setShowLeftPanel(true)}
-            className="lg:hidden p-2 rounded-xl text-stone-500 hover:bg-stone-100 cursor-pointer shrink-0"
-            title="Open Block Library"
+            onClick={toggleLeftReviewRail}
+            className={cn(
+              "p-1.5 rounded-lg border text-xs transition-colors cursor-pointer shrink-0 flex items-center gap-1",
+              isLeftRailVisible
+                ? "bg-stone-900 text-white border-stone-900"
+                : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100 hover:text-stone-900"
+            )}
+            title="Toggle Pages & Review Rail"
           >
-            <PanelLeft className="w-4 h-4" />
+            <PanelLeft className="w-3.5 h-3.5" />
           </button>
 
           <div className="h-4 w-px bg-stone-200 hidden sm:block shrink-0" />
@@ -657,19 +695,19 @@ export function StudioToolbar({
                 setDirty(true);
               }}
               placeholder="Document Title…"
-              className="text-xs sm:text-sm font-bold text-stone-900 bg-stone-50/70 hover:bg-stone-100 focus:bg-white border border-stone-200/80 focus:border-stone-900 rounded-lg px-2.5 py-1.5 outline-none transition-all truncate w-full"
+              className="text-xs sm:text-sm font-bold text-stone-900 bg-transparent hover:bg-stone-100/80 focus:bg-white border border-transparent hover:border-stone-200 focus:border-stone-900 rounded-lg px-2 py-1 outline-none transition-all truncate w-full"
             />
             <span
               className={cn(
-                "hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold border shrink-0",
+                "hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border shrink-0 whitespace-nowrap",
                 dirty
                   ? "bg-amber-50 text-amber-800 border-amber-200"
-                  : "bg-stone-100 text-stone-700 border-stone-200"
+                  : "bg-stone-50 text-stone-600 border-stone-200"
               )}
             >
               {dirty ? (
                 <>
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
                   <span>Unsaved</span>
                 </>
               ) : (
@@ -682,61 +720,37 @@ export function StudioToolbar({
           </div>
         </div>
 
-        {/* Center Zone: Paper Size + Custom Dimensions + Edit/Preview Toggle + Live Routing Preview Badge */}
-        <div className="hidden md:flex items-center gap-2 shrink-0">
-          <select
-            value={layoutPreset}
-            onChange={(e) => {
-              setLayoutPreset(e.target.value as LayoutPreset);
-              setDirty(true);
-            }}
-            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-stone-200 bg-stone-50 text-stone-800 outline-none focus:border-stone-900 cursor-pointer"
-            title="Paper Format"
-          >
-            {PAPER_FORMAT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+        {/* Right Zone: Undo/Redo + Edit/Preview + Export + Save/Submit + Inspector Toggle */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Undo / Redo */}
+          <div className="hidden sm:flex items-center bg-stone-100 p-0.5 rounded-lg border border-stone-200">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={past.length === 0}
+              className="p-1 rounded-md text-stone-600 hover:bg-white hover:text-stone-900 disabled:opacity-30 cursor-pointer transition-colors"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={future.length === 0}
+              className="p-1 rounded-md text-stone-600 hover:bg-white hover:text-stone-900 disabled:opacity-30 cursor-pointer transition-colors"
+              title="Redo (Ctrl+Shift+Z)"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
-          {layoutPreset === "CUSTOM" && (
-            <div className="flex items-center gap-1 bg-stone-100 px-2 py-1 rounded-lg border border-stone-200 text-[10px] font-mono">
-              <input
-                type="number"
-                min={60}
-                max={600}
-                value={customWidthMm}
-                onChange={(e) => {
-                  setCustomWidthMm(Math.max(60, Math.min(600, Number(e.target.value) || 210)));
-                  setDirty(true);
-                }}
-                className="w-12 px-1 py-0.5 bg-white border border-stone-300 rounded text-center font-bold text-stone-900"
-                title="Custom Width (mm)"
-              />
-              <span className="text-stone-400">×</span>
-              <input
-                type="number"
-                min={80}
-                max={840}
-                value={customHeightMm}
-                onChange={(e) => {
-                  setCustomHeightMm(Math.max(80, Math.min(840, Number(e.target.value) || 297)));
-                  setDirty(true);
-                }}
-                className="w-12 px-1 py-0.5 bg-white border border-stone-300 rounded text-center font-bold text-stone-900"
-                title="Custom Height (mm)"
-              />
-              <span className="text-stone-500 font-sans font-bold">mm</span>
-            </div>
-          )}
-
-          <div className="flex items-center bg-stone-100 p-0.5 rounded-lg border border-stone-200">
+          {/* Edit / Preview Segmented Control */}
+          <div className="hidden md:flex items-center bg-stone-100 p-0.5 rounded-lg border border-stone-200">
             <button
               type="button"
               onClick={() => setViewMode("edit")}
               className={cn(
-                "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap shrink-0",
                 viewMode === "edit" ? "bg-white text-stone-900 shadow-2xs" : "text-stone-500 hover:text-stone-900"
               )}
             >
@@ -750,7 +764,7 @@ export function StudioToolbar({
                 setQuickInsertIndex(null);
               }}
               className={cn(
-                "px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer",
+                "px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap shrink-0",
                 viewMode === "preview" ? "bg-stone-900 text-white shadow-2xs" : "text-stone-500 hover:text-stone-900"
               )}
             >
@@ -759,93 +773,7 @@ export function StudioToolbar({
             </button>
           </div>
 
-          <div
-            className={cn(
-              "hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] shrink-0",
-              isHrFallbackRoute
-                ? "bg-amber-50 border-amber-200 text-amber-900"
-                : "bg-stone-100 border-stone-200 text-stone-900"
-            )}
-            title={
-              isHrFallbackRoute
-                ? "No signature block inserted — automatically routes to Human Resource (HR)"
-                : `Signature-driven routing to ${targetAuthDept} (${currentRoleTier})`
-            }
-          >
-            <ShieldCheck
-              className={cn(
-                "w-3.5 h-3.5 shrink-0",
-                isHrFallbackRoute ? "text-amber-600" : "text-stone-700"
-              )}
-            />
-            {isHrFallbackRoute ? (
-              <span className="font-bold text-amber-900">
-                Auto-Route: HR (No Signature)
-              </span>
-            ) : isEditable ? (
-              <div className="flex items-center gap-1">
-                <span className="text-stone-500">Route:</span>
-                <select
-                  value={targetAuthDept}
-                  onChange={(e) => handleChangeTargetDepartment(e.target.value as TargetDepartment)}
-                  className="font-bold text-stone-900 bg-transparent outline-none cursor-pointer"
-                  title="Select Target Authorization Department"
-                >
-                  {ERP_DEPARTMENT_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-                {targetAuthDept !== "FC" && (
-                  <>
-                    <span className="text-stone-400">•</span>
-                    <select
-                      value={currentRoleTier}
-                      onChange={(e) => handleChangeTargetRole(e.target.value as SignatureApprovalTier)}
-                      className="font-bold text-stone-700 bg-transparent outline-none cursor-pointer text-[10px]"
-                      title="Select Target Approval Role Tier"
-                    >
-                      <option value="SUPERVISOR">Supervisor</option>
-                      <option value="MANAGER">Manager</option>
-                      <option value="FC">FC</option>
-                    </select>
-                  </>
-                )}
-              </div>
-            ) : (
-              <span className="font-bold text-stone-900">
-                {activeDeptConfig.deptNameEn} ({currentRoleTier})
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Right Zone: Undo/Redo + File Actions (DOCX/PDF/Print) + Save Draft & Submit */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Undo / Redo */}
-          <div className="hidden sm:flex items-center bg-stone-100 p-0.5 rounded-lg border border-stone-200">
-            <button
-              type="button"
-              onClick={undo}
-              disabled={past.length === 0}
-              className="p-1.5 rounded-md text-stone-600 hover:bg-white hover:text-stone-900 disabled:opacity-30 cursor-pointer transition-colors"
-              title="Undo (Ctrl+Z)"
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={redo}
-              disabled={future.length === 0}
-              className="p-1.5 rounded-md text-stone-600 hover:bg-white hover:text-stone-900 disabled:opacity-30 cursor-pointer transition-colors"
-              title="Redo (Ctrl+Shift+Z)"
-            >
-              <Redo2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* DOCX & PDF Export Toolbar */}
+          {/* Export Dropdown + Precision PDF */}
           <input
             ref={docxInputRef}
             type="file"
@@ -854,32 +782,76 @@ export function StudioToolbar({
             onChange={handleImportDocx}
           />
           <div className="hidden sm:flex items-center bg-stone-100 p-0.5 rounded-lg border border-stone-200">
-            {!isApproved && (
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
-                onClick={() => docxInputRef.current?.click()}
-                className="px-2 py-1 rounded-md text-[11px] font-bold text-stone-700 hover:bg-white hover:text-stone-900 flex items-center gap-1 cursor-pointer transition-colors"
-                title={isId ? "Impor file .DOCX" : "Import .DOCX"}
+                onClick={() => setOpenMenu((m) => (m === "export" ? null : "export"))}
+                className={cn(
+                  "px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                  openMenu === "export"
+                    ? "bg-stone-900 text-white"
+                    : "text-stone-700 hover:bg-white hover:text-stone-900"
+                )}
               >
-                <Upload className="w-3 h-3" />
-                <span className="hidden lg:inline">Import</span>
+                <Download className="w-3 h-3" />
+                <span>Export</span>
+                <ChevronDown className="w-3 h-3" />
               </button>
-            )}
-            <button
-              type="button"
-              onClick={handleExportDocx}
-              className="px-2 py-1 rounded-md text-[11px] font-bold text-stone-700 hover:bg-white hover:text-stone-900 flex items-center gap-1 cursor-pointer transition-colors"
-              title={isId ? "Unduh file .DOCX" : "Export .DOCX"}
-            >
-              <Download className="w-3 h-3" />
-              <span>DOCX</span>
-            </button>
+              {openMenu === "export" && (
+                <div className="absolute right-0 top-full mt-1.5 w-52 bg-white border border-stone-200 rounded-xl shadow-xl p-1.5 z-50 space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenMenu(null);
+                      handleExportDocx();
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-stone-100 text-xs font-semibold text-stone-800 flex items-center gap-2 cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-stone-500" />
+                    <span>Word Package (.DOCX)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenMenu(null);
+                      handleExportHtml();
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-stone-100 text-xs font-semibold text-stone-800 flex items-center gap-2 cursor-pointer"
+                  >
+                    <FileCode className="w-3.5 h-3.5 text-stone-500" />
+                    <span>Printable Web (.HTML)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenMenu(null);
+                      handleExportMarkdown();
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-stone-100 text-xs font-semibold text-stone-800 flex items-center gap-2 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-stone-500" />
+                    <span>Markdown (.MD)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenMenu(null);
+                      handleExportTxt();
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-stone-100 text-xs font-semibold text-stone-800 flex items-center gap-2 cursor-pointer"
+                  >
+                    <AlignLeft className="w-3.5 h-3.5 text-stone-500" />
+                    <span>Plain Text (.TXT)</span>
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={handleExportPdf}
               disabled={isExportingPdf}
-              className="px-2 py-1 rounded-md text-[11px] font-bold text-stone-900 bg-white shadow-3xs hover:bg-stone-900 hover:text-white flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
-              title={isId ? "Unduh PDF Presisi Siap Cetak" : "Export Precision PDF"}
+              className="px-2 py-1 rounded-md text-[11px] font-bold text-stone-900 bg-white shadow-3xs hover:bg-stone-900 hover:text-white flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors disabled:opacity-50"
+              title="Export Precision PDF"
             >
               <Printer className="w-3 h-3" />
               <span>{isExportingPdf ? "PDF…" : "PDF"}</span>
@@ -891,7 +863,7 @@ export function StudioToolbar({
           {/* Primary Save / Submit Actions */}
           {isApproved ? (
             <div className="flex items-center gap-1.5">
-              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold whitespace-nowrap shrink-0">
                 <Lock className="w-3 h-3 text-emerald-600" />
                 <span>APPROVED</span>
               </span>
@@ -900,10 +872,10 @@ export function StudioToolbar({
                   onClick={onClone}
                   variant="primary"
                   size="sm"
-                  className="rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold gap-1.5 cursor-pointer"
+                  className="rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <Copy className="w-3.5 h-3.5" />
-                  <span>{isId ? "Buat Revisi" : "Clone Revision"}</span>
+                  <span>Clone Revision</span>
                 </Button>
               )}
             </div>
@@ -914,41 +886,110 @@ export function StudioToolbar({
                 disabled={isSaving}
                 variant="outline"
                 size="sm"
-                className="rounded-lg border-stone-300 bg-white hover:bg-stone-50 text-stone-800 text-xs font-bold gap-1.5 cursor-pointer"
+                className="rounded-lg border-stone-300 bg-white hover:bg-stone-50 text-stone-800 text-xs font-bold gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Save className="w-3.5 h-3.5 text-stone-700" />
-                <span>{isId ? "Simpan Draft" : "Save Draft"}</span>
+                <span className="hidden sm:inline">Save Draft</span>
               </Button>
 
               <Button
-                onClick={() => handleSave(true, true)}
+                onClick={() => requestSubmitWithPreflight(true)}
                 disabled={isSaving}
                 variant="primary"
                 size="sm"
-                className="rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold gap-1.5 cursor-pointer"
+                className="rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">
-                  {isId ? `Ajukan (${targetAuthDept})` : `Submit (${targetAuthDept})`}
-                </span>
+                <span className="hidden sm:inline">Submit ({targetAuthDept})</span>
               </Button>
             </>
           )}
 
+          {/* Right Inspector Toggle (Desktop & Mobile) */}
           <button
             type="button"
-            onClick={() => setShowRightPanel(true)}
-            className="lg:hidden p-2 rounded-xl text-stone-500 hover:bg-stone-100 cursor-pointer"
-            title={isId ? "Pengaturan" : "Inspector"}
+            onClick={toggleRightInspector}
+            className={cn(
+              "p-1.5 rounded-lg border transition-colors cursor-pointer shrink-0",
+              isRightRailVisible
+                ? "bg-stone-900 text-white border-stone-900"
+                : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100 hover:text-stone-900"
+            )}
+            title="Toggle Document & Block Inspector"
           >
-            <SlidersHorizontal className="w-4 h-4" />
+            <PanelRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </header>
 
-      {/* Row 2: Top Insert & Format Ribbon Menu (replaces permanent left sidebar) */}
-      {isEditable && (
-        <div className="bg-stone-50/90 border-t border-stone-200/80 px-3 sm:px-4 py-1.5 flex items-center justify-between gap-2 overflow-visible flex-wrap">
+      {/* Row 2A: WordCraft 4-Tab Ribbon Bar */}
+      <div className="h-9 px-3 sm:px-4 bg-stone-50/90 border-t border-stone-200/80 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1">
+          {(
+            [
+              { id: "INSERT", label: "Insert", count: 0 },
+              { id: "LAYOUT", label: "Layout", count: 0 },
+              { id: "REVIEW", label: "Review", count: reviewAttentionCount },
+              { id: "DATA", label: "Data & Routing", count: 0 },
+            ] as const
+          ).map((tab) => {
+            const active = activeRibbonTab === tab.id && !ribbonCollapsed;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setActiveRibbonTab(tab.id);
+                  if (ribbonCollapsed) setRibbonCollapsed(false);
+                }}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                  active
+                    ? "bg-white text-stone-900 border border-stone-200 shadow-2xs"
+                    : activeRibbonTab === tab.id && ribbonCollapsed
+                    ? "text-stone-900 bg-stone-200/60"
+                    : "text-stone-600 hover:text-stone-900 hover:bg-stone-200/50"
+                )}
+              >
+                <span>{tab.label}</span>
+                {tab.id === "REVIEW" && tab.count > 0 && (
+                  <span className="font-mono tabular-nums text-[9.5px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-200">
+                    {tab.count}
+                  </span>
+                )}
+                {tab.id === "DATA" && isMergePreview && activeMergeRecord && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" title="Live Merge Active" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="hidden lg:inline-flex items-center gap-1.5 font-mono tabular-nums text-[10px] text-stone-500 whitespace-nowrap">
+            <span>{currentPaperLabel}</span>
+            <span>·</span>
+            <span>{pageSetup.marginTopMm}mm</span>
+            <span>·</span>
+            <span>
+              Route: {isHrFallbackRoute ? "HR (Auto)" : `${targetAuthDept} (${currentRoleTier})`}
+            </span>
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setRibbonCollapsed((c) => !c)}
+            className="p-1 rounded-md text-stone-500 hover:text-stone-900 hover:bg-stone-200/70 cursor-pointer"
+            title={ribbonCollapsed ? "Expand Ribbon" : "Collapse Ribbon"}
+          >
+            {ribbonCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Row 2B: Active Ribbon Panel */}
+      {!ribbonCollapsed && (
+        <div className="bg-white border-t border-stone-200/70 px-3 sm:px-4 py-1.5 flex items-center justify-between gap-2 overflow-visible flex-wrap">
           <input
             ref={ribbonPhotoInputRef}
             type="file"
@@ -957,260 +998,637 @@ export function StudioToolbar({
             onChange={handleRibbonPhotoUpload}
           />
 
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] font-black uppercase tracking-wider text-stone-400 mr-1 hidden xl:inline">
-              {isId ? "Sisipkan Elemen:" : "Insert Elements:"}
-            </span>
+          {/* TAB 1: INSERT */}
+          {activeRibbonTab === "INSERT" && (
+            isEditable ? (
+              <>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Text & Lists */}
+                  <div className="flex items-center gap-0.5 bg-stone-50 p-0.5 rounded-lg border border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickInsertByKey("HEADER")}
+                      className="px-2 py-1 rounded-md text-[11px] font-bold text-stone-700 hover:bg-stone-900 hover:text-white flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                      title="Insert Document Heading"
+                    >
+                      <Type className="w-3.5 h-3.5" />
+                      <span>Heading</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickInsertByKey("TEXT")}
+                      className="px-2 py-1 rounded-md text-[11px] font-bold text-stone-700 hover:bg-stone-900 hover:text-white flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                      title="Insert Narrative Paragraph"
+                    >
+                      <AlignLeft className="w-3.5 h-3.5" />
+                      <span>Paragraph</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickInsertByKey("METADATA_GRID")}
+                      className="px-2 py-1 rounded-md text-[11px] font-bold text-stone-700 hover:bg-stone-900 hover:text-white flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                      title="Insert Reference Grid"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Meta Grid</span>
+                    </button>
 
-            {/* 1. Text & Content Group */}
-            <div className="flex items-center gap-1 bg-white p-0.5 rounded-xl border border-stone-200 shadow-3xs">
-              <button
-                type="button"
-                onClick={() => handleQuickInsertByKey("HEADER")}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-stone-700 hover:bg-stone-900 hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
-                title={isId ? "Tambah Judul Dokumen" : "Insert Document Heading"}
-              >
-                <Type className="w-3.5 h-3.5" />
-                <span>{isId ? "Judul" : "Heading"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickInsertByKey("TEXT")}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-stone-700 hover:bg-stone-900 hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
-                title={isId ? "Tambah Paragraf Narasi" : "Insert Narrative Paragraph"}
-              >
-                <AlignLeft className="w-3.5 h-3.5" />
-                <span>{isId ? "Paragraf" : "Paragraph"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickInsertByKey("METADATA_GRID")}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-stone-700 hover:bg-stone-900 hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
-                title={isId ? "Tambah Grid Nomor & Referensi" : "Insert Reference Grid"}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{isId ? "Grid Info" : "Meta Grid"}</span>
-              </button>
+                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenMenu((m) => (m === "text" ? null : "text"))}
+                        className={cn(
+                          "px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                          openMenu === "text"
+                            ? "bg-stone-900 text-white"
+                            : "text-stone-700 hover:bg-white"
+                        )}
+                      >
+                        <ListOrdered className="w-3.5 h-3.5" />
+                        <span>Lists & Notes</span>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                      {openMenu === "text" && (
+                        <div className="absolute left-0 top-full mt-1.5 w-64 bg-white border border-stone-200 rounded-xl shadow-xl p-1.5 z-50 space-y-0.5">
+                          {[
+                            { key: "LIST_POINTS", icon: ListOrdered, label: "Numbered Policy Points" },
+                            { key: "CHECKLIST_BLOCK", icon: CheckSquare, label: "QC / Handover Checklist" },
+                            { key: "TERMS_BLOCK", icon: FileCheck2, label: "Commercial Terms & Clauses" },
+                            { key: "CALLOUT", icon: AlertTriangle, label: "Important Callout Box" },
+                            { key: "DIVIDER", icon: SeparatorHorizontal, label: "Section Divider Line" },
+                          ].map((it) => {
+                            const IIcon = it.icon;
+                            return (
+                              <button
+                                key={it.key}
+                                type="button"
+                                onClick={() => handleQuickInsertByKey(it.key)}
+                                className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-stone-100 flex items-center gap-2 text-xs font-semibold text-stone-800 cursor-pointer"
+                              >
+                                <IIcon className="w-4 h-4 text-stone-600 shrink-0" />
+                                <span>{it.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-              {/* Dropdown for Lists, Checklist, Callout, Divider */}
-              <div className="relative" onClick={(e) => e.stopPropagation()}>
+                  {/* Tables */}
+                  <div className="flex items-center gap-0.5 bg-stone-50 p-0.5 rounded-lg border border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickInsertByKey("TABLE")}
+                      className="px-2 py-1 rounded-md text-[11px] font-bold text-stone-700 hover:bg-stone-900 hover:text-white flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                      title="Insert Specification Table"
+                    >
+                      <TableIcon className="w-3.5 h-3.5" />
+                      <span>Table</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickInsertByKey("BUDGET_TABLE")}
+                      className="px-2 py-1 rounded-md text-[11px] font-bold text-stone-700 hover:bg-stone-900 hover:text-white flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                      title="Insert Auto-Sum Budget Table"
+                    >
+                      <Calculator className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Budget Table</span>
+                    </button>
+                  </div>
+
+                  {/* Photo / Media */}
+                  <div className="flex items-center gap-0.5 bg-stone-50 p-0.5 rounded-lg border border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => ribbonPhotoInputRef.current?.click()}
+                      className="px-2 py-1 rounded-md text-[11px] font-bold bg-stone-900 hover:bg-stone-800 text-white flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                      title="Upload Photo from Device"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      <span>Upload Photo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickInsertByKey("IMAGE")}
+                      className="px-2 py-1 rounded-md text-[11px] font-bold text-stone-700 hover:bg-white flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                      title="Insert Photo Frame"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span className="hidden md:inline">Frame</span>
+                    </button>
+                  </div>
+
+                  {/* Address, Sign-off & Footer */}
+                  <div className="flex items-center gap-1">
+                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenMenu((m) => (m === "address" ? null : "address"))}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg text-[11px] font-bold border flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                          openMenu === "address"
+                            ? "bg-stone-900 text-white border-stone-900"
+                            : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
+                        )}
+                      >
+                        <Building2 className="w-3.5 h-3.5" />
+                        <span>Address</span>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                      {openMenu === "address" && (
+                        <div className="absolute left-0 top-full mt-1.5 w-64 bg-white border border-stone-200 rounded-xl shadow-xl p-1.5 z-50 space-y-0.5">
+                          {[
+                            { key: "RECIPIENT_ADDRESS", icon: Building2, label: "Recipient / Partner Address (To)" },
+                            { key: "SENDER_ADDRESS", icon: MapPin, label: "Sender Identity (From)" },
+                            { key: "PROJECT_SITE_ADDRESS", icon: MapPin, label: "Project Delivery Site" },
+                          ].map((it) => {
+                            const IIcon = it.icon;
+                            return (
+                              <button
+                                key={it.key}
+                                type="button"
+                                onClick={() => handleQuickInsertByKey(it.key)}
+                                className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-stone-100 flex items-center gap-2 text-xs font-semibold text-stone-800 cursor-pointer"
+                              >
+                                <IIcon className="w-4 h-4 text-stone-600 shrink-0" />
+                                <span>{it.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenMenu((m) => (m === "signature" ? null : "signature"))}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg text-[11px] font-bold border flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                          openMenu === "signature"
+                            ? "bg-stone-900 text-white border-stone-900"
+                            : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
+                        )}
+                      >
+                        <PenTool className="w-3.5 h-3.5" />
+                        <span>Sign-off</span>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                      {openMenu === "signature" && (
+                        <div className="absolute left-0 top-full mt-1.5 w-72 bg-white border border-stone-200 rounded-xl shadow-xl p-1.5 z-50 space-y-0.5 max-h-80 overflow-y-auto custom-scrollbar">
+                          <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                            Signature Block Format
+                          </div>
+                          {LIBRARY_ITEMS.filter((i) => i.category === "SIGNATURE_COLUMN").map((it) => {
+                            const IIcon = it.icon;
+                            return (
+                              <button
+                                key={it.key}
+                                type="button"
+                                onClick={() => handleQuickInsertByKey(it.key)}
+                                className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-stone-100 flex items-center gap-2 text-xs font-semibold text-stone-800 cursor-pointer"
+                              >
+                                <IIcon className="w-4 h-4 text-stone-700 shrink-0" />
+                                <span className="truncate">{it.labelEn}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenMenu((m) => (m === "footer" ? null : "footer"))}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg text-[11px] font-bold border flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                          openMenu === "footer"
+                            ? "bg-stone-900 text-white border-stone-900"
+                            : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
+                        )}
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Footer ERP</span>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                      {openMenu === "footer" && (
+                        <div className="absolute right-0 sm:left-0 top-full mt-1.5 w-68 bg-white border border-stone-200 rounded-xl shadow-xl p-1.5 z-50 space-y-0.5">
+                          {LIBRARY_ITEMS.filter((i) => i.category === "FOOTER_TEMPLATE").map((it) => {
+                            const IIcon = it.icon;
+                            return (
+                              <button
+                                key={it.key}
+                                type="button"
+                                onClick={() => handleQuickInsertByKey(it.key)}
+                                className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-stone-100 flex items-center gap-2 text-xs font-semibold text-stone-800 cursor-pointer"
+                              >
+                                <IIcon className="w-4 h-4 text-stone-700 shrink-0" />
+                                <span className="truncate">{it.labelEn}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickInsertByKey("PAGE_BREAK")}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white border border-stone-200 text-stone-700 hover:bg-stone-100 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                    title="Insert Explicit Page Break"
+                  >
+                    <SeparatorHorizontal className="w-3.5 h-3.5 text-stone-600" />
+                    <span>Page Break</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickInsertIndex(blocks.length)}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-stone-900 text-white hover:bg-stone-800 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                    title="Open Full Block Catalog"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>All Blocks</span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between w-full py-0.5 text-xs text-stone-600">
+                <span className="flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-stone-400" />
+                  <span>
+                    {isApproved
+                      ? "Document is permanently approved and locked. Clone a revision to insert or edit blocks."
+                      : "Preview mode is active. Switch back to Edit mode to insert blocks."}
+                  </span>
+                </span>
+                {!isApproved && (
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("edit")}
+                    className="px-2.5 py-1 rounded-md bg-stone-900 text-white text-[11px] font-bold cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    Switch to Edit
+                  </button>
+                )}
+              </div>
+            )
+          )}
+
+          {/* TAB 2: LAYOUT */}
+          {activeRibbonTab === "LAYOUT" && (
+            <div className="flex items-center justify-between gap-3 w-full flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 bg-stone-50 px-2 py-1 rounded-lg border border-stone-200">
+                  <span className="text-[10px] font-bold uppercase text-stone-500">Paper</span>
+                  <select
+                    value={layoutPreset}
+                    onChange={(e) => {
+                      setLayoutPreset(e.target.value as LayoutPreset);
+                      setDirty(true);
+                    }}
+                    className="text-[11px] font-bold bg-transparent text-stone-900 outline-none cursor-pointer"
+                  >
+                    {PAPER_FORMAT_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {layoutPreset === "CUSTOM" && (
+                  <div className="flex items-center gap-1 bg-stone-50 px-2 py-1 rounded-lg border border-stone-200 text-[10px] font-mono tabular-nums">
+                    <input
+                      type="number"
+                      min={60}
+                      max={600}
+                      value={customWidthMm}
+                      onChange={(e) => {
+                        setCustomWidthMm(Math.max(60, Math.min(600, Number(e.target.value) || 210)));
+                        setDirty(true);
+                      }}
+                      className="w-12 px-1 py-0.5 bg-white border border-stone-300 rounded text-center font-bold text-stone-900"
+                      title="Width (mm)"
+                    />
+                    <span className="text-stone-400">×</span>
+                    <input
+                      type="number"
+                      min={80}
+                      max={840}
+                      value={customHeightMm}
+                      onChange={(e) => {
+                        setCustomHeightMm(Math.max(80, Math.min(840, Number(e.target.value) || 297)));
+                        setDirty(true);
+                      }}
+                      className="w-12 px-1 py-0.5 bg-white border border-stone-300 rounded text-center font-bold text-stone-900"
+                      title="Height (mm)"
+                    />
+                    <span className="text-stone-500 font-sans font-bold">mm</span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1 bg-stone-50 p-0.5 rounded-lg border border-stone-200">
+                  <span className="px-1.5 text-[10px] font-bold uppercase text-stone-500">Margins</span>
+                  {[
+                    { label: "10mm", val: 10 },
+                    { label: "18mm", val: 18 },
+                    { label: "25mm", val: 25 },
+                  ].map((m) => (
+                    <button
+                      key={m.val}
+                      type="button"
+                      onClick={() =>
+                        updatePageSetup({
+                          marginTopMm: m.val,
+                          marginRightMm: m.val,
+                          marginBottomMm: m.val,
+                          marginLeftMm: m.val,
+                        })
+                      }
+                      className={cn(
+                        "px-2 py-1 rounded-md text-[10.5px] font-mono font-bold whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                        pageSetup.marginTopMm === m.val && pageSetup.marginLeftMm === m.val
+                          ? "bg-stone-900 text-white"
+                          : "text-stone-700 hover:bg-white"
+                      )}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setOpenMenu((m) => (m === "text" ? null : "text"))}
+                  onClick={() => setPageSetupModalOpen(true)}
+                  className="px-2.5 py-1 rounded-lg border border-stone-200 bg-white hover:bg-stone-100 text-[11px] font-bold text-stone-800 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-stone-600" />
+                  <span>Header, Footer & Watermark…</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: REVIEW */}
+          {activeRibbonTab === "REVIEW" && (
+            <div className="flex items-center justify-between gap-2 w-full flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {isEditable && (
+                  <div className="flex items-center gap-1 bg-stone-50 p-0.5 rounded-lg border border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => setIsTrackChangesEnabled((v) => !v)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                        isTrackChangesEnabled
+                          ? "bg-amber-600 text-white"
+                          : "text-stone-700 hover:bg-white"
+                      )}
+                    >
+                      <GitPullRequest className="w-3.5 h-3.5" />
+                      <span>Track Changes: {isTrackChangesEnabled ? "ON" : "OFF"}</span>
+                      {pendingTrackCount > 0 && (
+                        <span className="font-mono tabular-nums text-[10px] px-1 rounded bg-black/15">
+                          {pendingTrackCount}
+                        </span>
+                      )}
+                    </button>
+
+                    {pendingTrackCount > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={acceptAllTrackedChanges}
+                          className="px-2 py-1 rounded-md text-[11px] font-bold text-emerald-800 hover:bg-emerald-100 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                        >
+                          Accept All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={rejectAllTrackedChanges}
+                          className="px-2 py-1 rounded-md text-[11px] font-bold text-rose-700 hover:bg-rose-100 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                        >
+                          Reject All
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => openLeftReviewPanel("COMMENTS")}
                   className={cn(
-                    "px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors",
-                    openMenu === "text"
-                      ? "bg-stone-900 text-white"
-                      : "text-stone-700 hover:bg-stone-100"
+                    "px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                    leftReviewTab === "COMMENTS"
+                      ? "bg-stone-900 text-white border-stone-900"
+                      : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
                   )}
                 >
-                  <ListOrdered className="w-3.5 h-3.5" />
-                  <span>{isId ? "Poin & Catatan" : "Lists & Notes"}</span>
-                  <ChevronDown className="w-3 h-3" />
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Margin Comments</span>
+                  <span className="font-mono tabular-nums text-[10px] opacity-80">
+                    ({openCommentsCount})
+                  </span>
                 </button>
-                {openMenu === "text" && (
-                  <div className="absolute left-0 top-full mt-1.5 w-64 bg-white border border-stone-200 rounded-2xl shadow-xl p-1.5 z-50 space-y-0.5">
-                    {[
-                      { key: "LIST_POINTS", icon: ListOrdered, label: isId ? "Poin Instruksi Bernomor" : "Numbered Policy Points" },
-                      { key: "CHECKLIST_BLOCK", icon: CheckSquare, label: isId ? "Checklist Inspeksi QC / BAST" : "QC / Handover Checklist" },
-                      { key: "TERMS_BLOCK", icon: FileCheck2, label: isId ? "Klausul Syarat & Ketentuan" : "Commercial Terms & Clauses" },
-                      { key: "CALLOUT", icon: AlertTriangle, label: isId ? "Kotak Perhatian / Peringatan" : "Important Callout Box" },
-                      { key: "DIVIDER", icon: SeparatorHorizontal, label: isId ? "Garis Pemisah Seksi" : "Section Divider Line" },
-                    ].map((it) => {
-                      const IIcon = it.icon;
-                      return (
-                        <button
-                          key={it.key}
-                          type="button"
-                          onClick={() => handleQuickInsertByKey(it.key)}
-                          className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-stone-100 flex items-center gap-2.5 text-xs font-bold text-stone-800 cursor-pointer"
+
+                <button
+                  type="button"
+                  onClick={() => setFindOpen(!findOpen)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                    findOpen
+                      ? "bg-stone-900 text-white border-stone-900"
+                      : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
+                  )}
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Find & Replace</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCompareModalOpen(true)}
+                  disabled={versions.length === 0}
+                  className="px-2.5 py-1 rounded-lg border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 disabled:opacity-40 text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                  title={
+                    versions.length === 0
+                      ? "Save at least one version to compare changes"
+                      : "Compare Saved Versions"
+                  }
+                >
+                  <GitCompare className="w-3.5 h-3.5" />
+                  <span>Version Diff</span>
+                  {versions.length > 0 && (
+                    <span className="font-mono tabular-nums text-[10px] text-stone-500">
+                      ({versions.length})
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => openLeftReviewPanel("PREFLIGHT")}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg border text-[11px] font-bold font-mono tabular-nums flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors ml-auto",
+                  preflightReport.errorCount > 0
+                    ? "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100"
+                    : preflightReport.warningCount > 0
+                    ? "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                    : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                )}
+              >
+                {preflightReport.errorCount > 0 ? (
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {preflightReport.errorCount > 0
+                    ? `Preflight: ${preflightReport.errorCount} Error(s)`
+                    : preflightReport.warningCount > 0
+                    ? `Preflight: ${preflightReport.warningCount} Warning(s)`
+                    : "Preflight Check Passed"}
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* TAB 4: DATA & ROUTING */}
+          {activeRibbonTab === "DATA" && (
+            <div className="flex items-center justify-between gap-2 w-full flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setMailMergeOpen(true)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                    isMergePreview && activeMergeRecord
+                      ? "bg-emerald-700 text-white border-emerald-700"
+                      : "bg-white text-stone-800 border-stone-200 hover:bg-stone-100"
+                  )}
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  <span>
+                    {isMergePreview && activeMergeRecord
+                      ? `Mail Merge: ${activeMergeRecord.label}`
+                      : "ERP Live Mail Merge"}
+                  </span>
+                </button>
+
+                {!isApproved && (
+                  <button
+                    type="button"
+                    onClick={() => docxInputRef.current?.click()}
+                    className="px-2.5 py-1 rounded-lg border border-stone-200 bg-white text-stone-700 hover:bg-stone-100 text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Import .DOCX</span>
+                  </button>
+                )}
+
+                <div className="flex items-center gap-1.5 bg-stone-50 px-2 py-1 rounded-lg border border-stone-200">
+                  <span className="text-[10px] font-bold uppercase text-stone-500">Type</span>
+                  <select
+                    value={docType}
+                    disabled={!isEditable}
+                    onChange={(e) => {
+                      setDocType(e.target.value);
+                      setDirty(true);
+                    }}
+                    className="text-[11px] font-bold bg-transparent text-stone-900 outline-none cursor-pointer disabled:opacity-60"
+                  >
+                    <option value="MEMORANDUM">Memorandum</option>
+                    <option value="INTERNAL_POLICY">Internal Policy / SOP</option>
+                    <option value="AUTHORIZATION_LETTER">Authorization Letter</option>
+                    <option value="SURAT_PERINTAH">Work Order Letter</option>
+                    <option value="BERITA_ACARA">Handover Certificate</option>
+                    <option value="LAINNYA">Other</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-stone-50 px-2 py-1 rounded-lg border border-stone-200">
+                  <span className="text-[10px] font-bold uppercase text-stone-500">Origin</span>
+                  <select
+                    value={normalizeDepartmentToRole(department)}
+                    disabled={!isEditable}
+                    onChange={(e) => {
+                      setDepartment(e.target.value);
+                      setDirty(true);
+                    }}
+                    className="text-[11px] font-bold bg-transparent text-stone-900 outline-none cursor-pointer disabled:opacity-60"
+                  >
+                    {ERP_DEPARTMENT_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Authorization Routing Controls */}
+              <div
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] ml-auto shrink-0",
+                  isHrFallbackRoute
+                    ? "bg-amber-50 border-amber-200 text-amber-900"
+                    : "bg-stone-100 border-stone-200 text-stone-900"
+                )}
+              >
+                <ShieldCheck
+                  className={cn(
+                    "w-3.5 h-3.5 shrink-0",
+                    isHrFallbackRoute ? "text-amber-600" : "text-stone-700"
+                  )}
+                />
+                {isHrFallbackRoute ? (
+                  <span className="font-bold text-amber-900 whitespace-nowrap">
+                    Auto-Route: HR (No Signature)
+                  </span>
+                ) : isEditable ? (
+                  <div className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="text-stone-500 font-semibold">Route:</span>
+                    <select
+                      value={targetAuthDept}
+                      onChange={(e) => handleChangeTargetDepartment(e.target.value as TargetDepartment)}
+                      className="font-bold text-stone-900 bg-transparent outline-none cursor-pointer"
+                    >
+                      {ERP_DEPARTMENT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    {targetAuthDept !== "FC" && (
+                      <>
+                        <span className="text-stone-400">·</span>
+                        <select
+                          value={currentRoleTier}
+                          onChange={(e) => handleChangeTargetRole(e.target.value as SignatureApprovalTier)}
+                          className="font-bold text-stone-700 bg-transparent outline-none cursor-pointer text-[10.5px]"
                         >
-                          <IIcon className="w-4 h-4 text-stone-600 shrink-0" />
-                          <span>{it.label}</span>
-                        </button>
-                      );
-                    })}
+                          <option value="SUPERVISOR">Supervisor</option>
+                          <option value="MANAGER">Manager</option>
+                          <option value="FC">FC</option>
+                        </select>
+                      </>
+                    )}
                   </div>
+                ) : (
+                  <span className="font-bold text-stone-900 whitespace-nowrap">
+                    {activeDeptConfig.deptNameEn} ({currentRoleTier})
+                  </span>
                 )}
               </div>
             </div>
-
-            {/* 2. Table Group */}
-            <div className="flex items-center gap-1 bg-white p-0.5 rounded-xl border border-stone-200 shadow-3xs">
-              <button
-                type="button"
-                onClick={() => handleQuickInsertByKey("TABLE")}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-stone-700 hover:bg-stone-900 hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
-                title={isId ? "Tambah Tabel Spesifikasi" : "Insert Specification Table"}
-              >
-                <TableIcon className="w-3.5 h-3.5" />
-                <span>{isId ? "Tabel" : "Table"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickInsertByKey("BUDGET_TABLE")}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-emerald-800 bg-emerald-50/70 hover:bg-emerald-600 hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
-                title={isId ? "Tambah Tabel RAB dengan Rumus =SUM Otomatis" : "Insert Auto-Sum Budget Table"}
-              >
-                <Calculator className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{isId ? "Tabel RAB" : "Budget Table"}</span>
-              </button>
-            </div>
-
-            {/* 3. Photo / Visual Documentation Group (Prominent Feature) */}
-            <div className="flex items-center gap-1 bg-indigo-50/80 p-0.5 rounded-xl border border-indigo-200 shadow-3xs">
-              <button
-                type="button"
-                onClick={() => ribbonPhotoInputRef.current?.click()}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
-                title={
-                  isId
-                    ? "Unggah Foto dari Perangkat (Bebas Resize, Perataan & Caption)"
-                    : "Upload Photo from Device (Free Resize, Alignment & Caption)"
-                }
-              >
-                <ImageIcon className="w-3.5 h-3.5" />
-                <span>{isId ? "+ Upload Photo" : "+ Upload Photo"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickInsertByKey("IMAGE")}
-                className="px-2 py-1 rounded-lg text-[11px] font-bold text-indigo-900 hover:bg-indigo-100 flex items-center gap-1 cursor-pointer transition-colors"
-                title={isId ? "Sisipkan Bingkai Blok Foto" : "Insert Photo Block Frame"}
-              >
-                <Plus className="w-3 h-3" />
-                <span className="hidden md:inline">{isId ? "Blok Foto" : "Photo Frame"}</span>
-              </button>
-            </div>
-
-            {/* 4. Address Group Dropdown */}
-            <div className="relative" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={() => setOpenMenu((m) => (m === "address" ? null : "address"))}
-                className={cn(
-                  "px-2.5 py-1.5 rounded-xl text-[11px] font-bold border flex items-center gap-1.5 cursor-pointer transition-colors shadow-3xs",
-                  openMenu === "address"
-                    ? "bg-stone-900 text-white border-stone-900"
-                    : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
-                )}
-              >
-                <Building2 className="w-3.5 h-3.5" />
-                <span>{isId ? "Alamat" : "Address"}</span>
-                <ChevronDown className="w-3 h-3" />
-              </button>
-              {openMenu === "address" && (
-                <div className="absolute left-0 top-full mt-1.5 w-64 bg-white border border-stone-200 rounded-2xl shadow-xl p-1.5 z-50 space-y-0.5">
-                  {[
-                    { key: "RECIPIENT_ADDRESS", icon: Building2, label: isId ? "Tujuan Rekanan / Klien (To)" : "Recipient / Partner Address (To)" },
-                    { key: "SENDER_ADDRESS", icon: MapPin, label: isId ? "Identitas Pengirim (From)" : "Sender Identity (From)" },
-                    { key: "PROJECT_SITE_ADDRESS", icon: MapPin, label: isId ? "Lokasi Proyek Lapangan" : "Project Delivery Site" },
-                  ].map((it) => {
-                    const IIcon = it.icon;
-                    return (
-                      <button
-                        key={it.key}
-                        type="button"
-                        onClick={() => handleQuickInsertByKey(it.key)}
-                        className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-stone-100 flex items-center gap-2.5 text-xs font-bold text-stone-800 cursor-pointer"
-                      >
-                        <IIcon className="w-4 h-4 text-stone-600 shrink-0" />
-                        <span>{it.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* 5. Signature & Routing Dropdown */}
-            <div className="relative" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={() => setOpenMenu((m) => (m === "signature" ? null : "signature"))}
-                className={cn(
-                  "px-2.5 py-1.5 rounded-xl text-[11px] font-bold border flex items-center gap-1.5 cursor-pointer transition-colors shadow-3xs",
-                  openMenu === "signature"
-                    ? "bg-stone-900 text-white border-stone-900"
-                    : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
-                )}
-              >
-                <PenTool className="w-3.5 h-3.5" />
-                <span>{isId ? "Otorisasi & TTD" : "Sign-off"}</span>
-                <ChevronDown className="w-3 h-3" />
-              </button>
-              {openMenu === "signature" && (
-                <div className="absolute left-0 top-full mt-1.5 w-72 bg-white border border-stone-200 rounded-2xl shadow-xl p-1.5 z-50 space-y-0.5 max-h-80 overflow-y-auto custom-scrollbar">
-                  <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-stone-400">
-                    {isId ? "Format Kolom Tanda Tangan" : "Signature Block Format"}
-                  </div>
-                  {LIBRARY_ITEMS.filter((i) => i.category === "SIGNATURE_COLUMN").map((it) => {
-                    const IIcon = it.icon;
-                    return (
-                      <button
-                        key={it.key}
-                        type="button"
-                        onClick={() => handleQuickInsertByKey(it.key)}
-                        className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-stone-100 flex items-center gap-2.5 text-xs font-bold text-stone-800 cursor-pointer"
-                      >
-                        <IIcon className="w-4 h-4 text-stone-700 shrink-0" />
-                        <span className="truncate">{isId ? it.labelId : it.labelEn}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* 6. ERP Footer Dropdown */}
-            <div className="relative" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={() => setOpenMenu((m) => (m === "footer" ? null : "footer"))}
-                className={cn(
-                  "px-2.5 py-1.5 rounded-xl text-[11px] font-bold border flex items-center gap-1.5 cursor-pointer transition-colors shadow-3xs",
-                  openMenu === "footer"
-                    ? "bg-stone-900 text-white border-stone-900"
-                    : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
-                )}
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Footer ERP</span>
-                <ChevronDown className="w-3 h-3" />
-              </button>
-              {openMenu === "footer" && (
-                <div className="absolute right-0 sm:left-0 top-full mt-1.5 w-68 bg-white border border-stone-200 rounded-2xl shadow-xl p-1.5 z-50 space-y-0.5">
-                  {LIBRARY_ITEMS.filter((i) => i.category === "FOOTER_TEMPLATE").map((it) => {
-                    const IIcon = it.icon;
-                    return (
-                      <button
-                        key={it.key}
-                        type="button"
-                        onClick={() => handleQuickInsertByKey(it.key)}
-                        className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-stone-100 flex items-center gap-2.5 text-xs font-bold text-stone-800 cursor-pointer"
-                      >
-                        <IIcon className="w-4 h-4 text-stone-700 shrink-0" />
-                        <span className="truncate">{isId ? it.labelId : it.labelEn}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right side of Ribbon: Full Block Catalog Picker */}
-          <div className="flex items-center gap-1.5 ml-auto">
-            <button
-              type="button"
-              onClick={() => setQuickInsertIndex(blocks.length)}
-              className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-stone-900 text-white hover:bg-stone-800 flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
-              title={isId ? "Buka Katalog Lengkap Semua Blok" : "Open Full Block Catalog"}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>{isId ? "Katalog Blok" : "All Blocks"}</span>
-            </button>
-          </div>
+          )}
         </div>
       )}
     </div>
@@ -1221,7 +1639,6 @@ export function StudioStatusBar({ state }: { state: CanvaStudioState }) {
   const {
     isId,
     blocks,
-    viewMode,
     zoomLevel,
     setZoomLevel,
     handleFitZoom,
@@ -1235,30 +1652,146 @@ export function StudioStatusBar({ state }: { state: CanvaStudioState }) {
     updateBlock,
     handleWrapSelection,
     handleTransformCase,
+    leftReviewTab,
+    openLeftReviewPanel,
+    layoutMode,
+    setLayoutMode,
+    showRuler,
+    setShowRuler,
+    paginatedPages,
+    activePageNumber,
+    docStats,
+    preflightReport,
+    isMergePreview,
+    activeMergeRecord,
+    comments,
+    trackedChanges,
   } = state;
+
+  const openCommentsCount = comments.filter((c) => !c.resolved).length;
+  const pendingTrackCount = trackedChanges.filter((c) => c.status === "PENDING").length;
 
   return (
     <>
-      <footer className="h-9 bg-white border-t border-stone-200 px-3 hidden sm:flex items-center justify-between text-[11px] text-stone-500 font-medium shrink-0 z-10 print:hidden">
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1 font-semibold text-stone-700">
-            <Layers className="w-3.5 h-3.5 text-stone-400" />
-            {blocks.length} {isId ? "Blok" : "Blocks"}
+      <footer className="h-8 sm:h-9 bg-white border-t border-stone-200 px-3 hidden sm:flex items-center justify-between gap-3 text-[11px] text-stone-500 font-medium shrink-0 z-10 overflow-x-auto no-scrollbar print:hidden">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-0.5 bg-stone-100 p-0.5 rounded-lg border border-stone-200">
+            <button
+              type="button"
+              onClick={() => openLeftReviewPanel("PAGES")}
+              className={cn(
+                "px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                leftReviewTab === "PAGES" && layoutMode !== "FOCUS"
+                  ? "bg-white text-stone-900 shadow-2xs"
+                  : "text-stone-600 hover:text-stone-900"
+              )}
+              title="Pages Menu"
+            >
+              <Files className="w-3 h-3" />
+              <span>Pages</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openLeftReviewPanel("OUTLINE")}
+              className={cn(
+                "px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                leftReviewTab === "OUTLINE" && layoutMode !== "FOCUS"
+                  ? "bg-white text-stone-900 shadow-2xs"
+                  : "text-stone-600 hover:text-stone-900"
+              )}
+              title="Outline"
+            >
+              <BookOpen className="w-3 h-3" />
+              <span>Outline</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openLeftReviewPanel("COMMENTS")}
+              className={cn(
+                "px-2 py-0.5 rounded-md text-[10px] font-bold font-mono tabular-nums flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                leftReviewTab === "COMMENTS" && layoutMode !== "FOCUS"
+                  ? "bg-white text-stone-900 shadow-2xs"
+                  : "text-stone-600 hover:text-stone-900"
+              )}
+              title="Margin Comments"
+            >
+              <MessageSquare className="w-3 h-3" />
+              <span>{openCommentsCount}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openLeftReviewPanel("CHANGES")}
+              className={cn(
+                "px-2 py-0.5 rounded-md text-[10px] font-bold font-mono tabular-nums flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                leftReviewTab === "CHANGES" && layoutMode !== "FOCUS"
+                  ? "bg-white text-stone-900 shadow-2xs"
+                  : "text-stone-600 hover:text-stone-900"
+              )}
+              title="Track Changes"
+            >
+              <GitPullRequest className="w-3 h-3" />
+              <span>{pendingTrackCount}</span>
+            </button>
+          </div>
+
+          <span className="flex items-center gap-1 font-mono tabular-nums text-[10.5px] font-semibold text-stone-700 whitespace-nowrap">
+            P{activePageNumber}/{paginatedPages.length} · {docStats.words}w · {docStats.characters}c · {blocks.length} blk
           </span>
-          <span className="text-stone-300">|</span>
-          <span>
-            {viewMode === "preview"
-              ? isId
-                ? "Mode Pratinjau Cetak"
-                : "Print Preview Mode"
-              : isId
-              ? "Mode Edit Kanvas"
-              : "Canvas Edit Mode"}
-          </span>
+
+          <button
+            type="button"
+            onClick={() => openLeftReviewPanel("PREFLIGHT")}
+            className={cn(
+              "px-2 py-0.5 rounded-md border text-[10px] font-bold font-mono tabular-nums flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+              preflightReport.errorCount > 0
+                ? "bg-rose-50 text-rose-800 border-rose-200"
+                : preflightReport.warningCount > 0
+                ? "bg-amber-50 text-amber-800 border-amber-200"
+                : "bg-emerald-50 text-emerald-800 border-emerald-200"
+            )}
+            title="Inspect Deterministic Document Preflight"
+          >
+            {preflightReport.errorCount > 0 ? (
+              <ShieldAlert className="w-3 h-3" />
+            ) : (
+              <CheckCircle2 className="w-3 h-3" />
+            )}
+            <span>
+              {preflightReport.errorCount > 0
+                ? `${preflightReport.errorCount} ERR`
+                : preflightReport.warningCount > 0
+                ? `${preflightReport.warningCount} WARN`
+                : "Preflight OK"}
+            </span>
+          </button>
+
+          {isMergePreview && activeMergeRecord && (
+            <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold truncate max-w-44">
+              Merge: {activeMergeRecord.label}
+            </span>
+          )}
         </div>
 
-        {/* Compact Zoom / Fit / Grid / Shortcuts Controls */}
-        <div className="flex items-center gap-2">
+        {/* Right Controls: Layout Switcher / Zoom / Ruler / Grid / Shortcuts */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center bg-stone-100 p-0.5 rounded-lg border border-stone-200">
+            {(["PAGINATED", "CONTINUOUS", "FOCUS"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setLayoutMode(m)}
+                className={cn(
+                  "px-2 py-0.5 rounded-md text-[10px] font-bold capitalize whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+                  layoutMode === m
+                    ? "bg-white text-stone-900 shadow-2xs"
+                    : "text-stone-500 hover:text-stone-900"
+                )}
+              >
+                {m.toLowerCase()}
+              </button>
+            ))}
+          </div>
+
           <div className="flex items-center gap-0.5 bg-stone-100 p-0.5 rounded-lg border border-stone-200">
             <button
               type="button"
@@ -1271,7 +1804,7 @@ export function StudioStatusBar({ state }: { state: CanvaStudioState }) {
             <button
               type="button"
               onClick={() => setZoomLevel(100)}
-              className="px-1.5 font-mono text-[10px] font-bold text-stone-700 hover:text-stone-900 cursor-pointer"
+              className="px-1.5 font-mono tabular-nums text-[10px] font-bold text-stone-700 hover:text-stone-900 cursor-pointer"
               title="Reset 100%"
             >
               {zoomLevel}%
@@ -1288,7 +1821,7 @@ export function StudioStatusBar({ state }: { state: CanvaStudioState }) {
               type="button"
               onClick={handleFitZoom}
               className="p-1 hover:bg-white rounded text-stone-600 hover:text-stone-900 cursor-pointer"
-              title={isId ? "Pas Lebar Layar" : "Fit to Width"}
+              title="Fit to Width"
             >
               <Maximize2 className="w-3 h-3" />
             </button>
@@ -1296,9 +1829,23 @@ export function StudioStatusBar({ state }: { state: CanvaStudioState }) {
 
           <button
             type="button"
+            onClick={() => setShowRuler((r) => !r)}
+            className={cn(
+              "flex px-2 py-1 rounded-lg border text-[10px] font-bold items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
+              showRuler
+                ? "bg-stone-900 text-white border-stone-900"
+                : "bg-white text-stone-600 border-stone-200 hover:bg-stone-50"
+            )}
+          >
+            <Ruler className="w-3 h-3" />
+            <span>Ruler</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowGrid((g) => !g)}
             className={cn(
-              "px-2 py-1 rounded-lg border text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors",
+              "flex px-2 py-1 rounded-lg border text-[10px] font-bold items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors",
               showGrid
                 ? "bg-stone-900 text-white border-stone-900"
                 : "bg-white text-stone-600 border-stone-200 hover:bg-stone-50"
@@ -1311,10 +1858,10 @@ export function StudioStatusBar({ state }: { state: CanvaStudioState }) {
           <button
             type="button"
             onClick={() => setShowShortcuts(true)}
-            className="px-2 py-1 rounded-lg border border-stone-200 bg-white text-stone-600 hover:bg-stone-50 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+            className="p-1.5 rounded-lg border border-stone-200 bg-white text-stone-600 hover:bg-stone-50 cursor-pointer shrink-0"
+            title="Keyboard Shortcuts"
           >
             <Keyboard className="w-3 h-3" />
-            <span>{isId ? "Pintasan" : "Shortcuts"}</span>
           </button>
         </div>
       </footer>

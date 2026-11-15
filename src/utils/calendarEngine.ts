@@ -160,30 +160,3 @@ export function calculateShiftCompletionDate(
 
   return current;
 }
-
-/**
- * Checks if the required work duration has actually elapsed in real working time
- */
-export function isWorkHoursElapsed(
-  startDateInput: Date | string,
-  workHoursNeeded: number,
-  config: ShiftConfig = DEFAULT_SHIFT_CONFIG,
-  currentTime: Date = new Date()
-): boolean {
-  const completionDate = calculateShiftCompletionDate(startDateInput, workHoursNeeded, config);
-  return currentTime.getTime() >= completionDate.getTime();
-}
-
-/**
- * Formats a friendly working duration info string
- */
-export function formatShiftDurationInfo(workHours: number, config: ShiftConfig = DEFAULT_SHIFT_CONFIG): string {
-  const days = Math.floor(workHours / config.hoursPerDay);
-  const remainingHours = Math.round((workHours % config.hoursPerDay) * 10) / 10;
-
-  const parts = [];
-  if (days > 0) parts.push(`${days} Work Day${days > 1 ? "s" : ""}`);
-  if (remainingHours > 0 || days === 0) parts.push(`${remainingHours}h`);
-
-  return parts.join(" ");
-}

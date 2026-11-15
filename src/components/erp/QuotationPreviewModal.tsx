@@ -505,59 +505,62 @@ export const QuotationPreviewModal: React.FC<QuotationPreviewModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="5xl"
+      maxWidth="6xl"
       title="Quotation Document"
-      contentClassName="p-0 flex flex-col h-[85vh] bg-stone-100 border-t border-stone-100"
+      contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+      footer={
+        <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+          {onAuthorize && (quotation?.status === "PENDING" || quotation?.status === "DRAFT") && (
+            <Button
+              variant="info"
+              size="sm"
+              onClick={() => {
+                onAuthorize(quotation);
+              }}
+              leftIcon={<ShieldCheck className="w-4 h-4" />}
+            >
+              Authorize Quotation
+            </Button>
+          )}
+          {onCreateProject && (quotation?.status === "APPROVED" || quotation?.status === "AUTHORIZED") && (
+            <Button
+              variant="success"
+              size="sm"
+              onClick={() => {
+                onCreateProject(quotation);
+              }}
+              leftIcon={<FolderKanban className="w-4 h-4" />}
+            >
+              Create Project
+            </Button>
+          )}
+          {canViewPrices && onOpenReceipt && (quotation?.receipt_number || quotation?.sales_channel === "DIRECT_RETAIL" || quotation?.settlement_type === "IMMEDIATE") && (
+            <Button
+              variant="emerald_soft"
+              size="sm"
+              onClick={() => onOpenReceipt(quotation)}
+              leftIcon={<Printer className="w-4 h-4 text-emerald-600" />}
+            >
+              <span>Print Receipt</span>
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            variant="dark"
+            size="sm"
+            onClick={handleExportPdf}
+            isLoading={isExporting}
+            leftIcon={!isExporting ? <Download className="w-4 h-4" /> : undefined}
+          >
+            {isExporting ? "Generating..." : "Export PDF (A4)"}
+          </Button>
+        </div>
+      }
     >
-      <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+      <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
         {printContent}
-      </div>
-      <div className="p-6 border-t border-stone-100 bg-white flex flex-wrap justify-center gap-3">
-        {onAuthorize && (quotation?.status === "PENDING" || quotation?.status === "DRAFT") && (
-          <Button
-            variant="info"
-            onClick={() => {
-              onAuthorize(quotation);
-            }}
-            leftIcon={<ShieldCheck className="w-4 h-4" />}
-          >
-            Authorize Quotation
-          </Button>
-        )}
-        {onCreateProject && (quotation?.status === "APPROVED" || quotation?.status === "AUTHORIZED") && (
-          <Button
-            variant="success"
-            onClick={() => {
-              onCreateProject(quotation);
-            }}
-            leftIcon={<FolderKanban className="w-4 h-4" />}
-          >
-            Create Project
-          </Button>
-        )}
-        {canViewPrices && onOpenReceipt && (quotation?.receipt_number || quotation?.sales_channel === "DIRECT_RETAIL" || quotation?.settlement_type === "IMMEDIATE") && (
-          <Button
-            variant="emerald_soft"
-            onClick={() => onOpenReceipt(quotation)}
-            leftIcon={<Printer className="w-4 h-4 text-emerald-600" />}
-          >
-            <span>Print Receipt</span>
-          </Button>
-        )}
-        <Button
-          variant="secondary"
-          onClick={onClose}
-        >
-          Close
-        </Button>
-        <Button
-          variant="dark"
-          onClick={handleExportPdf}
-          isLoading={isExporting}
-          leftIcon={!isExporting ? <Download className="w-4 h-4" /> : undefined}
-        >
-          {isExporting ? "Generating..." : "Export PDF (A4)"}
-        </Button>
       </div>
     </Modal>
   );

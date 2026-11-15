@@ -25,8 +25,18 @@ export const ReviseBomModal: React.FC<ReviseBomModalProps> = ({
       onClose={onClose}
       title="Mark BOM for Revision"
       maxWidth="md"
+      footer={
+        <div className="flex flex-wrap justify-end gap-2.5 w-full">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="revise-bom-form" className="bg-rose-600 text-white hover:bg-rose-700">
+            {isSubmitting ? "Saving..." : "Mark for Revision"}
+          </Button>
+        </div>
+      }
     >
-      <form onSubmit={handleReviseBom} className="space-y-4">
+      <form id="revise-bom-form" onSubmit={handleReviseBom} className="space-y-4">
         <p className="text-xs text-stone-600">
           Please provide a reason for the revision. This will be visible to the engineering team.
         </p>
@@ -38,14 +48,6 @@ export const ReviseBomModal: React.FC<ReviseBomModalProps> = ({
           placeholder="What needs to be changed?"
           required
         />
-        <div className="pt-2 flex justify-end gap-3">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" className="bg-rose-600 text-white hover:bg-rose-700">
-            {isSubmitting ? "Saving..." : "Mark for Revision"}
-          </Button>
-        </div>
       </form>
     </Modal>
   );

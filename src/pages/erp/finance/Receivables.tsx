@@ -309,37 +309,9 @@ export default function ReceivablesAging() {
           isOpen={!!selectedInvoiceForDunning}
           onClose={() => setSelectedInvoiceForDunning(null)}
           title={`Dunning Notice: ${selectedInvoiceForDunning.ci_number}`}
-        >
-          <div className="space-y-4">
-            <div className="bg-stone-50 p-3 rounded-lg border border-stone-200 text-xs space-y-1">
-              <div className="flex justify-between">
-                <span className="text-stone-500">Customer:</span>
-                <span className="font-semibold text-stone-800">
-                  {selectedInvoiceForDunning.customer_name}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-500">Outstanding Balance:</span>
-                <span className="font-mono font-bold text-stone-900 tabular-nums">
-                  {formatIDR(selectedInvoiceForDunning.outstanding_amount)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-500">Dunning Tier:</span>
-                <span className="font-medium text-stone-700 font-mono">
-                  {selectedInvoiceForDunning.dunning_level}
-                </span>
-              </div>
-            </div>
-
-            <Textarea
-              label="Notice Message Content"
-              rows={5}
-              value={customDunningMessage}
-              onChange={(e) => setCustomDunningMessage(e.target.value)}
-            />
-
-            <div className="flex justify-between items-center pt-2">
+          maxWidth="xl"
+          footer={
+            <div className="flex flex-wrap justify-between items-center gap-2 w-full">
               <Button
                 variant="ghost"
                 size="sm"
@@ -349,7 +321,7 @@ export default function ReceivablesAging() {
                 Copy Text
               </Button>
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -366,6 +338,36 @@ export default function ReceivablesAging() {
                 </Button>
               </div>
             </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="bg-stone-50 p-3 rounded-lg border border-stone-200 text-xs space-y-1">
+              <div className="flex justify-between gap-2">
+                <span className="text-stone-500">Customer:</span>
+                <span className="font-semibold text-stone-800 text-right">
+                  {selectedInvoiceForDunning.customer_name}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-stone-500">Outstanding Balance:</span>
+                <span className="font-mono font-bold text-stone-900 tabular-nums">
+                  {formatIDR(selectedInvoiceForDunning.outstanding_amount)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-stone-500">Dunning Tier:</span>
+                <span className="font-medium text-stone-700 font-mono">
+                  {selectedInvoiceForDunning.dunning_level}
+                </span>
+              </div>
+            </div>
+
+            <Textarea
+              label="Notice Message Content"
+              rows={5}
+              value={customDunningMessage}
+              onChange={(e) => setCustomDunningMessage(e.target.value)}
+            />
           </div>
         </Modal>
       )}

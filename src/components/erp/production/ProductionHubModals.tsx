@@ -39,9 +39,23 @@ export const ExecutionSummaryModal = memo(function ExecutionSummaryModal({
       isOpen={Boolean(executionSummaryModal)}
       onClose={onClose}
       title="Post-Completion Execution Summary & Factory Factor Calibration"
-      size="xl"
+      size="5xl"
+      footer={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            onClick={onViewFgr}
+            className="bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold"
+          >
+            <FileCheck2 className="w-4 h-4 mr-1.5" />
+            View &amp; Export FGR Document
+          </Button>
+          <Button variant="outline" onClick={onClose}>
+            Close Summary
+          </Button>
+        </div>
+      }
     >
-      <div className="space-y-6 p-1">
+      <div className="space-y-6">
         {/* Top Banner */}
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-start gap-3">
@@ -72,7 +86,7 @@ export const ExecutionSummaryModal = memo(function ExecutionSummaryModal({
         {/* Key Execution Metrics Grid */}
         {summary && (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="p-3.5 rounded-xl bg-stone-50 border border-stone-200">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">
                   Planned Duration
@@ -168,7 +182,8 @@ export const ExecutionSummaryModal = memo(function ExecutionSummaryModal({
                 <h4 className="text-xs font-bold uppercase tracking-wider text-stone-700 mb-2">
                   Route Step Planned vs Actual Breakdown
                 </h4>
-                <Table>
+                <div className="overflow-x-auto border border-stone-200 rounded-xl">
+                  <Table className="min-w-[600px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Seq</TableHead>
@@ -212,23 +227,11 @@ export const ExecutionSummaryModal = memo(function ExecutionSummaryModal({
                     })}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             )}
           </>
         )}
-
-        <div className="flex justify-end gap-2 pt-2 border-t border-stone-200">
-          <Button
-            onClick={onViewFgr}
-            className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold"
-          >
-            <FileCheck2 className="w-4 h-4 mr-1.5" />
-            View &amp; Export FGR Document
-          </Button>
-          <Button variant="outline" onClick={onClose}>
-            Close Summary
-          </Button>
-        </div>
       </div>
     </Modal>
   );
@@ -264,10 +267,10 @@ export const FactoryFactorHistoryModal = memo(function FactoryFactorHistoryModal
       isOpen={isOpen}
       onClose={onClose}
       title="Factory Factor Calibration History (Weighted Moving Average)"
-      size="lg"
+      size="4xl"
     >
-      <div className="space-y-4 p-1">
-        <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-between">
+      <div className="space-y-4">
+        <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-between gap-4">
           <div>
             <div className="text-xs font-semibold text-stone-500">
               Current Global Calibrated Factory Factor (WMA)
@@ -280,10 +283,11 @@ export const FactoryFactorHistoryModal = memo(function FactoryFactorHistoryModal
               execution hours across completed manufacturing projects.
             </p>
           </div>
-          <Gauge className="w-10 h-10 text-stone-300" />
+          <Gauge className="w-10 h-10 text-stone-300 shrink-0" />
         </div>
 
-        <Table>
+        <div className="overflow-x-auto border border-stone-200 rounded-xl">
+          <Table className="min-w-[620px]">
           <TableHeader>
             <TableRow>
               <TableHead>Project</TableHead>
@@ -329,6 +333,7 @@ export const FactoryFactorHistoryModal = memo(function FactoryFactorHistoryModal
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
     </Modal>
   );

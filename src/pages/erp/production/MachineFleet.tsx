@@ -41,7 +41,7 @@ import {
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Loader } from "@/components/shared/Loader";
 import { ConfirmModal } from "@/components/shared/ConfirmModal";
-import { Action, hasPermission } from "@/utils/pbac";
+import { Action, hasPermission, hasGodMode } from "@/utils/pbac";
 import { cn } from "@/lib/utils";
 import {
   MachineRegisterModal,
@@ -237,30 +237,33 @@ export default function MachineFleet() {
         subtitle="Equipment parameters & workstation assignment"
         icon={<Cog className="w-5 h-5" />}
         actions={
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            {(hasGodMode(user) ||
+              hasPermission(user, Action.CONFIGURE_MACHINE) ||
+              hasPermission(user, Action.MANAGE_PRODUCTION_CONFIG)) && (
+              <Button
+                variant="primary"
+                size="xs"
+                onClick={() => {
+                  setEditingMachine(null);
+                  setShowRegisterModal(true);
+                }}
+                title="Register New Machine Asset"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Register Machine
+              </Button>
+            )}
             <Button
               variant="secondary"
-              size="sm"
+              size="icon-sm"
               onClick={fetchMachines}
               disabled={isLoading}
               title="Refresh Fleet Data"
             >
               <RefreshCw
-                className={cn("w-3.5 h-3.5 mr-1.5", isLoading && "animate-spin")}
+                className={cn("w-3.5 h-3.5", isLoading && "animate-spin")}
               />
-              Refresh
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                setEditingMachine(null);
-                setShowRegisterModal(true);
-              }}
-              title="Register New Machine Asset"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Register Machine
             </Button>
           </div>
         }

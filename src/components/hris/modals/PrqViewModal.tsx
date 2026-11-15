@@ -27,7 +27,55 @@ export const PrqViewModal: React.FC<PrqViewModalProps> = ({
       onClose={onClose}
       title="HR Payroll Requisition Document Details (PRq)"
       description="Detailed sheet of HR cost requisition submitted to the Finance Division."
-      maxWidth="4xl"
+      maxWidth="5xl"
+      uiTheme="hris"
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => printPrqSummaryReport(selectedPrqView)}
+              className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print / Export PRq PDF</span>
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {(selectedPrqView.status === "DRAFT" ||
+              selectedPrqView.status === "SUBMITTED") && (
+              <button
+                type="button"
+                onClick={() => handleOpenCancelPrqModal(selectedPrqView)}
+                className="px-4 py-2 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-bold rounded-xl transition-all cursor-pointer"
+              >
+                Cancel PRq
+              </button>
+            )}
+
+            {(selectedPrqView.status === "DRAFT" ||
+              selectedPrqView.status === "CANCELLED" ||
+              selectedPrqView.status === "REJECTED") && (
+              <button
+                type="button"
+                onClick={() => handleOpenDeletePrqModal(selectedPrqView)}
+                className="px-4 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl transition-all cursor-pointer"
+              >
+                Delete Draft
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2 bg-stone-900 text-white text-xs font-bold rounded-xl hover:bg-stone-800 transition-all cursor-pointer shadow-xs"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      }
     >
       <div className="space-y-6 text-left">
         <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-200 flex flex-col md:flex-row justify-between gap-4">
@@ -89,8 +137,8 @@ export const PrqViewModal: React.FC<PrqViewModalProps> = ({
             Per-Employee Breakdown ({selectedPrqView.details?.length || 0}{" "}
             Staff)
           </h4>
-          <div className="overflow-x-auto border border-stone-200 rounded-2xl max-h-72">
-            <table className="w-full text-left font-bold text-xs border-collapse">
+          <div className="overflow-x-auto border border-stone-200 rounded-2xl">
+            <table className="w-full min-w-[600px] text-left font-bold text-xs border-collapse">
               <thead className="bg-stone-100 text-stone-500 uppercase text-[10px] tracking-widest border-b border-stone-200">
                 <tr>
                   <th className="p-3 pl-4">Employee</th>
@@ -146,51 +194,6 @@ export const PrqViewModal: React.FC<PrqViewModalProps> = ({
           </div>
         )}
 
-        <div className="pt-4 border-t border-stone-100 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => printPrqSummaryReport(selectedPrqView)}
-              className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print / Export PRq PDF</span>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {(selectedPrqView.status === "DRAFT" ||
-              selectedPrqView.status === "SUBMITTED") && (
-              <button
-                type="button"
-                onClick={() => handleOpenCancelPrqModal(selectedPrqView)}
-                className="px-4 py-2 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 text-xs font-bold rounded-xl transition-all cursor-pointer"
-              >
-                Cancel PRq
-              </button>
-            )}
-
-            {(selectedPrqView.status === "DRAFT" ||
-              selectedPrqView.status === "CANCELLED" ||
-              selectedPrqView.status === "REJECTED") && (
-              <button
-                type="button"
-                onClick={() => handleOpenDeletePrqModal(selectedPrqView)}
-                className="px-4 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl transition-all cursor-pointer"
-              >
-                Delete Draft
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 bg-stone-900 text-white text-xs font-bold rounded-xl hover:bg-stone-800 transition-all cursor-pointer shadow-xs"
-            >
-              Close
-            </button>
-          </div>
-        </div>
       </div>
     </Modal>
   );

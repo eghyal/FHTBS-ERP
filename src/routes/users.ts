@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import db from "../db/database.ts";
 import { requireRole, getActor } from "../middleware/auth.ts";
 import { logAudit } from "../utils/audit.ts";
+import { deleteDocFromFirestore } from "../db/firebaseSync.ts";
 
 export const usersRouter = Router();
 
@@ -104,10 +105,10 @@ usersRouter.put("/api/users/:id/password", requireRole(["FC"]), async (req, res)
   }
 });
 
-usersRouter.delete("/api/users/:id", requireRole(["FC"]), (req, res) => {
+usersRouter.delete("/api/users/:id", requireRole(["FC"]), async (req, res) => {
   try {
     const userToDelete = db
-      .prepare("SELECT username, role FROM users WHERE id = ?")
+      .prepare("SELECT id, username, role FROM users WHERE id = ?")
       .get(req.params.id) as any;
     if (!userToDelete) {
       return res.status(404).json({ error: "User not found" });
@@ -124,18 +125,44 @@ usersRouter.delete("/api/users/:id", requireRole(["FC"]), (req, res) => {
           .json({ error: "Cannot delete the last FC account" });
       }
     }
+
+    const username = userToDelete.username;
+    const linkedManpower = db
+      .prepare("SELECT id FROM production_manpower WHERE LOWER(TRIM(user_username)) = LOWER(TRIM(?))")
+      .all(username) as Array<{ id: string }>;
+
     db.transaction(() => {
       db.pragma("foreign_keys = OFF");
-      const username = userToDelete.username;
-      db.prepare("DELETE FROM chat_participants WHERE username = ?").run(
-        username,
-      );
-      db.prepare("DELETE FROM user_drafts WHERE username = ?").run(
-        username,
-      );
+      for (const mp of linkedManpower) {
+        db.prepare("DELETE FROM production_manpower_assignments WHERE manpower_id = ?").run(mp.id);
+        db.prepare("DELETE FROM production_manpower WHERE id = ?").run(mp.id);
+      }
+      db.prepare("DELETE FROM hr_salaries WHERE LOWER(TRIM(employee_username)) = LOWER(TRIM(?))").run(username);
+      db.prepare("DELETE FROM hr_kpis WHERE LOWER(TRIM(employee_username)) = LOWER(TRIM(?))").run(username);
+      db.prepare("DELETE FROM hr_leaves WHERE LOWER(TRIM(employee_username)) = LOWER(TRIM(?))").run(username);
+      db.prepare("DELETE FROM hr_payslips WHERE LOWER(TRIM(employee_username)) = LOWER(TRIM(?))").run(username);
+      db.prepare("DELETE FROM hr_handovers WHERE LOWER(TRIM(resigning_username)) = LOWER(TRIM(?))").run(username);
+      db.prepare("DELETE FROM attendance_db.hr_attendances WHERE LOWER(TRIM(employee_username)) = LOWER(TRIM(?))").run(username);
+      db.prepare("DELETE FROM chat_participants WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))").run(username);
+      db.prepare("DELETE FROM user_drafts WHERE LOWER(TRIM(username)) = LOWER(TRIM(?))").run(username);
       db.prepare("DELETE FROM users WHERE id = ?").run(req.params.id);
       db.pragma("foreign_keys = ON");
     })();
+
+    // Sync deletion to Cloud PostgreSQL SSOT
+    await Promise.allSettled([
+      deleteDocFromFirestore("users", req.params.id),
+      ...linkedManpower.map((mp) => deleteDocFromFirestore("production_manpower", mp.id)),
+    ]);
+
+    logAudit(
+      getActor(req),
+      "PURGE_USER_PROFILE",
+      "USER",
+      req.params.id,
+      `Purged user ${username} locally and from Cloud SSOT`,
+    );
+
     res.json({ success: true });
   } catch (e: any) {
     console.error("Delete user error:", e);
@@ -284,5 +311,82 @@ usersRouter.get("/api/users/status", (req, res) => {
   } catch (e) {
     console.error("Failed to fetch user status", e);
     res.status(500).json({ error: "Failed to fetch user status" });
+  }
+});
+
+// Cross-device user drafts persistence (used by useAutoSave)
+usersRouter.get("/api/user-drafts/:key", (req, res) => {
+  try {
+    const username = getActor(req);
+    if (!username || username === "SYSTEM") {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const key = String(req.params.key || "").trim();
+    if (!key) return res.status(400).json({ error: "Draft key is required" });
+
+    const row = db
+      .prepare(
+        "SELECT data, updated_at FROM user_drafts WHERE key = ? AND LOWER(TRIM(username)) = LOWER(TRIM(?)) LIMIT 1",
+      )
+      .get(key, username) as { data?: string; updated_at?: string } | undefined;
+
+    if (!row || !row.data) {
+      return res.json({ data: null });
+    }
+    try {
+      return res.json({ data: JSON.parse(row.data), updated_at: row.updated_at });
+    } catch {
+      return res.json({ data: row.data, updated_at: row.updated_at });
+    }
+  } catch (e) {
+    console.error("Failed to load user draft:", e);
+    res.status(500).json({ error: "Failed to load user draft" });
+  }
+});
+
+usersRouter.post("/api/user-drafts/:key", (req, res) => {
+  try {
+    const username = getActor(req);
+    if (!username || username === "SYSTEM") {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const key = String(req.params.key || "").trim();
+    if (!key) return res.status(400).json({ error: "Draft key is required" });
+
+    const payload = req.body?.data;
+    const serialized = JSON.stringify(payload ?? null);
+
+    db.prepare(
+      `INSERT INTO user_drafts (key, username, data, updated_at)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(key, username) DO UPDATE SET
+         data = excluded.data,
+         updated_at = CURRENT_TIMESTAMP`,
+    ).run(key, username.toLowerCase(), serialized);
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Failed to save user draft:", e);
+    res.status(500).json({ error: "Failed to save user draft" });
+  }
+});
+
+usersRouter.delete("/api/user-drafts/:key", (req, res) => {
+  try {
+    const username = getActor(req);
+    if (!username || username === "SYSTEM") {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const key = String(req.params.key || "").trim();
+    if (!key) return res.status(400).json({ error: "Draft key is required" });
+
+    db.prepare(
+      "DELETE FROM user_drafts WHERE key = ? AND LOWER(TRIM(username)) = LOWER(TRIM(?))",
+    ).run(key, username);
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Failed to delete user draft:", e);
+    res.status(500).json({ error: "Failed to delete user draft" });
   }
 });

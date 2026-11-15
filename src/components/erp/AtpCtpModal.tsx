@@ -158,12 +158,12 @@ export const AtpCtpModal: React.FC<AtpCtpModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="ISA-95 / APICS Hybrid ATP & CTP Order Promise Engine"
-      maxWidth="4xl"
+      maxWidth="5xl"
     >
       {loading || !analysis ? (
-        <div className="p-6 space-y-4 animate-pulse">
+        <div className="space-y-4 animate-pulse">
           <div className="h-16 bg-stone-100 rounded-xl" />
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="h-20 bg-stone-100 rounded-xl" />
             <div className="h-20 bg-stone-100 rounded-xl" />
             <div className="h-20 bg-stone-100 rounded-xl" />
@@ -225,7 +225,7 @@ export const AtpCtpModal: React.FC<AtpCtpModalProps> = ({
           </div>
 
           {/* 4-Column Capacity & CTP Telemetry Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="p-3.5 rounded-xl border border-stone-200 bg-white">
               <div className="flex items-center justify-between text-xs text-stone-500 font-medium">
                 <span>Available Stock (ATP)</span>
@@ -384,7 +384,7 @@ export const AtpCtpModal: React.FC<AtpCtpModalProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 shrink-0">
+            <div className="flex flex-wrap items-center justify-end gap-2.5 shrink-0">
               <Button variant="secondary" size="sm" onClick={onClose}>
                 Close
               </Button>

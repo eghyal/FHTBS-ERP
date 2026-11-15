@@ -92,7 +92,7 @@ export const ShopFloorScmModals: React.FC<ShopFloorScmModalsProps> = React.memo(
           setPendingGateTransition(null);
         }}
         title="SCM Point-of-Use & Wave Quota Interlock"
-        className="max-w-xl"
+        maxWidth="3xl"
       >
         {reservationGateError && (
           <div className="space-y-4">
@@ -164,7 +164,7 @@ export const ShopFloorScmModals: React.FC<ShopFloorScmModalsProps> = React.memo(
                   type="button"
                   disabled={isIssuingScmMaterial}
                   onClick={() => handleIssueMaterialToFloor("PARTIAL_WAVE")}
-                  className="h-9 px-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold"
+                  className="h-9 px-4 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-xs font-bold"
                 >
                   <Package className="w-3.5 h-3.5 mr-1.5" />
                   {isIssuingScmMaterial
@@ -197,12 +197,12 @@ export const ShopFloorScmModals: React.FC<ShopFloorScmModalsProps> = React.memo(
           setSubTargetBomItem(null);
         }}
         title="SCM Point-of-Use, Wave & Concession Studio"
-        className="max-w-5xl"
+        maxWidth="7xl"
       >
         <div className="space-y-4">
           {scmReadiness?.process_producible_quotas && (
-            <div className="p-3.5 rounded-xl bg-stone-50 border border-stone-200 space-y-2">
-              <div className="flex items-center justify-between">
+            <div className="p-3.5 rounded-xl bg-stone-50 border border-stone-200 space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-stone-700">
                   Production Quota Ceiling by BOP Process Step (Point-of-Use Matrix)
                 </span>
@@ -212,7 +212,7 @@ export const ShopFloorScmModals: React.FC<ShopFloorScmModalsProps> = React.memo(
                     size="xs"
                     disabled={isIssuingScmMaterial}
                     onClick={() => handleIssueMaterialToFloor("PARTIAL_WAVE")}
-                    className="h-7 px-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[11px] font-bold"
+                    className="h-7 px-3 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-[11px] font-bold"
                   >
                     <Package className="w-3 h-3 mr-1" />
                     {isIssuingScmMaterial
@@ -363,8 +363,8 @@ export const ShopFloorScmModals: React.FC<ShopFloorScmModalsProps> = React.memo(
           )}
 
           {/* BOM Items Point-of-Use, Wave & Concession Table */}
-          <div className="border border-stone-200 rounded-xl overflow-x-auto max-h-[420px] overflow-y-auto">
-            <Table>
+          <div className="border border-stone-200 rounded-xl overflow-x-auto max-h-[440px] overflow-y-auto">
+            <Table className="min-w-[880px]">
               <TableHeader>
                 <TableRow className="bg-stone-50 border-b border-stone-200">
                   <TableHead className="py-2.5 px-3">BOM Material</TableHead>
@@ -493,7 +493,7 @@ export const ShopFloorScmModals: React.FC<ShopFloorScmModalsProps> = React.memo(
                               onClick={() =>
                                 handleIssueMaterialToFloor("PARTIAL_WAVE", item.bom_id)
                               }
-                              className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold cursor-pointer"
+                              className="px-2.5 py-1 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-[11px] font-bold cursor-pointer"
                             >
                               Supply Wave (+{availWh})
                             </button>

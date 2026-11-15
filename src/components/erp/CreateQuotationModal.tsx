@@ -449,7 +449,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="5xl"
+      maxWidth="6xl"
       title={
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-white rounded-2xl">
@@ -467,9 +467,42 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
           </div>
         </div>
       }
-      contentClassName="p-0"
+      contentClassName="p-0 flex flex-col min-h-0"
+      footer={
+        <div className="flex flex-wrap justify-between items-center gap-3 w-full">
+          <Button
+            type="button"
+            disabled={isSubmitting}
+            onClick={onClose}
+            variant="secondary"
+          >
+            Cancel
+          </Button>
+
+          <div className="flex flex-wrap items-center gap-3 ml-auto">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isSubmitting}
+              onClick={() => submitAs("DRAFT")}
+              className="bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 border-none"
+            >
+              {isSubmitting ? "Saving..." : "Save Draft"}
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={isSubmitting}
+              onClick={() => submitAs("PENDING")}
+              className="font-bold shadow-xs"
+            >
+              {isSubmitting ? "Submitting..." : "Submit Official Quotation"}
+            </Button>
+          </div>
+        </div>
+      }
     >
-      <div className="p-6 md:p-8 space-y-6">
+      <div className="p-5 sm:p-6 space-y-6">
         {revisingData && revisingData.revision_note && (
           <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3 shadow-xs mb-4">
             <AlertTriangle className="w-5 h-5 text-rose-600 mt-0.5 shrink-0" />
@@ -653,7 +686,8 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
             </div>
           </div>
 
-          <div className="border border-stone-200 dark:border-stone-800 rounded-2xl bg-white dark:bg-stone-900 shadow-xs">
+          <div className="border border-stone-200 dark:border-stone-800 rounded-2xl bg-white dark:bg-stone-900 shadow-xs overflow-x-auto">
+            <div className="min-w-[780px]">
             {/* Table Headers */}
             <div className="flex gap-2.5 bg-stone-50 dark:bg-stone-800/80 border-b border-stone-200 dark:border-stone-800 px-4 py-3 text-[9px] font-black text-stone-500 uppercase tracking-widest select-none rounded-t-2xl">
               <div className="w-[170px]">Item Code *</div>
@@ -894,6 +928,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                 );
               })}
             </div>
+            </div>
           </div>
         </div>
 
@@ -1060,38 +1095,6 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-5 border-t border-stone-200 dark:border-stone-800 shrink-0">
-          <Button
-            type="button"
-            disabled={isSubmitting}
-            onClick={onClose}
-            variant="secondary"
-          >
-            Cancel
-          </Button>
-
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={isSubmitting}
-              onClick={() => submitAs("DRAFT")}
-              className="bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 border-none"
-            >
-              {isSubmitting ? "Saving..." : "Save Draft"}
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={isSubmitting}
-              onClick={() => submitAs("PENDING")}
-              className="font-bold shadow-xs"
-            >
-              {isSubmitting ? "Submitting..." : "Submit Official Quotation"}
-            </Button>
-          </div>
-        </div>
       </div>
     </Modal>
   );

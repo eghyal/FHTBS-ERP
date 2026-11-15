@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from "react";
-import { X, Plus, Minus, ShoppingBag, ShieldCheck, Truck, ArrowRight, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
+import React, { useState, useMemo, useEffect } from "react";
+import { X, Plus, Minus, ShoppingBag, ShieldCheck, Truck, ArrowRight, ChevronLeft, ChevronRight, Image as ImageIcon, Package } from "lucide-react";
 import { ShopProduct } from "@/types/shop";
 import { formatIDR } from "@/lib/utils";
 
@@ -20,12 +20,16 @@ export function ProductDetailModal({
 }: ProductDetailModalProps) {
   const [qty, setQty] = useState(1);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [brokenMap, setBrokenMap] = useState<Record<string, boolean>>({});
 
   const allImages = useMemo(() => {
     if (!product) return [];
     const list: string[] = [];
+    const seen = new Set<string>();
     if (product.image_url && product.image_url.trim()) {
-      list.push(product.image_url.trim());
+      const clean = product.image_url.trim();
+      seen.add(clean);
+      list.push(clean);
     }
     const rawGallery = Array.isArray(product.gallery_urls)
       ? product.gallery_urls
@@ -43,20 +47,35 @@ export function ProductDetailModal({
 
     if (Array.isArray(rawGallery)) {
       rawGallery.forEach((u) => {
-        if (u && typeof u === "string" && u.trim() && !list.includes(u.trim())) {
-          list.push(u.trim());
+        if (u && typeof u === "string") {
+          const clean = u.trim();
+          if (clean && !seen.has(clean)) {
+            seen.add(clean);
+            list.push(clean);
+          }
         }
       });
     }
 
-    return list.length > 0
-      ? list
-      : ["https://images.unsplash.com/photo-1584463623578-3062b88137f4?w=800&auto=format&fit=crop&q=80"];
+    return list;
   }, [product]);
+
+  useEffect(() => {
+    setSelectedImageIndex(0);
+    setQty(product?.moq && product.moq > 1 ? product.moq : 1);
+    setBrokenMap({});
+  }, [product?.id]);
+
+  useEffect(() => {
+    if (allImages.length > 0 && selectedImageIndex >= allImages.length) {
+      setSelectedImageIndex(0);
+    }
+  }, [allImages.length, selectedImageIndex]);
 
   if (!product) return null;
 
-  const currentImage = allImages[selectedImageIndex] || allImages[0];
+  const currentImage = allImages[selectedImageIndex] || allImages[0] || "";
+  const isCurrentBroken = !currentImage || Boolean(brokenMap[currentImage]);
   const hasDiscount = product.promo_price > 0 && product.promo_price < product.unit_price;
   const unitPrice = hasDiscount ? product.promo_price : product.unit_price;
   const isB2B =
@@ -96,7 +115,7 @@ export function ProductDetailModal({
 
       {/* Main Window */}
       <div
-        className="relative bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-stone-200 flex flex-col z-10 animate-in zoom-in-95 duration-150"
+        className="relative bg-white rounded-2xl sm:rounded-3xl max-w-5xl w-full max-h-[92dvh] overflow-y-auto shadow-2xl border border-stone-200 flex flex-col z-10 animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
@@ -114,18 +133,27 @@ export function ProductDetailModal({
             <div className="space-y-3">
               {/* Primary Image Viewer */}
               <div className="relative aspect-4/3 sm:aspect-square w-full rounded-2xl bg-stone-100 overflow-hidden border border-stone-200/80 shadow-xs flex items-center justify-center group">
-                <img
-                  src={currentImage}
-                  alt={`${product.name} - foto ${selectedImageIndex + 1}`}
-                  className="w-full h-full object-cover transition-all duration-300"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (!target.src.includes("1584463623578")) {
-                      target.src = "https://images.unsplash.com/photo-1584463623578-3062b88137f4?w=800&auto=format&fit=crop&q=80";
+                {!isCurrentBroken ? (
+                  <img
+                    src={currentImage}
+                    alt={`${product.name} - foto ${selectedImageIndex + 1}`}
+                    className="w-full h-full object-cover transition-all duration-300"
+                    referrerPolicy="no-referrer"
+                    onError={() =>
+                      setBrokenMap((prev) => ({ ...prev, [currentImage]: true }))
                     }
-                  }}
-                />
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-stone-100 via-stone-200/70 to-stone-100 flex flex-col items-center justify-center p-6 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-white border border-stone-200 flex items-center justify-center text-stone-400 shadow-xs mb-2.5">
+                      <Package className="w-6 h-6" />
+                    </div>
+                    <span className="text-xs font-bold text-stone-700">{product.name}</span>
+                    <span className="text-[10px] font-mono font-bold text-stone-400 uppercase tracking-wider mt-1">
+                      {product.item_code}
+                    </span>
+                  </div>
+                )}
 
                 {/* Badge Overlay */}
                 {product.badge && (
@@ -194,6 +222,9 @@ export function ProductDetailModal({
                           alt={`Thumbnail ${idx + 1}`}
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"
+                          onError={() =>
+                            setBrokenMap((prev) => ({ ...prev, [imgUrl]: true }))
+                          }
                         />
                       </button>
                     ))}
@@ -322,7 +353,7 @@ export function ProductDetailModal({
 
             {/* Stepper & Action Controls */}
             <div className="mt-6 pt-4 border-t border-stone-200/80">
-              <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div className="w-52 flex items-center justify-between border border-stone-300 rounded-xl overflow-hidden bg-stone-50 focus-within:ring-2 focus-within:ring-[#b02524]/20 focus-within:border-[#b02524] transition-all">
                   <button
                     onClick={handleDecrement}
@@ -387,7 +418,7 @@ export function ProductDetailModal({
                   <ArrowRight className="w-4 h-4" />
                 </button>
               ) : (
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <button
                     onClick={handleAdd}
                     className="py-3 px-3.5 rounded-xl border border-stone-300 hover:border-stone-400 hover:bg-stone-50 text-stone-800 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98 shadow-xs"
@@ -407,7 +438,7 @@ export function ProductDetailModal({
               )}
 
               {/* Assurance strip */}
-              <div className="mt-3.5 pt-2.5 flex items-center justify-between text-[11px] text-stone-500 border-t border-stone-100">
+              <div className="mt-3.5 pt-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-500 border-t border-stone-100">
                 <span className="flex items-center gap-1 font-medium">
                   <Truck className="w-3.5 h-3.5 text-stone-400" />
                   Fleet delivery or factory pickup

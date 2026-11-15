@@ -455,18 +455,20 @@ export function PpicPlanningHub() {
         subtitle="Master production schedule & WOT planning"
         icon={<CalendarRange className="w-5 h-5" />}
         actions={
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon-sm"
-            onClick={fetchPlanningData}
-            disabled={isLoading}
-            title="Refresh PPIC Planning Hub"
-          >
-            <RefreshCw
-              className={cn("w-3.5 h-3.5", isLoading && "animate-spin")}
-            />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon-sm"
+              onClick={fetchPlanningData}
+              disabled={isLoading}
+              title="Refresh PPIC Planning Hub"
+            >
+              <RefreshCw
+                className={cn("w-3.5 h-3.5", isLoading && "animate-spin")}
+              />
+            </Button>
+          </div>
         }
       />
 

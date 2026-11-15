@@ -1,92 +1,27 @@
-import React, {
-  useState,
-  useMemo,
-  useEffect,
-  useRef,
-  useCallback,
-} from "react";
-import { QRCodeSVG } from "qrcode.react";
+import React, { useCallback } from "react";
 import {
-  FileText,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  AlignJustify,
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  Palette,
-  Highlighter,
-  CaseSensitive,
-  Plus,
-  Minus,
-  Trash2,
-  Copy,
-  ChevronUp,
-  ChevronDown,
-  Building2,
-  MapPin,
   CheckCircle2,
-  PenTool,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  ShieldCheck,
-  Send,
-  Save,
-  X,
-  Sparkles,
-  Layers,
-  Eye,
   AlertTriangle,
-  Table as TableIcon,
-  ListOrdered,
-  Type,
-  UserCheck,
-  Grid3X3,
-  GripVertical,
-  Move,
-  RotateCcw,
-  Undo2,
-  Redo2,
-  Printer,
+  Sparkles,
+  X,
   Keyboard,
-  PanelLeft,
-  SlidersHorizontal,
-  Search,
-  Lock,
-  Check,
   Info,
-  Upload,
-  Download,
-  Calculator,
-  Landmark,
-  CheckSquare,
-  SeparatorHorizontal,
-  FileCheck2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { generatePDF } from "@/lib/pdfGenerator";
+import { DocBlock, TargetDepartment } from "@/types/workspace";
 import {
-  DocBlock,
-  DocBlockType,
-  BlockCategory,
-  LayoutPreset,
-  TargetDepartment,
-  AuthorizationRole,
-} from "@/types/workspace";
-import { ERP_DEPARTMENT_OPTIONS } from "@/constants/rbac";
-import {
-  evaluateTableFormula,
   parseDocxPackageToBlocks,
   generateDocxBinaryBuffer,
   generateDeterministicPdfBuffer,
-  normalizeHorizontalAlign,
-  normalizeVerticalAlign,
-  normalizeBlockAlignment,
 } from "@/services/docxEngine";
+import {
+  exportBlocksToHtml,
+  exportBlocksToMarkdown,
+  exportBlocksToPlainText,
+  extractDocumentMeta,
+} from "@/services/workspaceDocumentUtils";
 import { OFFICIAL_KOP_SURAT_BLOCK, getPaperDimensions } from "./config";
 import type { CanvaStudioState } from "./useStudioState";
 
@@ -105,9 +40,12 @@ export function useExportEngine(state: CanvaStudioState) {
     targetAuthDept,
     targetAuthRole,
     blocksRef,
+    getBlocksWithMeta,
     applyBlocks,
     notify,
     sheetRef,
+    layoutMode,
+    setLayoutMode,
     viewMode,
     setViewMode,
     zoomLevel,
@@ -204,7 +142,7 @@ export function useExportEngine(state: CanvaStudioState) {
         custom_width_mm: customWidthMm,
         custom_height_mm: customHeightMm,
         status: initialStatus || "DRAFT",
-        blocks: blocksRef.current,
+        blocks: getBlocksWithMeta(),
       });
       const blob = new Blob([generated.buffer], {
         type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -235,6 +173,7 @@ export function useExportEngine(state: CanvaStudioState) {
 
     if (sheetRef.current) {
       const prevMode = viewMode;
+      const prevLayout = layoutMode;
       const prevZoom = zoomLevel;
       const prevSelected = selectedBlockId;
       const prevGrid = showGrid;
@@ -242,9 +181,10 @@ export function useExportEngine(state: CanvaStudioState) {
         setIsExportingPdf(true);
         setSelectedBlockId(null);
         setShowGrid(false);
+        setLayoutMode("PAGINATED");
         setViewMode("preview");
         setZoomLevel(100);
-        await new Promise((r) => setTimeout(r, 140));
+        await new Promise((r) => setTimeout(r, 220));
 
         await generatePDF(sheetRef.current, filename, {
           orientation: paperDims.orientation,
@@ -261,6 +201,7 @@ export function useExportEngine(state: CanvaStudioState) {
       } catch (err) {
         console.error("High-DPI PDF capture fallback:", err);
       } finally {
+        setLayoutMode(prevLayout);
         setViewMode(prevMode);
         setZoomLevel(prevZoom);
         setSelectedBlockId(prevSelected);
@@ -282,7 +223,7 @@ export function useExportEngine(state: CanvaStudioState) {
         status: initialStatus || "DRAFT",
         authorization_department: targetAuthDept,
         authorization_role: targetAuthRole,
-        blocks: blocksRef.current,
+        blocks: getBlocksWithMeta(),
       });
       const blob = new Blob([generated.buffer], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
@@ -300,13 +241,65 @@ export function useExportEngine(state: CanvaStudioState) {
     } catch {
       notify(isId ? "Gagal mengekspor PDF." : "Failed to export PDF.", "error");
     }
-  }, [docTitle, documentId, docType, department, layoutPreset, customWidthMm, customHeightMm, initialStatus, targetAuthDept, targetAuthRole, viewMode, zoomLevel, selectedBlockId, showGrid, isId, notify]);
+  }, [docTitle, documentId, docType, department, layoutPreset, customWidthMm, customHeightMm, initialStatus, targetAuthDept, targetAuthRole, getBlocksWithMeta, layoutMode, viewMode, zoomLevel, selectedBlockId, showGrid, isId, notify]);
+
+  const triggerTextDownload = useCallback((content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    window.document.body.appendChild(a);
+    a.click();
+    window.document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleExportHtml = useCallback(() => {
+    const safeCode = (docTitle || documentId || "ERP_Document").trim().replace(/[^a-zA-Z0-9-_]/g, "_");
+    const fullBlocks = getBlocksWithMeta();
+    const html = exportBlocksToHtml(fullBlocks, extractDocumentMeta(fullBlocks), {
+      title: docTitle || "Official ERP Document",
+      documentCode: documentId || safeCode,
+      department,
+      status: initialStatus || "DRAFT",
+    });
+    triggerTextDownload(html, `${safeCode}.html`, "text/html;charset=utf-8");
+    notify(isId ? "Berkas .HTML berhasil diekspor." : ".HTML document exported.", "success");
+  }, [docTitle, documentId, department, initialStatus, getBlocksWithMeta, triggerTextDownload, notify, isId]);
+
+  const handleExportMarkdown = useCallback(() => {
+    const safeCode = (docTitle || documentId || "ERP_Document").trim().replace(/[^a-zA-Z0-9-_]/g, "_");
+    const fullBlocks = getBlocksWithMeta();
+    const md = exportBlocksToMarkdown(
+      fullBlocks,
+      extractDocumentMeta(fullBlocks),
+      docTitle || "Official ERP Document"
+    );
+    triggerTextDownload(md, `${safeCode}.md`, "text/markdown;charset=utf-8");
+    notify(isId ? "Berkas .MD berhasil diekspor." : ".MD Markdown exported.", "success");
+  }, [docTitle, documentId, getBlocksWithMeta, triggerTextDownload, notify, isId]);
+
+  const handleExportTxt = useCallback(() => {
+    const safeCode = (docTitle || documentId || "ERP_Document").trim().replace(/[^a-zA-Z0-9-_]/g, "_");
+    const fullBlocks = getBlocksWithMeta();
+    const txt = exportBlocksToPlainText(
+      fullBlocks,
+      extractDocumentMeta(fullBlocks),
+      docTitle || "Official ERP Document"
+    );
+    triggerTextDownload(txt, `${safeCode}.txt`, "text/plain;charset=utf-8");
+    notify(isId ? "Berkas .TXT berhasil diekspor." : ".TXT Plain Text exported.", "success");
+  }, [docTitle, documentId, getBlocksWithMeta, triggerTextDownload, notify, isId]);
 
   return {
     handlePrint,
     handleImportDocx,
     handleExportDocx,
     handleExportPdf,
+    handleExportHtml,
+    handleExportMarkdown,
+    handleExportTxt,
   };
 }
 
@@ -362,7 +355,7 @@ export function ExportEngine({
       {/* ============ 7. UNSAVED CHANGES CONFIRM ============ */}
       {showCloseConfirm && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-950/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3">
               <span className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-4.5 h-4.5" />
@@ -422,7 +415,7 @@ export function ExportEngine({
           onClick={() => setShowShortcuts(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3 animate-in fade-in zoom-in-95 duration-150"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90dvh] overflow-y-auto p-5 space-y-3 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -440,6 +433,7 @@ export function ExportEngine({
             <div className="divide-y divide-stone-100 text-xs">
               {[
                 ["Arrow Keys (←↑→↓)", isId ? "Geser presisi blok 1px (Shift + Panah = 10px)" : "Micro-nudge block 1px (Shift + Arrow = 10px)"],
+                ["Ctrl / Cmd + F", isId ? "Cari & Ganti teks" : "Find & Replace text"],
                 ["Ctrl / Cmd + Z", isId ? "Urungkan perubahan" : "Undo"],
                 ["Ctrl / Cmd + Shift + Z", isId ? "Ulangi perubahan" : "Redo"],
                 ["Ctrl / Cmd + S", isId ? "Simpan draft (tanpa keluar)" : "Save draft (stay open)"],
@@ -449,9 +443,9 @@ export function ExportEngine({
                 ["Ctrl / Cmd + (+ / - / 0)", isId ? "Zoom masuk / keluar / reset" : "Zoom in / out / reset"],
                 ["Esc", isId ? "Batal pilih blok / tutup panel" : "Deselect block / close panel"],
               ].map(([keys, label]) => (
-                <div key={keys} className="flex items-center justify-between py-2">
+                <div key={keys} className="flex flex-wrap items-center justify-between gap-2 py-2">
                   <span className="text-stone-600 font-medium">{label}</span>
-                  <kbd className="px-2 py-0.5 rounded-md bg-stone-100 border border-stone-200 font-mono text-[10px] font-bold text-stone-700">
+                  <kbd className="px-2 py-0.5 rounded-md bg-stone-100 border border-stone-200 font-mono text-[10px] font-bold text-stone-700 shrink-0">
                     {keys}
                   </kbd>
                 </div>

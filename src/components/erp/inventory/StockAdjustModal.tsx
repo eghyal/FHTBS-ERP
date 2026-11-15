@@ -60,12 +60,12 @@ export function StockAdjustModal({
         </div>
       }
       description={`Perform physical stock count correction for ${selectedItem.item_code} (${selectedItem.name})`}
-      maxWidth="2xl"
+      maxWidth="4xl"
       contentClassName="p-0 border-t border-stone-100"
     >
-      <form onSubmit={onSubmit} className="p-6 space-y-5">
+      <form onSubmit={onSubmit} className="p-5 sm:p-6 space-y-5">
         {/* Current State Indicator */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-200/80">
             <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest block mb-1">
               Current Free Stock
@@ -177,7 +177,7 @@ export function StockAdjustModal({
           <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-2">
             Optional Metadata Correction
           </span>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider">
                 Item Name
@@ -204,7 +204,7 @@ export function StockAdjustModal({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex gap-3 pt-3 border-t border-stone-100">
+        <div className="flex flex-wrap gap-3 pt-3 border-t border-stone-100">
           <Button
             type="button"
             variant="secondary"

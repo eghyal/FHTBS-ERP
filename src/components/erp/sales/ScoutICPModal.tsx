@@ -72,7 +72,7 @@ export function ScoutICPModal({ isOpen, onClose, onSaveSuccess }: ScoutICPModalP
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="xl"
+      maxWidth="3xl"
       title={
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center text-stone-700">
@@ -139,7 +139,7 @@ export function ScoutICPModal({ isOpen, onClose, onSaveSuccess }: ScoutICPModalP
 
           <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-2 text-xs">
             <span className="font-semibold text-stone-700 block">Scoring Weight Benchmark:</span>
-            <div className="grid grid-cols-2 gap-2 text-stone-600 text-[11px]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-stone-600 text-[11px]">
               <div className="flex justify-between">
                 <span>Behavioral Intent:</span>
                 <span className="font-mono tabular-nums font-semibold">35%</span>
@@ -159,7 +159,7 @@ export function ScoutICPModal({ isOpen, onClose, onSaveSuccess }: ScoutICPModalP
             </div>
           </div>
 
-          <div className="pt-2 flex items-center justify-between border-t border-stone-100">
+          <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100">
             {savedSuccess ? (
               <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
                 <Check className="w-3.5 h-3.5" />

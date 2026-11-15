@@ -85,11 +85,27 @@ export const BopRoutingPreviewModal: React.FC<BopRoutingPreviewModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="5xl"
+      maxWidth="6xl"
       title="Engineering Process Route Sheet (BoP)"
-      contentClassName="p-0 flex flex-col h-[88vh] bg-stone-100 border-t border-stone-100"
+      contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+      footer={
+        <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleExportPdf}
+            disabled={isExporting}
+            leftIcon={<Download className="w-4 h-4" />}
+          >
+            {isExporting ? "Exporting PDF..." : "Export PDF (A4)"}
+          </Button>
+        </div>
+      }
     >
-      <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+      <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
         <PdfPreviewWrapper>
           <PrintTemplate
             ref={printDocRef}
@@ -517,26 +533,6 @@ export const BopRoutingPreviewModal: React.FC<BopRoutingPreviewModalProps> = ({
             </div>
           </PrintTemplate>
         </PdfPreviewWrapper>
-      </div>
-
-      {/* Centered Footer Controls with Green Export PDF Button */}
-      <div className="p-4 sm:px-6 sm:py-4 border-t border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 flex justify-center items-center gap-4 shrink-0">
-        <Button
-          variant="secondary"
-          onClick={onClose}
-          className="px-6 py-2.5 rounded-xl text-xs font-bold border border-stone-200 dark:border-stone-700 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 cursor-pointer"
-        >
-          Close
-        </Button>
-        <Button
-          variant="primary"
-          onClick={handleExportPdf}
-          disabled={isExporting}
-          className="px-7 py-2.5 rounded-xl text-xs font-bold shadow-md flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 cursor-pointer"
-        >
-          <Download className="w-4 h-4" />
-          {isExporting ? "Exporting PDF..." : "Export PDF (A4)"}
-        </Button>
       </div>
     </Modal>
   );

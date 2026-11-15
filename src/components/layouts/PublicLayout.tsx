@@ -559,8 +559,10 @@ export function PublicHeader({
               onMouseLeave={handleMouseLeave}
             >
               <button
+                type="button"
+                onClick={() => setIsOpOpen((prev) => !prev)}
                 className={cn(
-                  "flex items-center gap-2 px-4 py-2 border rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
+                  "flex items-center gap-2 px-4 py-2 border rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer",
                   isOpOpen
                     ? "bg-stone-100 border-stone-300 text-stone-900 shadow-inner"
                     : "bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-800",

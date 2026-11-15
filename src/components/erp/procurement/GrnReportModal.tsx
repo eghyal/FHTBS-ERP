@@ -32,7 +32,7 @@ export const GrnReportModal = memo(function GrnReportModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="5xl"
+      maxWidth="6xl"
       hideCloseButton={true}
       title={
         <div className="flex flex-wrap items-center justify-between gap-3 w-full">
@@ -67,7 +67,7 @@ export const GrnReportModal = memo(function GrnReportModal({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <Button
               variant="dark"
               size="sm"
@@ -88,9 +88,9 @@ export const GrnReportModal = memo(function GrnReportModal({
           </div>
         </div>
       }
-      contentClassName="p-0 flex flex-col h-[84vh] border-t border-stone-200/80"
+      contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
     >
-      <div className="flex-1 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
+      <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
         <PdfPreviewWrapper>
           <PrintTemplate
             ref={grnReportRef}

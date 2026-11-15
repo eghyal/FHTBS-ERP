@@ -1246,4 +1246,137 @@ export function runProductionAndMesMigrations(db: any) {
     safeExec(db, "ALTER TABLE project_financial_summaries ADD COLUMN gross_profit_full REAL DEFAULT 0;");
     safeExec(db, "ALTER TABLE project_financial_summaries ADD COLUMN gross_margin_full_pct REAL DEFAULT 0;");
 
+    // Lean Manufacturing End-to-End (VSM, Heijunka, Kanban Supermarket, TPM, SMED, Kaizen 8D/PDCA)
+    safeExec(db, `
+      CREATE TABLE IF NOT EXISTS lean_vsm_baselines (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        net_operating_mins_per_day REAL DEFAULT 450,
+        customer_demand_units_per_day REAL DEFAULT 10,
+        takt_time_mins REAL DEFAULT 45,
+        target_pce_pct REAL DEFAULT 35,
+        target_lead_time_days REAL DEFAULT 7,
+        notes TEXT,
+        status TEXT DEFAULT 'DRAFT',
+        authorized_by TEXT,
+        authorized_at DATETIME,
+        updated_by TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_lean_vsm_project ON lean_vsm_baselines(project_id);
+
+      CREATE TABLE IF NOT EXISTS lean_heijunka_schedules (
+        id TEXT PRIMARY KEY,
+        schedule_code TEXT UNIQUE NOT NULL,
+        project_id TEXT,
+        product_name TEXT NOT NULL,
+        lot_pitch_qty REAL DEFAULT 10,
+        setup_mins REAL DEFAULT 25,
+        run_mins_per_unit REAL DEFAULT 12,
+        epei_days REAL DEFAULT 1.5,
+        sequence_slot INTEGER DEFAULT 1,
+        shift_window TEXT DEFAULT 'SHIFT-1 (08:00-16:00)',
+        status TEXT DEFAULT 'DRAFT',
+        created_by TEXT,
+        released_by TEXT,
+        released_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS lean_kanban_cards (
+        id TEXT PRIMARY KEY,
+        card_code TEXT UNIQUE NOT NULL,
+        item_id TEXT,
+        item_name TEXT NOT NULL,
+        station_name TEXT NOT NULL,
+        bin_capacity REAL DEFAULT 50,
+        num_cards INTEGER DEFAULT 3,
+        conwip_cap REAL DEFAULT 150,
+        reorder_trigger_qty REAL DEFAULT 40,
+        current_bin_qty REAL DEFAULT 90,
+        pull_status TEXT DEFAULT 'NOMINAL',
+        signaled_by TEXT,
+        signaled_at DATETIME,
+        released_by TEXT,
+        released_at DATETIME,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS lean_tpm_logs (
+        id TEXT PRIMARY KEY,
+        log_code TEXT UNIQUE NOT NULL,
+        machine_id TEXT,
+        machine_name TEXT NOT NULL,
+        maintenance_type TEXT DEFAULT 'AUTONOMOUS_JH',
+        loss_category TEXT DEFAULT 'NONE',
+        checklist_summary TEXT NOT NULL,
+        downtime_mins REAL DEFAULT 15,
+        operating_hours_since_last REAL DEFAULT 120,
+        status TEXT DEFAULT 'LOGGED',
+        performed_by TEXT,
+        verified_by TEXT,
+        verified_at DATETIME,
+        next_pm_due_date TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS lean_smed_sessions (
+        id TEXT PRIMARY KEY,
+        session_code TEXT UNIQUE NOT NULL,
+        machine_id TEXT,
+        machine_name TEXT NOT NULL,
+        from_setup TEXT NOT NULL,
+        to_setup TEXT NOT NULL,
+        baseline_mins REAL DEFAULT 45,
+        internal_mins REAL DEFAULT 18,
+        external_mins REAL DEFAULT 14,
+        target_after_mins REAL DEFAULT 22,
+        tasks_json TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'DRAFT',
+        operator_name TEXT,
+        validated_by TEXT,
+        validated_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS lean_kaizen_8d (
+        id TEXT PRIMARY KEY,
+        record_code TEXT UNIQUE NOT NULL,
+        record_type TEXT DEFAULT 'EIGHT_D',
+        source_type TEXT DEFAULT 'NDP_ANDON',
+        source_ref_id TEXT,
+        source_ref_code TEXT,
+        project_id TEXT,
+        station_name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        severity TEXT DEFAULT 'MAJOR',
+        pdca_phase TEXT DEFAULT 'PLAN',
+        d1_team TEXT,
+        d2_problem TEXT,
+        d3_containment TEXT,
+        d4_root_cause_5why TEXT,
+        d5_corrective_action TEXT,
+        d6_verification TEXT,
+        d7_prevention TEXT,
+        baseline_metric TEXT,
+        after_metric TEXT,
+        copq_savings_idr REAL DEFAULT 0,
+        status TEXT DEFAULT 'OPEN',
+        created_by TEXT,
+        verified_by TEXT,
+        closed_by TEXT,
+        closed_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    safeExec(db, "ALTER TABLE lean_kanban_cards ADD COLUMN project_id TEXT;");
+    safeExec(db, "ALTER TABLE lean_kanban_cards ADD COLUMN linked_mr_id TEXT;");
+    safeExec(db, "ALTER TABLE lean_kanban_cards ADD COLUMN linked_pr_id TEXT;");
+    safeExec(db, "ALTER TABLE lean_kanban_cards ADD COLUMN linked_pr_number TEXT;");
+    safeExec(db, "ALTER TABLE lean_heijunka_schedules ADD COLUMN linked_wot_id TEXT;");
+    safeExec(db, "ALTER TABLE lean_heijunka_schedules ADD COLUMN linked_wot_lot TEXT;");
+    safeExec(db, "ALTER TABLE lean_smed_sessions ADD COLUMN synced_bop_count INTEGER DEFAULT 0;");
+    safeExec(db, "ALTER TABLE lean_tpm_logs ADD COLUMN linked_ndp_id TEXT;");
 }

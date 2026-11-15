@@ -1,50 +1,15 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
-import {
-  Button,
-  Modal,
-  Badge,
-  Input,
-  Select,
-  Tabs,
-} from "@/components/ui";
-import { ConfirmModal } from "@/components/shared/ConfirmModal";
+import { Button } from "@/components/ui";
 import { apiFetch } from "@/utils/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import {
   FileText,
   Plus,
   RefreshCw,
-  Eye,
-  PenTool,
-  ShieldCheck,
-  AlertOctagon,
-  Clock,
-  Search,
-  Filter,
-  LayoutGrid,
-  List as ListIcon,
-  Trash2,
-  ArrowUpDown,
-  CheckCircle2,
-  ClipboardList,
-  Banknote,
-  FilePlus2,
-  ChevronRight,
-  Inbox,
-  Copy,
-  Lock,
-  History,
-  Download,
   Upload,
-  RotateCcw,
-  KeyRound,
-  Archive,
-  Undo2,
-  Printer,
 } from "lucide-react";
 import {
   CanvaStudioEditor,
@@ -52,15 +17,8 @@ import {
   OFFICIAL_KOP_SURAT_BLOCK,
 } from "@/components/erp/workspace/StudioEditor";
 import { getPaperDimensions } from "@/components/erp/workspace/studio/config";
-import {
-  SharedBlockRenderer,
-  DocumentSheetRenderer,
-} from "@/components/erp/workspace/BlockRenderer";
-import { AuthorizeDocModal } from "@/components/erp/AuthorizeDocModal";
-import { ReviseDocModal } from "@/components/erp/ReviseDocModal";
-import { PdfPreviewWrapper } from "@/components/shared/PdfPreviewWrapper";
+import { DocumentSheetRenderer } from "@/components/erp/workspace/BlockRenderer";
 import { generatePDF } from "@/lib/pdfGenerator";
-import { getDailyAuthKey } from "@/utils/auth";
 import { parseDocxPackageToBlocks } from "@/services/docxEngine";
 import {
   DocBlock,
@@ -71,19 +29,17 @@ import {
   WorkspaceDocumentEvent,
 } from "@/types/workspace";
 import {
-  ERP_DEPARTMENT_OPTIONS,
   normalizeDepartmentToRole,
   canUserApproveDepartment,
 } from "@/constants/rbac";
-
-import {
-  TEMPLATE_PRESETS,
-  TEMPLATE_ICONS,
-  TEMPLATE_ACCENTS,
-  STATUS_META,
-  relativeTime,
-} from "@/components/erp/workspace/workspacePresets";
+import { TEMPLATE_PRESETS } from "@/components/erp/workspace/workspacePresets";
 import { WorkspaceModals } from "@/components/erp/workspace/WorkspaceModals";
+import {
+  WorkspaceStatusBadge,
+  WorkspaceQuickStartSection,
+  WorkspaceSavedDraftsBar,
+  WorkspaceLibrarySection,
+} from "@/components/erp/workspace/WorkspaceLibraryView";
 
 export function DocumentWorkspace() {
   const { user } = useAuth();
@@ -93,7 +49,8 @@ export function DocumentWorkspace() {
   const [docs, setDocs] = useState<WorkspaceDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"ALL" | "ACTION_REQUIRED" | "MY_DOCS">("ALL");
+  const [activeTab, setActiveTab] = useState<"ALL" | "SAVED_DRAFTS" | "ACTION_REQUIRED" | "MY_DOCS">("ALL");
+  const [templatesExpanded, setTemplatesExpanded] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [departmentFilter, setDepartmentFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -120,13 +77,19 @@ export function DocumentWorkspace() {
   const [isSaving, setIsSaving] = useState(false);
   const docxImportInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Strict per-user ownership check: only the exact creator account can edit, continue, clone, or delete
+  // Strict per-user ownership check: only the exact creator account can access, edit, continue, clone, or delete private drafts
   const isDocOwner = useCallback(
     (doc: WorkspaceDocument | null | undefined): boolean => {
       if (!doc || !user) return false;
       const currentUsername = String(user.username || "").trim().toLowerCase();
       const docUsername = String(doc.created_by_username || (doc as any).createdByUsername || "").trim().toLowerCase();
-      if (currentUsername && docUsername && currentUsername === docUsername) {
+      if (
+        currentUsername &&
+        currentUsername !== "system" &&
+        docUsername &&
+        docUsername !== "system" &&
+        currentUsername === docUsername
+      ) {
         return true;
       }
       const currentUserId = Number((user as any).id);
@@ -139,15 +102,38 @@ export function DocumentWorkspace() {
     [user]
   );
 
+  const isPrivateDraftDoc = useCallback((doc: WorkspaceDocument | null | undefined): boolean => {
+    const status = String(doc?.status || "").trim().toUpperCase();
+    return status === "DRAFT" || status === "REVISION_REQUIRED";
+  }, []);
+
   // Preview & Authorization Action Modal States
   const [previewDoc, setPreviewDoc] = useState<WorkspaceDocument | null>(null);
+  const openPreviewDoc = useCallback(
+    (doc: WorkspaceDocument) => {
+      if (isPrivateDraftDoc(doc) && !isDocOwner(doc)) {
+        showToast(
+          isId
+            ? "Akses Ditolak: Draft dokumen bersifat privat bagi pembuatnya."
+            : "Access Denied: Draft documents are private to their creator.",
+          "error"
+        );
+        return;
+      }
+      setPreviewDoc(doc);
+    },
+    [isDocOwner, isPrivateDraftDoc, isId, showToast]
+  );
   const [authorizeTargetDoc, setAuthorizeTargetDoc] = useState<WorkspaceDocument | null>(null);
   const [approvalNoteInput, setApprovalNoteInput] = useState("");
   const [reviseTargetDoc, setReviseTargetDoc] = useState<WorkspaceDocument | null>(null);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [isExportingPreviewPdf, setIsExportingPreviewPdf] = useState(false);
+  const [exportingPdfDocId, setExportingPdfDocId] = useState<string | null>(null);
+  const [offscreenExportDoc, setOffscreenExportDoc] = useState<WorkspaceDocument | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<WorkspaceDocument | null>(null);
   const previewSheetRef = React.useRef<HTMLDivElement | null>(null);
+  const offscreenExportRef = React.useRef<HTMLDivElement | null>(null);
 
   // Version History, Snapshot Restore & Audit Trail States
   const [historyDoc, setHistoryDoc] = useState<WorkspaceDocument | null>(null);
@@ -185,20 +171,30 @@ export function DocumentWorkspace() {
     fetchDocs();
   }, [fetchDocs]);
 
+  // Defense-in-depth: strictly hide non-owner DRAFT and REVISION_REQUIRED documents from all views & counters
+  const visibleDocs = useMemo(() => {
+    return docs.filter((d) => {
+      if (isPrivateDraftDoc(d)) {
+        return isDocOwner(d);
+      }
+      return true;
+    });
+  }, [docs, isDocOwner, isPrivateDraftDoc]);
+
   // Stats
   const stats = useMemo(() => {
     return {
-      total: docs.length,
-      pending: docs.filter((d) => d.status === "PENDING_APPROVAL").length,
-      draft: docs.filter((d) => d.status === "DRAFT").length,
-      approved: docs.filter((d) => d.status === "APPROVED").length,
-      revision: docs.filter((d) => d.status === "REVISION_REQUIRED").length,
+      total: visibleDocs.length,
+      pending: visibleDocs.filter((d) => d.status === "PENDING_APPROVAL").length,
+      draft: visibleDocs.filter((d) => d.status === "DRAFT").length,
+      approved: visibleDocs.filter((d) => d.status === "APPROVED").length,
+      revision: visibleDocs.filter((d) => d.status === "REVISION_REQUIRED").length,
     };
-  }, [docs]);
+  }, [visibleDocs]);
 
   // Filtered + sorted documents list
   const filteredDocs = useMemo(() => {
-    let list = docs;
+    let list = visibleDocs;
     if (activeTab === "ACTION_REQUIRED") {
       list = list.filter((d) => d.status === "PENDING_APPROVAL");
       const userRoleNorm = normalizeDepartmentToRole(user?.role);
@@ -210,6 +206,10 @@ export function DocumentWorkspace() {
             canUserApproveDepartment(user?.role, d.department)
         );
       }
+    } else if (activeTab === "SAVED_DRAFTS") {
+      list = list.filter(
+        (d) => isDocOwner(d) && (d.status === "DRAFT" || d.status === "REVISION_REQUIRED")
+      );
     } else if (activeTab === "MY_DOCS") {
       list = list.filter((d) => isDocOwner(d));
     }
@@ -247,7 +247,7 @@ export function DocumentWorkspace() {
       sorted.sort((a, b) => a.title.localeCompare(b.title));
     }
     return sorted;
-  }, [docs, activeTab, statusFilter, departmentFilter, searchQuery, sortMode, user, isDocOwner]);
+  }, [visibleDocs, activeTab, statusFilter, departmentFilter, searchQuery, sortMode, user, isDocOwner]);
 
   // Saved drafts & revisions owned strictly by the current logged-in user (for quick resume)
   const myResumableDrafts = useMemo(() => {
@@ -867,6 +867,15 @@ export function DocumentWorkspace() {
 
   // Open Version History & Immutable Audit Trail Modal
   const handleOpenHistory = async (doc: WorkspaceDocument) => {
+    if (isPrivateDraftDoc(doc) && !isDocOwner(doc)) {
+      showToast(
+        isId
+          ? "Akses Ditolak: Draft dokumen bersifat privat bagi pembuatnya."
+          : "Access Denied: Draft documents are private to their creator.",
+        "error"
+      );
+      return;
+    }
     setHistoryDoc(doc);
     setIsLoadingHistory(true);
     try {
@@ -874,6 +883,11 @@ export function DocumentWorkspace() {
         apiFetch(`/api/workspace-documents/${doc.id}/versions`, {}, user?.username),
         apiFetch(`/api/workspace-documents/${doc.id}/events`, {}, user?.username),
       ]);
+      if (!verRes.ok || !evtRes.ok) {
+        showToast(verRes.error || evtRes.error || "Forbidden: Cannot view document history", "error");
+        setHistoryDoc(null);
+        return;
+      }
       const verRaw = (verRes.data as any)?.data || verRes.data;
       const evtRaw = (evtRes.data as any)?.data || evtRes.data;
       const verData = verRaw?.versions || (Array.isArray(verRaw) ? verRaw : []);
@@ -928,6 +942,15 @@ export function DocumentWorkspace() {
 
   // Download Real OpenXML .DOCX Package
   const handleDownloadDocx = async (doc: WorkspaceDocument) => {
+    if (isPrivateDraftDoc(doc) && !isDocOwner(doc)) {
+      showToast(
+        isId
+          ? "Akses Ditolak: Draft dokumen bersifat privat bagi pembuatnya."
+          : "Access Denied: Draft documents are private to their creator.",
+        "error"
+      );
+      return;
+    }
     try {
       const response = await fetch(`/api/workspace-documents/${doc.id}/file`, {
         credentials: "include",
@@ -948,16 +971,26 @@ export function DocumentWorkspace() {
     }
   };
 
-  // Export High-Resolution 300-DPI PDF (Matches Procurement & Sales ERP PDF exports)
+  // Export High-Resolution 300-DPI Multi-Page Precision PDF (1:1 Edit = Preview = Export)
   const handleDownloadPdf = async (doc: WorkspaceDocument) => {
+    if (isPrivateDraftDoc(doc) && !isDocOwner(doc)) {
+      showToast(
+        isId
+          ? "Akses Ditolak: Draft dokumen bersifat privat bagi pembuatnya."
+          : "Access Denied: Draft documents are private to their creator.",
+        "error"
+      );
+      return;
+    }
     const safeCode = (doc.document_code || doc.docNumber || doc.id).replace(/[^a-zA-Z0-9-_]/g, "_");
     const filename = `${safeCode}_v${doc.current_version || doc.version || 1}.pdf`;
+    const preset = doc.layout_preset || "A4_PORTRAIT";
+    const paperDims = getPaperDimensions(preset, doc.custom_width_mm, doc.custom_height_mm);
 
     if (previewSheetRef.current && previewDoc?.id === doc.id) {
       try {
         setIsExportingPreviewPdf(true);
-        const preset = doc.layout_preset || "A4_PORTRAIT";
-        const paperDims = getPaperDimensions(preset, doc.custom_width_mm, doc.custom_height_mm);
+        setExportingPdfDocId(doc.id);
         await generatePDF(previewSheetRef.current, filename, {
           orientation: paperDims.orientation,
           format: [paperDims.widthMm, paperDims.heightMm],
@@ -969,10 +1002,40 @@ export function DocumentWorkspace() {
         );
         return;
       } catch (err) {
-        console.error("Client PDF capture fallback to server PDF:", err);
+        console.error("Preview PDF capture failed:", err);
       } finally {
         setIsExportingPreviewPdf(false);
+        setExportingPdfDocId(null);
       }
+    }
+
+    // Precision offscreen multi-page Editor sheet capture when triggered directly from Document List
+    try {
+      setIsExportingPreviewPdf(true);
+      setExportingPdfDocId(doc.id);
+      setOffscreenExportDoc(doc);
+      // Allow offscreen DocumentSheetRenderer + ResizeObserver pagination + web fonts/QR to settle
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await new Promise((r) => setTimeout(r, 340));
+
+      if (offscreenExportRef.current) {
+        await generatePDF(offscreenExportRef.current, filename, {
+          orientation: paperDims.orientation,
+          format: [paperDims.widthMm, paperDims.heightMm],
+          marginMm: 0,
+        });
+        showToast(
+          isId ? `PDF Presisi (${filename}) berhasil diunduh.` : `Precision PDF (${filename}) downloaded.`,
+          "success"
+        );
+        return;
+      }
+    } catch (err) {
+      console.error("Offscreen precision PDF capture fallback:", err);
+    } finally {
+      setOffscreenExportDoc(null);
+      setIsExportingPreviewPdf(false);
+      setExportingPdfDocId(null);
     }
 
     try {
@@ -996,158 +1059,32 @@ export function DocumentWorkspace() {
 
   /* ============================ RENDER ============================ */
 
-  const renderStatusBadge = (status: string) => {
-    const meta = STATUS_META[status] || STATUS_META.DRAFT;
-    return (
-      <span className={cn("px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border", meta.cls)}>
-        {isId ? meta.labelId : status.replace(/_/g, " ")}
-      </span>
-    );
-  };
+  const renderStatusBadge = useCallback(
+    (status: string) => <WorkspaceStatusBadge status={status} isId={isId} />,
+    [isId]
+  );
 
-  const renderDocActions = (doc: WorkspaceDocument, compact?: boolean) => {
-    const isApproved = doc.status === "APPROVED";
-    const isArchived = doc.status === "ARCHIVED";
-    const isPending = doc.status === "PENDING_APPROVAL";
-    const isDraftOrRevision = doc.status === "DRAFT" || doc.status === "REVISION_REQUIRED";
-    const owner = isDocOwner(doc);
-    const userHasApproveRight = canApproveDoc(doc);
-    const canDelete = isDraftOrRevision && owner;
-    return (
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setPreviewDoc(doc);
-          }}
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10.5px] font-bold bg-white border border-stone-200 text-stone-700 hover:bg-stone-100 cursor-pointer transition-colors"
-          title={isId ? "Pratinjau & Otorisasi" : "Preview & Authorize"}
-        >
-          <Eye className="w-3.5 h-3.5 text-stone-500" />
-          {!compact && <span>{isId ? "Pratinjau" : "Preview"}</span>}
-        </button>
+  const handleToggleTemplates = useCallback(() => {
+    setTemplatesExpanded((prev) => !prev);
+  }, []);
 
-        {isPending && userHasApproveRight && (
-          <>
-            <Button
-              size="xs"
-              action="authorize"
-              onClick={(e) => {
-                e.stopPropagation();
-                setAuthorizeTargetDoc(doc);
-              }}
-              title={isId ? "Otorisasi dengan Daily Key" : "Authorize with Daily Key"}
-            >
-              {isId ? "Authorize" : "Authorize"}
-            </Button>
-            <Button
-              size="xs"
-              action="revise"
-              onClick={(e) => {
-                e.stopPropagation();
-                setReviseTargetDoc(doc);
-              }}
-              title={isId ? "Minta Revisi dengan Catatan" : "Request Revision"}
-            >
-              {isId ? "Revise" : "Revise"}
-            </Button>
-          </>
-        )}
+  const handleViewAllDrafts = useCallback(() => {
+    setActiveTab("SAVED_DRAFTS");
+  }, []);
 
-        {owner && isApproved && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCloneDocument(doc);
-            }}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10.5px] font-bold bg-stone-900 border border-stone-900 text-white hover:bg-stone-800 cursor-pointer transition-colors"
-            title={isId ? "Klon & Buat Versi Revisi Baru" : "Clone & Create New Revision"}
-          >
-            <Copy className="w-3.5 h-3.5" />
-            {!compact && <span>{isId ? "Buat Revisi" : "Clone Revision"}</span>}
-          </button>
-        )}
-
-        {owner && isDraftOrRevision && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEditExistingDoc(doc);
-            }}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10.5px] font-bold bg-stone-900 border border-stone-900 text-white hover:bg-stone-800 cursor-pointer transition-colors"
-            title={isId ? "Lanjutkan Draft di Studio Editor" : "Continue Draft in Studio Editor"}
-          >
-            <PenTool className="w-3.5 h-3.5 text-white" />
-            {!compact && (
-              <span>
-                {doc.status === "REVISION_REQUIRED"
-                  ? isId
-                    ? "Perbaiki"
-                    : "Revise"
-                  : isId
-                  ? "Lanjutkan"
-                  : "Continue"}
-              </span>
-            )}
-          </button>
-        )}
-
-        {!owner && !isArchived && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold bg-stone-100 border border-stone-200 text-stone-500 select-none"
-            title={
-              isId
-                ? `Dokumen milik ${doc.created_by_name} (Hanya Baca — Tidak dapat diedit/dihapus oleh akun lain)`
-                : `Owned by ${doc.created_by_name} (Read-only)`
-            }
-          >
-            <Lock className="w-3 h-3 text-stone-400" />
-            {!compact && <span>{isId ? "Hanya Baca" : "Read Only"}</span>}
-          </span>
-        )}
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleOpenHistory(doc);
-          }}
-          className="inline-flex items-center p-1.5 rounded-lg bg-white border border-stone-200 text-stone-600 hover:bg-stone-100 cursor-pointer transition-colors"
-          title={isId ? "Riwayat Versi & Audit Trail" : "Version History & Audit Trail"}
-        >
-          <History className="w-3.5 h-3.5" />
-        </button>
-
-        {canDelete && (
-          <Button
-            type="button"
-            variant="danger_soft"
-            size="icon-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteTarget(doc);
-            }}
-            title={isId ? "Hapus dokumen saya" : "Delete my document"}
-          >
-            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-          </Button>
-        )}
-      </div>
-    );
-  };
+  const handleLaunchBlankStudio = useCallback(() => {
+    handleLaunchStudio();
+  }, [handleLaunchStudio]);
 
   return (
-    <div className="space-y-5 pb-20 animate-in fade-in duration-300">
-      {/* 1. Page Header */}
+    <div className="space-y-4 pb-20 animate-in fade-in duration-300">
+      {/* 1. Compact Workspace Top Header */}
       <PageHeader
         title="Document Workspace Studio"
-        subtitle="Official ERP document templates"
+        subtitle={`Official ERP templates · ${stats.total} total · ${stats.pending} pending authorization`}
         icon={<FileText className="w-5 h-5" />}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <input
               ref={docxImportInputRef}
               type="file"
@@ -1160,23 +1097,26 @@ export function DocumentWorkspace() {
               variant="outline"
               onClick={() => docxImportInputRef.current?.click()}
               leftIcon={<Upload className="w-4 h-4" />}
+              className="whitespace-nowrap shrink-0"
             >
-              {isId ? "Impor .DOCX" : "Import .DOCX"}
+              Import .DOCX
             </Button>
             <Button
               size="sm"
-              onClick={() => handleLaunchStudio()}
+              onClick={handleLaunchBlankStudio}
               leftIcon={<Plus className="w-4 h-4" />}
+              className="whitespace-nowrap shrink-0"
             >
-              {isId ? "Dokumen Baru" : "New Document"}
+              New Document
             </Button>
             <Button
               size="icon-sm"
               variant="outline"
               onClick={fetchDocs}
               disabled={isLoading}
-              title={isId ? "Segarkan Dokumen" : "Refresh Documents"}
-              aria-label={isId ? "Segarkan Dokumen" : "Refresh Documents"}
+              title="Refresh Documents"
+              aria-label="Refresh Documents"
+              className="shrink-0"
             >
               <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
             </Button>
@@ -1184,450 +1124,57 @@ export function DocumentWorkspace() {
         }
       />
 
-      {/* 2B. Resume Saved Drafts Banner */}
-      {myResumableDrafts.length > 0 && (
-        <div className="bg-stone-900 text-white rounded-2xl p-4 sm:p-5 shadow-sm border border-stone-800 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5">
-              <span className="w-8 h-8 rounded-xl bg-white/10 text-white flex items-center justify-center shrink-0">
-                <PenTool className="w-4 h-4" />
-              </span>
-              <div>
-                <h3 className="text-xs sm:text-sm font-black tracking-tight flex items-center gap-2">
-                  <span>Saved Drafts</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-white text-stone-900">
-                    {myResumableDrafts.length}
-                  </span>
-                </h3>
-              </div>
-            </div>
-          </div>
+      {/* 2. Quick Start Template Cards */}
+      <WorkspaceQuickStartSection
+        templatesExpanded={templatesExpanded}
+        onToggleExpand={handleToggleTemplates}
+        onLaunchStudio={handleLaunchStudio}
+      />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
-            {myResumableDrafts.slice(0, 6).map((draft) => (
-              <div
-                key={draft.id}
-                onClick={() => handleEditExistingDoc(draft)}
-                className="group p-3.5 rounded-xl bg-stone-800/90 hover:bg-stone-800 border border-stone-700 hover:border-stone-500 transition-all cursor-pointer flex items-center justify-between gap-3"
-              >
-                <div className="min-w-0 space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-[10px] font-bold text-stone-300 truncate">
-                      {draft.document_code}
-                    </span>
-                    <span
-                      className={cn(
-                        "px-1.5 py-0.5 rounded text-[9px] font-black uppercase",
-                        draft.status === "REVISION_REQUIRED"
-                          ? "bg-rose-500/20 text-rose-200 border border-rose-400/30"
-                          : "bg-white/10 text-stone-200"
-                      )}
-                    >
-                      {draft.status === "REVISION_REQUIRED"
-                        ? isId
-                          ? "Perlu Revisi"
-                          : "Needs Revision"
-                        : "Draft"}
-                    </span>
-                  </div>
-                  <div className="text-xs font-bold text-white truncate">{draft.title}</div>
-                  <div className="text-[10px] text-stone-400">
-                    {isId ? "Terakhir disimpan" : "Last saved"} {relativeTime(draft.updated_at, isId)} · v
-                    {draft.current_version || draft.version || 1}
-                  </div>
-                </div>
+      {/* 3. Concise Saved Drafts Resume Bar */}
+      <WorkspaceSavedDraftsBar
+        drafts={myResumableDrafts}
+        isId={isId}
+        onViewAllDrafts={handleViewAllDrafts}
+        onEditDraft={handleEditExistingDoc}
+        onDeleteDraft={setDeleteTarget}
+      />
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditExistingDoc(draft);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-stone-900 hover:bg-stone-100 text-[11px] font-black cursor-pointer transition-colors"
-                  >
-                    <PenTool className="w-3 h-3" />
-                    <span>{isId ? "Lanjutkan" : "Resume"}</span>
-                  </button>
-                  <Button
-                    type="button"
-                    variant="danger_soft"
-                    size="icon-xs"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteTarget(draft);
-                    }}
-                    title={isId ? "Hapus draft" : "Delete draft"}
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 3. Template Gallery */}
-      <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-2xs space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-black text-stone-900">
-              {isId ? "Mulai Cepat dari Template" : "Quick Start from Template"}
-            </h3>
-            <p className="text-[11px] text-stone-500 mt-0.5">
-              {isId
-                ? "Satu klik untuk membuka studio dengan struktur dokumen yang sudah siap pakai."
-                : "One click opens the studio with a ready-made document structure."}
-            </p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
-          {/* Blank document */}
-          <button
-            onClick={() => handleLaunchStudio()}
-            className="group text-left p-4 rounded-xl border-2 border-dashed border-stone-300 hover:border-stone-900 hover:bg-stone-50/60 transition-all cursor-pointer flex flex-col gap-2"
-          >
-            <span className="w-9 h-9 rounded-lg bg-stone-100 text-stone-700 group-hover:bg-stone-900 group-hover:text-white flex items-center justify-center transition-colors">
-              <FilePlus2 className="w-4.5 h-4.5" />
-            </span>
-            <span className="text-xs font-black text-stone-900">
-              {isId ? "Dokumen Kosong" : "Blank Document"}
-            </span>
-            <span className="text-[10.5px] text-stone-500 leading-snug">
-              {isId
-                ? "Mulai dari kanvas bersih dengan Kop Resmi & TTD Purchasing."
-                : "Start from a clean canvas with Official Letterhead & Purchasing sign-off."}
-            </span>
-            <span className="mt-auto pt-1 text-[10px] font-bold text-stone-800 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              {isId ? "Buka Studio" : "Open Studio"} <ChevronRight className="w-3 h-3" />
-            </span>
-          </button>
-
-          {TEMPLATE_PRESETS.map((tpl) => {
-            const TIcon = TEMPLATE_ICONS[tpl.id] || FileText;
-            const accent = TEMPLATE_ACCENTS[tpl.id] || TEMPLATE_ACCENTS.PURCHASING_MEMO;
-            return (
-              <button
-                key={tpl.id}
-                onClick={() => handleLaunchStudio(tpl.id)}
-                className={cn(
-                  "group text-left p-4 rounded-2xl border border-stone-200 bg-white transition-all cursor-pointer flex flex-col gap-2 shadow-2xs",
-                  accent.hover
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className={cn("w-9 h-9 rounded-xl flex items-center justify-center font-bold", accent.chip)}>
-                    <TIcon className="w-4.5 h-4.5" />
-                  </span>
-                  <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200/80">
-                    {tpl.targetDept}
-                  </span>
-                </div>
-                <span className="text-xs font-black text-stone-900 leading-snug">
-                  {isId ? tpl.titleId : tpl.titleEn}
-                </span>
-                <span className="text-[10.5px] text-stone-500 leading-snug line-clamp-2">
-                  {isId ? tpl.descriptionId : tpl.descriptionEn}
-                </span>
-                <span className="mt-auto pt-1 text-[10px] font-bold text-stone-800 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {isId ? "Gunakan Template" : "Use Template"} <ChevronRight className="w-3 h-3" />
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 4. Document Library */}
-      <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-2xs space-y-4 overflow-hidden">
-        {/* Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 pb-4 min-w-0">
-          {/* Standardized Modular Tabs */}
-          <Tabs
-            activeId={activeTab}
-            onChange={setActiveTab}
-            mobileColumns={3}
-            size="sm"
-            className="max-w-full shrink-0"
-            items={[
-              {
-                id: "ALL",
-                label: isId ? "Semua Dokumen" : "All Documents",
-                icon: <FileText className="w-3.5 h-3.5" />,
-                badge: docs.length,
-              },
-              {
-                id: "ACTION_REQUIRED",
-                label: isId ? "Perlu Otorisasi" : "Action Required",
-                icon: <Inbox className="w-3.5 h-3.5" />,
-                badge: stats.pending > 0 ? stats.pending : undefined,
-              },
-              {
-                id: "MY_DOCS",
-                label: isId ? "Dokumen Saya" : "My Documents",
-                icon: <PenTool className="w-3.5 h-3.5" />,
-              },
-            ]}
-          />
-
-          {/* Standardized Modular Filters */}
-          <div className="flex flex-wrap items-center gap-2 w-full 2xl:w-auto flex-1 min-w-full xl:min-w-[660px] justify-end">
-            <div className="w-[calc(50%-0.25rem)] sm:w-36 min-w-0 shrink-0">
-              <Select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                icon={<Filter className="w-3.5 h-3.5" />}
-              >
-                <option value="ALL">{isId ? "Semua Status" : "All Statuses"}</option>
-                <option value="DRAFT">Draft</option>
-                <option value="PENDING_APPROVAL">Pending Approval</option>
-                <option value="REVISION_REQUIRED">Needs Revision</option>
-                <option value="APPROVED">Approved</option>
-              </Select>
-            </div>
-            <div className="w-[calc(50%-0.25rem)] sm:w-44 min-w-0 shrink-0">
-              <Select
-                value={departmentFilter}
-                onChange={(e) => setDepartmentFilter(e.target.value)}
-                icon={<Filter className="w-3.5 h-3.5" />}
-              >
-                <option value="ALL">{isId ? "Semua Departemen" : "All Departments"}</option>
-                {ERP_DEPARTMENT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="w-full sm:w-32 min-w-0 shrink-0">
-              <Select
-                value={sortMode}
-                onChange={(e) => setSortMode(e.target.value as any)}
-                icon={<ArrowUpDown className="w-3.5 h-3.5" />}
-              >
-                <option value="newest">{isId ? "Terbaru" : "Newest"}</option>
-                <option value="oldest">{isId ? "Terlama" : "Oldest"}</option>
-                <option value="title">{isId ? "Judul A-Z" : "Title A-Z"}</option>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2 flex-1 min-w-[220px]">
-              <div className="flex-1 min-w-0">
-                <Input
-                  type="text"
-                  placeholder={isId ? "Cari judul / kode…" : "Search title / code…"}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  icon={<Search className="w-3.5 h-3.5" />}
-                />
-              </div>
-
-              {/* View toggle */}
-              <div className="flex items-center shrink-0 bg-stone-100 p-1 rounded-xl border border-stone-200/80 h-9">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("grid")}
-                  className={cn(
-                    "h-7 w-7 flex items-center justify-center rounded-lg cursor-pointer transition-colors",
-                    viewMode === "grid"
-                      ? "bg-white shadow-2xs text-stone-900"
-                      : "text-stone-400 hover:text-stone-700",
-                  )}
-                  title={isId ? "Tampilan kartu" : "Grid view"}
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("list")}
-                  className={cn(
-                    "h-7 w-7 flex items-center justify-center rounded-lg cursor-pointer transition-colors",
-                    viewMode === "list"
-                      ? "bg-white shadow-2xs text-stone-900"
-                      : "text-stone-400 hover:text-stone-700",
-                  )}
-                  title={isId ? "Tampilan tabel" : "List view"}
-                >
-                  <ListIcon className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Content */}
-        {isLoading ? (
-          /* Skeleton */
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="p-4 rounded-2xl border border-stone-200 space-y-3 animate-pulse">
-                <div className="flex items-center justify-between">
-                  <div className="h-3 w-24 bg-stone-200 rounded" />
-                  <div className="h-5 w-16 bg-stone-200 rounded-full" />
-                </div>
-                <div className="h-4 w-3/4 bg-stone-200 rounded" />
-                <div className="h-3 w-1/2 bg-stone-100 rounded" />
-                <div className="h-8 w-full bg-stone-100 rounded-xl" />
-              </div>
-            ))}
-          </div>
-        ) : loadError ? (
-          /* Error state with retry */
-          <div className="py-14 text-center space-y-3">
-            <AlertOctagon className="w-10 h-10 text-rose-400 mx-auto" />
-            <p className="text-sm font-bold text-stone-700">
-              {isId ? "Gagal memuat dokumen workspace" : "Failed to load workspace documents"}
-            </p>
-            <p className="text-xs text-stone-500 max-w-md mx-auto">{loadError}</p>
-            <Button
-              onClick={fetchDocs}
-              variant="outline"
-              className="rounded-xl text-xs font-bold border-stone-300 mx-auto cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>{isId ? "Coba Lagi" : "Retry"}</span>
-            </Button>
-          </div>
-        ) : filteredDocs.length === 0 ? (
-          /* Empty state */
-          <div className="py-14 text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-stone-100 text-stone-400 flex items-center justify-center mx-auto">
-              <FileText className="w-7 h-7" />
-            </div>
-            <p className="text-sm font-bold text-stone-700">
-              {isId ? "Belum ada dokumen yang cocok" : "No matching documents"}
-            </p>
-            <p className="text-xs text-stone-500 max-w-sm mx-auto">
-              {isId
-                ? "Ubah filter atau buat dokumen baru menggunakan template di atas."
-                : "Adjust filters or create a new document using the templates above."}
-            </p>
-            <Button
-              onClick={() => handleLaunchStudio()}
-              variant="primary"
-              className="mx-auto cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{isId ? "Buat Dokumen" : "Create Document"}</span>
-            </Button>
-          </div>
-        ) : viewMode === "grid" ? (
-          /* ---- GRID (card) VIEW ---- */
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filteredDocs.map((doc) => {
-              const targetDept = normalizeDepartmentToRole(doc.authorization_department) as TargetDepartment;
-              const deptConfig = DEPARTMENT_ROUTING_CONFIG[targetDept] || DEPARTMENT_ROUTING_CONFIG.FC;
-              return (
-                <div
-                  key={doc.id}
-                  onClick={() => setPreviewDoc(doc)}
-                  className="group p-4 rounded-2xl border border-stone-200 bg-white hover:border-stone-400 hover:shadow-md transition-all cursor-pointer flex flex-col gap-2.5"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-[10px] font-bold text-stone-400 truncate">
-                      {doc.document_code}
-                    </span>
-                    {renderStatusBadge(doc.status)}
-                  </div>
-                  <div>
-                    <div className="text-sm font-black text-stone-900 leading-snug line-clamp-2">
-                      {doc.title}
-                    </div>
-                    <div className="text-[10px] text-stone-400 mt-1">
-                      {doc.document_type} · {doc.layout_preset}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9.5px] font-bold border", deptConfig.badgeColor)}>
-                      <ShieldCheck className="w-3 h-3" />
-                      <span className="truncate max-w-36">{deptConfig.deptNameId}</span>
-                    </span>
-                    {doc.revision_note && (
-                      <span
-                        className="text-[10px] text-rose-700 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200 italic truncate max-w-full"
-                        title={doc.revision_note}
-                      >
-                        "{doc.revision_note}"
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-auto pt-2 border-t border-stone-100 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-bold text-stone-700 truncate">{doc.created_by_name}</div>
-                      <div className="text-[9.5px] text-stone-400">
-                        {isId ? "diubah" : "updated"} {relativeTime(doc.updated_at, isId)}
-                      </div>
-                    </div>
-                    {renderDocActions(doc, true)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          /* ---- LIST (table) VIEW ---- */
-          <div className="overflow-x-auto border border-stone-200 rounded-2xl shadow-2xs">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-[10px]">
-                  <th className="p-3 pl-4">{isId ? "Kode & Judul Dokumen" : "Code & Title"}</th>
-                  <th className="p-3">{isId ? "Target Otorisasi" : "Routing Target"}</th>
-                  <th className="p-3">{isId ? "Pembuat" : "Author"}</th>
-                  <th className="p-3 text-center">{isId ? "Status" : "Status"}</th>
-                  <th className="p-3 pr-4 text-center">{isId ? "Aksi" : "Actions"}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {filteredDocs.map((doc) => {
-                  const targetDept = normalizeDepartmentToRole(doc.authorization_department) as TargetDepartment;
-                  const deptConfig = DEPARTMENT_ROUTING_CONFIG[targetDept] || DEPARTMENT_ROUTING_CONFIG.FC;
-                  return (
-                    <tr
-                      key={doc.id}
-                      onClick={() => setPreviewDoc(doc)}
-                      className="hover:bg-stone-50/60 transition-colors cursor-pointer"
-                    >
-                      <td className="p-3 pl-4">
-                        <div className="font-mono font-bold text-stone-900 text-xs">{doc.document_code}</div>
-                        <div className="font-black text-stone-800 text-xs mt-0.5 line-clamp-1">{doc.title}</div>
-                        <div className="text-[10px] text-stone-400 mt-0.5 flex items-center gap-2 flex-wrap">
-                          <span>
-                            {doc.document_type} · {doc.layout_preset}
-                          </span>
-                          {doc.revision_note && (
-                            <span className="text-[10px] text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 italic truncate max-w-xs">
-                              "{doc.revision_note}"
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border", deptConfig.badgeColor)}>
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>{deptConfig.deptNameId}</span>
-                        </div>
-                        <div className="text-[10px] text-stone-400 mt-1 font-mono">{doc.authorization_role}</div>
-                      </td>
-                      <td className="p-3">
-                        <div className="font-bold text-stone-800">{doc.created_by_name}</div>
-                        <div className="text-[10px] text-stone-400">
-                          {relativeTime(doc.updated_at, isId)} · {doc.department}
-                        </div>
-                      </td>
-                      <td className="p-3 text-center">{renderStatusBadge(doc.status)}</td>
-                      <td className="p-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
-                        {renderDocActions(doc)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* 4. Tabbed Document Library */}
+      <WorkspaceLibrarySection
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        totalVisibleCount={visibleDocs.length}
+        resumableDraftCount={myResumableDrafts.length}
+        pendingCount={stats.pending}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        departmentFilter={departmentFilter}
+        onDepartmentFilterChange={setDepartmentFilter}
+        sortMode={sortMode}
+        onSortModeChange={setSortMode}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        isLoading={isLoading}
+        loadError={loadError}
+        filteredDocs={filteredDocs}
+        isId={isId}
+        exportingPdfDocId={exportingPdfDocId}
+        isDocOwner={isDocOwner}
+        canApproveDoc={canApproveDoc}
+        onRefresh={fetchDocs}
+        onLaunchBlankStudio={handleLaunchBlankStudio}
+        onOpenPreview={openPreviewDoc}
+        onAuthorize={setAuthorizeTargetDoc}
+        onRevise={setReviseTargetDoc}
+        onClone={handleCloneDocument}
+        onEdit={handleEditExistingDoc}
+        onDownloadPdf={handleDownloadPdf}
+        onOpenHistory={handleOpenHistory}
+        onDelete={setDeleteTarget}
+      />
 
       {/* ======================================================== */}
       {/* 5. UNIFIED DOCUMENT STUDIO (CANVA + DOCX ENGINE)         */}
@@ -1703,6 +1250,40 @@ export function DocumentWorkspace() {
         restoringVersion={restoringVersion}
         handleRestoreVersion={handleRestoreVersion}
       />
+
+      {/* Offscreen Multi-Page Editor Sheet Renderer for direct Document List PDF Export */}
+      {offscreenExportDoc && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            left: "-20000px",
+            top: 0,
+            pointerEvents: "none",
+            zIndex: -99999,
+          }}
+        >
+          <DocumentSheetRenderer
+            ref={offscreenExportRef}
+            blocks={offscreenExportDoc.content || []}
+            layoutPreset={offscreenExportDoc.layout_preset || "A4_PORTRAIT"}
+            customWidthMm={offscreenExportDoc.custom_width_mm}
+            customHeightMm={offscreenExportDoc.custom_height_mm}
+            documentStatus={offscreenExportDoc.status}
+            documentCode={offscreenExportDoc.document_code}
+            documentId={offscreenExportDoc.id}
+            docType={offscreenExportDoc.document_type}
+            department={offscreenExportDoc.department}
+            createdByName={offscreenExportDoc.created_by_name}
+            approvedByName={
+              offscreenExportDoc.approved_by || offscreenExportDoc.approvedBy || undefined
+            }
+            approvedAt={
+              offscreenExportDoc.approved_at || offscreenExportDoc.approvedAt || undefined
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }

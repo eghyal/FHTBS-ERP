@@ -12,6 +12,8 @@ import { useCanvaStudioState } from "./studio/useStudioState";
 import { StudioToolbar, StudioStatusBar } from "./studio/Toolbar";
 import { StudioCanvas } from "./studio/Canvas";
 import { LayerPanel, StudioInspector } from "./studio/LayerPanel";
+import { LeftReviewRail } from "./studio/LeftReviewRail";
+import { WorkspaceStudioPanels } from "./studio/WorkspaceStudioPanels";
 import { ExportEngine, useExportEngine } from "./studio/ExportEngine";
 
 export function CanvaStudioEditor(props: CanvaStudioEditorProps) {
@@ -23,8 +25,9 @@ export function CanvaStudioEditor(props: CanvaStudioEditorProps) {
       {/* 1. Top Studio Toolbar */}
       <StudioToolbar state={state} exportHandlers={exportHandlers} />
 
-      {/* 2. Main Workspace (Interactive Canvas + Right Inspector) */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* 2. Main Workspace (Docked Left Review Rail + Interactive Canvas + Right Inspector) */}
+      <div className="flex-1 flex overflow-hidden relative">
+        <LeftReviewRail state={state} />
         <StudioCanvas state={state} />
         <LayerPanel state={state} mode="right-desktop" />
       </div>
@@ -35,7 +38,10 @@ export function CanvaStudioEditor(props: CanvaStudioEditorProps) {
       {/* 4. Mobile Drawers & Quick Insert Picker */}
       <LayerPanel state={state} mode="overlays" />
 
-      {/* 5. Export Engine & Confirmation Modals */}
+      {/* 5. WordCraft-Parity Modals & Floating Find/Replace */}
+      <WorkspaceStudioPanels state={state} />
+
+      {/* 6. Export Engine & Confirmation Modals */}
       <ExportEngine state={state} exportHandlers={exportHandlers} />
     </div>
   );

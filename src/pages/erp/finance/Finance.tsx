@@ -53,10 +53,12 @@ import {
 import { cn, formatIDR, formatNumberWithDots } from "@/lib/utils";
 import { motion } from "motion/react";
 import { lazy, Suspense } from "react";
+import { Link } from "react-router-dom";
 import { PrintTemplate } from "@/components/erp/PrintTemplate";
 import { PdfPreviewWrapper } from "@/components/shared/PdfPreviewWrapper";
 import { generatePDF } from "@/lib/pdfGenerator";
 import { ProjectHppModal } from "@/components/erp/ProjectHppModal";
+import { ClosingReminderBanner } from "@/components/finance/ClosingReminderBanner";
 const FinanceChart = lazy(() => import("@/components/erp/FinanceChart"));
 
 export default function Finance() {
@@ -400,6 +402,13 @@ export default function Finance() {
               <BarChart4 className="w-3.5 h-3.5 text-stone-500" />
               <span>Cash Flow</span>
             </a>
+            <Link
+              to="/book-closing"
+              className="h-8 px-3 inline-flex items-center gap-1.5 bg-white hover:bg-stone-50 border border-stone-200/90 hover:border-stone-300 text-stone-700 hover:text-stone-900 rounded-lg text-[11px] font-semibold tracking-tight transition-all shadow-2xs whitespace-nowrap"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-stone-500" />
+              <span>Book Closing</span>
+            </Link>
             <Button
               size="sm"
               onClick={() => setShowExpenseModal(true)}
@@ -419,6 +428,8 @@ export default function Finance() {
           </div>
         }
       />
+
+      <ClosingReminderBanner />
 
       {/* PROJECT COGS VALUATION */}
       <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -555,6 +566,14 @@ export default function Finance() {
               >
                 View Visual Ledger Report
               </Button>
+
+              <Link
+                to="/book-closing"
+                className="w-full h-9 px-4 inline-flex items-center justify-center gap-2 text-xs font-semibold text-stone-800 bg-white border border-stone-200 hover:bg-stone-100 rounded-xl transition-colors"
+              >
+                <ShieldCheck className="w-4 h-4 text-stone-600" />
+                <span>Tutup Buku &amp; Required Items</span>
+              </Link>
             </div>
           </div>
         </motion.div>
@@ -809,7 +828,7 @@ export default function Finance() {
         onClose={() => setShowVisualLedgerModal(false)}
         title="Visual General Ledger Report"
         description="Visual executive summary, trend analytics, and transaction log overview."
-        maxWidth="4xl"
+        maxWidth="5xl"
       >
         <div className="space-y-6">
           {/* Header Summary Cards */}
@@ -864,11 +883,11 @@ export default function Finance() {
           </div>
 
           {/* Action Footer */}
-          <div className="flex justify-between items-center pt-4 border-t border-stone-200">
+          <div className="flex flex-wrap justify-between items-center gap-3 pt-4 border-t border-stone-200">
             <div className="text-xs text-stone-500 font-medium">
               Closing Window: <span className="font-bold text-stone-800">15th – 24th Monthly</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               <Button variant="secondary" onClick={() => setShowVisualLedgerModal(false)}>
                 Close Window
               </Button>
@@ -939,10 +958,30 @@ export default function Finance() {
           isOpen={showDocModal}
           onClose={() => setShowDocModal(false)}
           title={`Cash Transaction / Journal Voucher: ${selectedTxForDoc.id}`}
-          maxWidth="5xl"
-          contentClassName="p-0 flex flex-col h-[85vh] border-t border-stone-100"
+          maxWidth="6xl"
+          contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+          footer={
+            <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowDocModal(false)}
+              >
+                Close
+              </Button>
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={exportFinancePdf}
+                isLoading={isExportingPdf}
+                leftIcon={!isExportingPdf ? <Download className="w-4 h-4" /> : undefined}
+              >
+                {isExportingPdf ? "Generating..." : "Export PDF (A4)"}
+              </Button>
+            </div>
+          }
         >
-          <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+          <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
             <PdfPreviewWrapper>
               <PrintTemplate
                 ref={docRef}
@@ -1060,25 +1099,6 @@ export default function Finance() {
                 </div>
               </PrintTemplate>
             </PdfPreviewWrapper>
-          </div>
-
-          <div className="p-6 border-t border-stone-100 bg-white flex justify-center gap-4">
-            <Button
-              variant="secondary"
-              onClick={() => setShowDocModal(false)}
-              className="px-6 py-2.5 rounded-xl text-sm"
-            >
-              Close
-            </Button>
-            <Button
-              variant="dark"
-              onClick={exportFinancePdf}
-              isLoading={isExportingPdf}
-              className="px-6 py-2.5 rounded-xl text-sm shadow-md"
-            >
-              {!isExportingPdf && <Download className="w-4 h-4" />}
-              {isExportingPdf ? "Generating..." : "Export PDF (A4)"}
-            </Button>
           </div>
         </Modal>
       )}

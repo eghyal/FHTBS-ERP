@@ -219,7 +219,7 @@ export const router = Router();
               type: "PO_RECEIPT",
               title: `Incoming Material & GRN`,
               description: `${po.po_number} is issued. Awaiting delivery & QC GRN inspection.`,
-              link: `/qc-incoming`,
+              link: `/qc/incoming-material`,
               priority: "MEDIUM",
             });
           });

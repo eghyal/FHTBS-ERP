@@ -1,80 +1,18 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   UploadCloud,
-  CheckCircle2,
   AlertCircle,
   Loader2,
   X,
-  ExternalLink,
-  Zap,
-  Link as LinkIcon,
-  RefreshCw,
-  Sparkles,
-  Grid,
   Plus,
   Star,
+  Lock,
   Image as ImageIcon,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { uploadUniversalFile } from "@/lib/cloudStorage";
-import { optimizeProductImage, formatBytes } from "@/lib/imageOptimizer";
-
-interface PresetItem {
-  category: string;
-  name: string;
-  url: string;
-  description: string;
-}
-
-const DEFAULT_PRESETS: PresetItem[] = [
-  {
-    category: "Paving",
-    name: "Truepave Brick Paving Block 20x10x6 cm K-300",
-    url: "https://images.unsplash.com/photo-1528698827591-e19ccd7bc23d?w=800&auto=format&fit=crop&q=80",
-    description: "Hydraulic precision brick paving grade K-300",
-  },
-  {
-    category: "Paving",
-    name: "Red Hexagon Interlock Paving Block K-350",
-    url: "https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800&auto=format&fit=crop&q=80",
-    description: "Hexagonal interlock paving for heavy-duty parking areas",
-  },
-  {
-    category: "Drainage",
-    name: "Precast Concrete U-Ditch Drainage Channel 40x40x120",
-    url: "https://images.unsplash.com/photo-1541888946425-d0fbb186f5f8?w=800&auto=format&fit=crop&q=80",
-    description: "Reinforced precast U-ditch culvert channel",
-  },
-  {
-    category: "Curbstone",
-    name: "Garden Curbstone Concrete 40x20x10 cm",
-    url: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=800&auto=format&fit=crop&q=80",
-    description: "Sidewalk and residential road boundary curbstone",
-  },
-  {
-    category: "Fabrication",
-    name: "Industrial Stainless Steel SS304 Tank",
-    url: "https://images.unsplash.com/photo-1581092580497-e0d23cbdf1dc?w=800&auto=format&fit=crop&q=80",
-    description: "TIG-welded industrial storage tank",
-  },
-  {
-    category: "Fabrication",
-    name: "CNC Laser Cutting & Steel Profile",
-    url: "https://images.unsplash.com/photo-1504917599217-d4dc5ebe6122?w=800&auto=format&fit=crop&q=80",
-    description: "Sheet metal and structural steel component fabrication",
-  },
-  {
-    category: "Eco Paving",
-    name: "8-Hole Water Permeable Grass Block",
-    url: "https://images.unsplash.com/photo-1565008447742-97f6f38c985c?w=800&auto=format&fit=crop&q=80",
-    description: "Eco-friendly porous water absorption concrete block",
-  },
-  {
-    category: "Facilities",
-    name: "Factory Hydraulic Press Machine",
-    url: "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80",
-    description: "High-pressure automated molding production line",
-  },
-];
+import { optimizeProductImage } from "@/lib/imageOptimizer";
 
 export interface ProductImageUploaderProps {
   id?: string;
@@ -101,19 +39,32 @@ export function ProductImageUploader({
   className = "",
   disabled = false,
 }: ProductImageUploaderProps) {
-  // Consolidate current images list
+  // Consolidate ordered unique images with active Cover locked at index 0
   const currentImages = React.useMemo(() => {
     const list: string[] = [];
-    if (value && value.trim()) list.push(value.trim());
+    const seen = new Set<string>();
+    if (value && typeof value === "string" && value.trim()) {
+      const clean = value.trim();
+      seen.add(clean);
+      list.push(clean);
+    }
     if (Array.isArray(galleryUrls)) {
       galleryUrls.forEach((u) => {
-        if (u && typeof u === "string" && u.trim() && !list.includes(u.trim())) {
-          list.push(u.trim());
+        if (u && typeof u === "string") {
+          const clean = u.trim();
+          if (clean && !seen.has(clean)) {
+            seen.add(clean);
+            list.push(clean);
+          }
         }
       });
     }
     return list;
   }, [value, galleryUrls]);
+
+  // Ref prevents stale closures during multi-file sequential uploads
+  const latestImagesRef = useRef<string[]>(currentImages);
+  latestImagesRef.current = currentImages;
 
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -121,59 +72,79 @@ export function ProductImageUploader({
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState("Optimizing Image...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [brokenUrls, setBrokenUrls] = useState<Record<string, boolean>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
+    setBrokenUrls({});
+  }, [id, currentImages.length]);
 
-  const notifyChanges = (newImages: string[]) => {
-    const primary = newImages[0] || "";
-    if (onChange) onChange(primary);
-    if (onGalleryChange) onGalleryChange(newImages);
-    if (onImagesChange) onImagesChange(primary, newImages);
-  };
+  const notifyChanges = useCallback(
+    (newImages: string[]) => {
+      // Keep ref immediately synchronous across back-to-back multi-file appends
+      latestImagesRef.current = newImages;
+      const primary = newImages[0] || "";
+      if (onChange) onChange(primary);
+      if (onGalleryChange) onGalleryChange(newImages);
+      if (onImagesChange) onImagesChange(primary, newImages);
+    },
+    [onChange, onGalleryChange, onImagesChange],
+  );
 
-  const handleAddImage = (newUrl: string) => {
-    if (!newUrl || !newUrl.trim()) return;
-    const cleanUrl = newUrl.trim();
-    if (currentImages.includes(cleanUrl)) return;
-    const updated = [...currentImages, cleanUrl];
-    notifyChanges(updated);
-  };
+  // Appends uploaded photo at the end so locked Main Cover (index 0) is NEVER overwritten automatically
+  const appendUploadedImage = useCallback(
+    (newUrl: string) => {
+      if (!newUrl || !newUrl.trim()) return;
+      const cleanUrl = newUrl.trim();
+      const base = latestImagesRef.current;
+      if (base.includes(cleanUrl)) return;
+      const updated = [...base, cleanUrl];
+      notifyChanges(updated);
+    },
+    [notifyChanges],
+  );
 
   const handleRemoveImage = (indexToRemove: number) => {
-    const updated = currentImages.filter((_, idx) => idx !== indexToRemove);
+    const base = latestImagesRef.current;
+    const updated = base.filter((_, idx) => idx !== indexToRemove);
     notifyChanges(updated);
   };
 
+  // Explicit admin action to unlock and set a different Main Cover
   const handleSetPrimary = (indexToPrimary: number) => {
-    if (indexToPrimary <= 0 || indexToPrimary >= currentImages.length) return;
-    const selected = currentImages[indexToPrimary];
-    const rest = currentImages.filter((_, idx) => idx !== indexToPrimary);
+    const base = latestImagesRef.current;
+    if (indexToPrimary <= 0 || indexToPrimary >= base.length) return;
+    const selected = base[indexToPrimary];
+    const rest = base.filter((_, idx) => idx !== indexToPrimary);
     const updated = [selected, ...rest];
     notifyChanges(updated);
   };
 
-  const processAndUploadFile = async (file: File) => {
+  // Reorder secondary portfolio photos without touching locked Main Cover (index 0)
+  const handleMoveSecondary = (fromIdx: number, direction: -1 | 1) => {
+    const base = latestImagesRef.current;
+    const toIdx = fromIdx + direction;
+    if (fromIdx < 1 || toIdx < 1 || toIdx >= base.length) return;
+    const updated = [...base];
+    const [moved] = updated.splice(fromIdx, 1);
+    updated.splice(toIdx, 0, moved);
+    notifyChanges(updated);
+  };
+
+  const processAndUploadFile = async (file: File, indexLabel?: string) => {
     setErrorMessage(null);
 
     if (!file.type.startsWith("image/")) {
-      setErrorMessage("File must be an image (JPG, PNG, WEBP, etc.).");
+      setErrorMessage("File must be an image (JPG, PNG, WEBP, AVIF).");
       return;
     }
 
-    abortControllerRef.current = new AbortController();
-
     try {
       setIsProcessing(true);
-      setStatusText("Compressing WebP Image...");
+      setStatusText(
+        indexLabel ? `Compressing ${indexLabel}...` : "Compressing WebP Image...",
+      );
 
       const optResult = await optimizeProductImage(file, {
         maxWidth: 1280,
@@ -184,8 +155,10 @@ export function ProductImageUploader({
 
       setIsProcessing(false);
       setUploading(true);
-      setStatusText("Uploading Photo...");
-      setProgress(30);
+      setStatusText(
+        indexLabel ? `Saving ${indexLabel} to Cloud SSOT...` : "Saving Photo to Database & Cloud...",
+      );
+      setProgress(40);
 
       const uploadedUrl = await uploadUniversalFile(
         optResult.file,
@@ -193,10 +166,10 @@ export function ProductImageUploader({
       );
 
       setProgress(100);
-      handleAddImage(uploadedUrl);
+      appendUploadedImage(uploadedUrl);
     } catch (err: any) {
       console.error("Upload error:", err);
-      setErrorMessage(err.message || "Failed to upload photo.");
+      setErrorMessage(err?.message || "Failed to upload photo.");
     } finally {
       setIsProcessing(false);
       setUploading(false);
@@ -206,8 +179,10 @@ export function ProductImageUploader({
 
   const handleMultipleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    for (let i = 0; i < files.length; i++) {
-      await processAndUploadFile(files[i]);
+    const total = files.length;
+    for (let i = 0; i < total; i++) {
+      const labelText = total > 1 ? `photo ${i + 1}/${total}` : undefined;
+      await processAndUploadFile(files[i], labelText);
     }
   };
 
@@ -230,12 +205,18 @@ export function ProductImageUploader({
   };
 
   return (
-    <div className={`space-y-3 font-sans ${className}`}>
+    <div id={id} className={`space-y-3 font-sans ${className}`}>
       {/* Label Bar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
           {label}
         </label>
+        {currentImages.length > 0 && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md">
+            <Lock className="w-2.5 h-2.5 shrink-0" />
+            <span>Cover Locked</span>
+          </span>
+        )}
       </div>
 
       {/* Hidden File Input */}
@@ -245,14 +226,18 @@ export function ProductImageUploader({
         accept="image/png,image/jpeg,image/webp,image/jpg,image/avif"
         multiple
         className="hidden"
-        onChange={(e) => handleMultipleFiles(e.target.files)}
+        onChange={(e) => {
+          const files = e.target.files;
+          handleMultipleFiles(files);
+          e.target.value = "";
+        }}
         disabled={disabled || isProcessing || uploading}
       />
 
       {/* Upload Progress Loader */}
       {(isProcessing || uploading) && (
-        <div className="p-4 bg-amber-50/50 border border-amber-200/80 rounded-2xl flex items-center gap-3">
-          <Loader2 className="w-5 h-5 text-amber-600 animate-spin shrink-0" />
+        <div className="p-3.5 bg-amber-50/60 border border-amber-200/80 rounded-xl flex items-center gap-3">
+          <Loader2 className="w-4 h-4 text-amber-600 animate-spin shrink-0" />
           <div className="flex-1 min-w-0">
             <span className="text-xs font-bold text-stone-900 block truncate">
               {statusText}
@@ -269,89 +254,136 @@ export function ProductImageUploader({
 
       {/* Multi-Photo Gallery Grid */}
       {currentImages.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-[11px] text-stone-500 font-medium">
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between text-[11px] text-stone-500 font-medium gap-2 flex-wrap">
             <span>
-              {currentImages.length} Photo{currentImages.length > 1 ? "s" : ""} Attached • First photo is set as{" "}
-              <strong className="text-stone-900">Main Cover</strong>
+              <strong className="text-stone-900 font-mono tabular-nums">{currentImages.length}</strong>{" "}
+              Photo{currentImages.length > 1 ? "s" : ""} • Main Cover is locked until changed manually
             </span>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled || isProcessing || uploading}
-              className="text-stone-900 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+              className="text-stone-900 hover:text-amber-800 font-bold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Add More Photos</span>
+              <span>Add Portfolio Photos</span>
             </button>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {currentImages.map((imgUrl, idx) => (
-              <div
-                key={idx}
-                className={`relative rounded-xl border overflow-hidden bg-white group shadow-2xs ${
-                  idx === 0
-                    ? "border-amber-500 ring-2 ring-amber-500/20"
-                    : "border-stone-200 hover:border-stone-300"
-                }`}
-              >
-                <div className="w-full aspect-4/3 bg-stone-100 overflow-hidden relative">
-                  <img
-                    src={imgUrl}
-                    alt={`Product photo ${idx + 1}`}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                  />
+            {currentImages.map((imgUrl, idx) => {
+              const isCover = idx === 0;
+              const isBroken = Boolean(brokenUrls[imgUrl]);
 
-                  {/* Primary Cover Badge */}
-                  {idx === 0 ? (
-                    <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md text-[9px] font-bold bg-amber-500 text-white shadow-xs inline-flex items-center gap-1">
-                      <Star className="w-2.5 h-2.5 fill-white" /> Main Cover
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleSetPrimary(idx)}
-                      className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-stone-900/80 hover:bg-stone-900 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                      title="Set as Main Cover"
-                    >
-                      Set Cover
-                    </button>
-                  )}
+              return (
+                <div
+                  key={`${imgUrl}-${idx}`}
+                  className={`relative rounded-xl border overflow-hidden bg-white group shadow-2xs ${
+                    isCover
+                      ? "border-amber-500 ring-2 ring-amber-500/20"
+                      : "border-stone-200 hover:border-stone-300"
+                  }`}
+                >
+                  <div className="w-full aspect-4/3 bg-stone-100 overflow-hidden relative flex items-center justify-center">
+                    {!isBroken ? (
+                      <img
+                        src={imgUrl}
+                        alt={isCover ? "Main Product Cover" : `Portfolio photo ${idx + 1}`}
+                        referrerPolicy="no-referrer"
+                        onError={() =>
+                          setBrokenUrls((prev) => ({ ...prev, [imgUrl]: true }))
+                        }
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-stone-100 text-stone-400 p-2 text-center">
+                        <ImageIcon className="w-5 h-5 mb-1 text-stone-400" />
+                        <span className="text-[9px] font-semibold leading-tight">
+                          Photo unavailable
+                        </span>
+                      </div>
+                    )}
 
-                  {/* Remove Button */}
-                  {!disabled && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveImage(idx)}
-                      className="absolute top-1.5 right-1.5 p-1 rounded-md bg-stone-900/80 hover:bg-rose-600 text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                      title="Remove Photo"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
+                    {/* Primary Cover Badge vs Explicit Set Cover Trigger */}
+                    {isCover ? (
+                      <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md text-[9px] font-bold bg-amber-600 text-white shadow-xs inline-flex items-center gap-1">
+                        <Star className="w-2.5 h-2.5 fill-white" />
+                        <span>Main Cover</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleSetPrimary(idx)}
+                        className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md text-[9px] font-bold bg-stone-900/85 hover:bg-amber-600 text-white opacity-95 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer shadow-xs"
+                        title="Set as Main Cover"
+                      >
+                        Set Cover
+                      </button>
+                    )}
+
+                    {/* Remove Button */}
+                    {!disabled && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(idx)}
+                        className="absolute top-1.5 right-1.5 p-1 rounded-md bg-stone-900/80 hover:bg-rose-600 text-white opacity-95 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer"
+                        title="Remove Photo"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+
+                    {/* Reorder Secondary Portfolio Photos (does not unlock or replace cover) */}
+                    {!isCover && !disabled && currentImages.length > 2 && (
+                      <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 opacity-95 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        {idx > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleMoveSecondary(idx, -1)}
+                            className="p-1 rounded bg-stone-900/80 hover:bg-stone-900 text-white cursor-pointer"
+                            title="Move earlier in portfolio"
+                          >
+                            <ChevronLeft className="w-3 h-3" />
+                          </button>
+                        )}
+                        {idx < currentImages.length - 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleMoveSecondary(idx, 1)}
+                            className="p-1 rounded bg-stone-900/80 hover:bg-stone-900 text-white cursor-pointer"
+                            title="Move later in portfolio"
+                          >
+                            <ChevronRight className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Upload Drag and Drop Zone if empty or for adding more */}
-      {currentImages.length === 0 && (
-        <div
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          onClick={() =>
-            !disabled && !isProcessing && !uploading && fileInputRef.current?.click()
-          }
-          className={`relative border-2 border-dashed rounded-2xl p-5 sm:p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
-            isDragging
-              ? "border-amber-500 bg-amber-50/20"
-              : "border-stone-200 hover:border-stone-300 bg-stone-50/50 hover:bg-stone-50"
-          } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
-        >
+      {/* Drag & Drop Upload Zone (compact when photos already attached, prominent when empty) */}
+      <div
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        onClick={() =>
+          !disabled && !isProcessing && !uploading && fileInputRef.current?.click()
+        }
+        className={`relative border-2 border-dashed rounded-2xl flex items-center justify-center text-center cursor-pointer transition-all ${
+          currentImages.length > 0 ? "p-3" : "p-5 sm:p-6 flex-col"
+        } ${
+          isDragging
+            ? "border-amber-500 bg-amber-50/30"
+            : "border-stone-200 hover:border-stone-300 bg-stone-50/60 hover:bg-stone-50"
+        } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
+      >
+        {currentImages.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-1">
             <div className="w-10 h-10 rounded-xl bg-stone-100 border border-stone-200/80 flex items-center justify-center text-stone-600">
               <UploadCloud className="w-5 h-5" />
@@ -361,12 +393,19 @@ export function ProductImageUploader({
                 Click or drag &amp; drop photos here to upload (multi-file upload supported)
               </p>
               <p className="text-[11px] text-stone-400 mt-1">
-                Supports JPG, PNG, WEBP • Automatically compressed for fast loading
+                Stored permanently in Database &amp; Cloud SSOT · Supports JPG, PNG, WEBP
               </p>
             </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex items-center gap-2 text-xs font-semibold text-stone-600">
+            <UploadCloud className="w-4 h-4 text-stone-500 shrink-0" />
+            <span>
+              Drop or click to append additional portfolio photos (current Main Cover stays locked)
+            </span>
+          </div>
+        )}
+      </div>
 
       {errorMessage && (
         <div className="flex items-center gap-1.5 text-[11px] text-rose-600 font-medium">

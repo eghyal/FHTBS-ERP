@@ -605,7 +605,7 @@ export function OrderTrackingModal({
 
       {/* Main Modal Window */}
       <div
-        className="relative bg-[#faf9f6] rounded-2xl sm:rounded-3xl max-w-3xl w-full max-h-[92vh] overflow-hidden shadow-2xl border border-stone-200 flex flex-col z-10 animate-in zoom-in-95 duration-150"
+        className="relative bg-[#faf9f6] rounded-2xl sm:rounded-3xl max-w-4xl w-full max-h-[92dvh] overflow-hidden shadow-2xl border border-stone-200 flex flex-col z-10 animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
@@ -901,7 +901,7 @@ export function OrderTrackingModal({
                         )}
                       </div>
 
-                      <div className="grid grid-cols-4 gap-2 text-center">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                         {[
                           {
                             key: "PENDING_PAYMENT",
@@ -978,7 +978,7 @@ export function OrderTrackingModal({
                         {orderItems.map((item: any, idx: number) => (
                           <div
                             key={item.id || idx}
-                            className="p-3 bg-white flex items-center justify-between gap-3"
+                            className="p-3 bg-white flex flex-wrap sm:flex-nowrap items-center justify-between gap-3"
                           >
                             <div className="flex items-center gap-3 min-w-0">
                               <div className="w-11 h-11 rounded-lg bg-stone-100 border border-stone-200/80 overflow-hidden shrink-0 flex items-center justify-center">

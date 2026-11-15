@@ -1042,46 +1042,83 @@ target_project_id: "",
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (searchTerm.length < 2) {
+    if (!searchModal.isOpen) {
       setSearchResults([]);
+      setSearchError(null);
+      setIsSearching(false);
       return;
     }
+
+    const q = searchTerm.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setSearchError(null);
+      setIsSearching(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsSearching(true);
+    setSearchError(null);
+
     const timer = setTimeout(async () => {
-      setIsSearching(true);
       try {
         const res = await apiFetch(
-          `/api/items/search?q=${encodeURIComponent(searchTerm)}`,
+          `/api/items/search?q=${encodeURIComponent(q)}`,
           {},
           user?.username,
         );
-        if (Array.isArray(res)) setSearchResults(res);
+        if (isCancelled) return;
+        const list = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res)
+            ? res
+            : null;
+        if (res.ok && list) {
+          setSearchResults(list);
+          setSearchError(null);
+        } else {
+          setSearchResults([]);
+          setSearchError(res.error || "Failed to search Inventory Master registry.");
+        }
       } catch (err) {
-        console.error(err);
+        if (isCancelled) return;
+        console.error("Engineering: Registry search failed", err);
+        setSearchResults([]);
+        setSearchError("Unable to reach Inventory Master search service.");
       } finally {
-        setIsSearching(false);
+        if (!isCancelled) {
+          setIsSearching(false);
+        }
       }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
+    }, 250);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchModal.isOpen, searchTerm, user?.username]);
 
   const selectItemFromSearch = (item: any) => {
     if (!searchModal.rowId) return;
-    setRows(
-      rows.map((r) =>
+    const resolvedPrice = Number(item.unit_price || item.ssot_unit_price || 0);
+    setRows((prev) =>
+      prev.map((r) =>
         r.id === searchModal.rowId
           ? {
               ...r,
               item_id: item.id,
-              item_code: item.item_code,
-              name: item.name,
+              item_code: item.item_code || "",
+              name: item.name || "",
               dimension: item.dimension || "",
               spec: item.spec || "",
-              unit: item.uom || "",
-              unit_price: (item.unit_price || 0).toString(),
-              matrix_unit_price: (item.unit_price || 0).toString(),
-              free_stock: item.free_stock || 0,
+              unit: item.uom || item.unit || "PCS",
+              unit_price: resolvedPrice.toString(),
+              matrix_unit_price: resolvedPrice.toString(),
+              free_stock: Number(item.free_stock || 0),
               notFound: false,
             }
           : r,
@@ -1089,6 +1126,8 @@ target_project_id: "",
     );
     setSearchModal({ isOpen: false, rowId: null });
     setSearchTerm("");
+    setSearchResults([]);
+    setSearchError(null);
   };
 
   const syncAllPricesWithMatrix = () => {
@@ -1302,7 +1341,7 @@ target_project_id: b.target_project_id || "",
                     })
                   }
                   disabled={!isEngineering || rows.length === 0}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg gap-1.5 shrink-0 shadow-3xs"
+                  className="bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold py-1.5 px-3 rounded-lg gap-1.5 shrink-0 shadow-3xs"
                 >
                   <BookmarkPlus className="w-3.5 h-3.5" />
                   Save Preset
@@ -1329,7 +1368,12 @@ target_project_id: b.target_project_id || "",
                   projects={projects}
                   updateRow={updateRow}
                   removeRow={removeRow}
-                  onOpenSearchModal={(rowId) => setSearchModal({ isOpen: true, rowId })}
+                  onOpenSearchModal={(rowId) => {
+                    setSearchTerm("");
+                    setSearchResults([]);
+                    setSearchError(null);
+                    setSearchModal({ isOpen: true, rowId });
+                  }}
                   onOpenInventoryMaster={handleOpenInventoryMaster}
                 />
               ))}
@@ -1479,7 +1523,7 @@ target_project_id: b.target_project_id || "",
                         ) ||
                         !isEngineering
                       }
-                      className="w-full h-11 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-sm hover:shadow flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 cursor-pointer"
+                      className="w-full h-11 px-4 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-sm hover:shadow flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 cursor-pointer"
                     >
                       {isSubmitting ? (
                         <Clock className="w-4 h-4 animate-spin text-white/80" />
@@ -1566,11 +1610,18 @@ target_project_id: b.target_project_id || "",
       {/* Item Search Modal */}
       <BomRegistrySearchModal
         isOpen={searchModal.isOpen}
-        onClose={() => setSearchModal({ isOpen: false, rowId: null })}
+        onClose={() => {
+          setSearchModal({ isOpen: false, rowId: null });
+          setSearchTerm("");
+          setSearchResults([]);
+          setSearchError(null);
+        }}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         isSearching={isSearching}
         searchResults={searchResults}
+        searchError={searchError}
+        minQueryLength={2}
         selectItemFromSearch={selectItemFromSearch}
         onOpenInventoryMaster={handleOpenInventoryMaster}
       />

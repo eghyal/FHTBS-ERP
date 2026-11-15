@@ -110,7 +110,11 @@ export type DocBlockType =
   | 'FOOTER_BLOCK'
   | 'DIVIDER'
   | 'IMAGE'
-  | 'CONTACT_CARD';
+  | 'CONTACT_CARD'
+  | 'PAGE_BREAK'
+  | 'DOCUMENT_META';
+
+export type WorkspaceLayoutMode = 'PAGINATED' | 'CONTINUOUS' | 'FOCUS';
 
 export type ParagraphStylePreset =
   | 'NORMAL'
@@ -171,6 +175,8 @@ export interface DocTableCellMeta {
   hidden?: boolean;
   backgroundColor?: string;
   textAlign?: 'left' | 'center' | 'right';
+  bold?: boolean;
+  italic?: boolean;
   isFormula?: boolean;
   formulaExpression?: string;
 }
@@ -242,6 +248,8 @@ export interface DocTrackedChange {
   afterSummary: string;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
   createdAt: string;
+  snapshotBlock?: DocBlock;
+  targetIndex?: number;
 }
 
 export interface DocPageSetup {
@@ -256,6 +264,85 @@ export interface DocPageSetup {
   watermarkText?: string;
   customWidthMm?: number;
   customHeightMm?: number;
+}
+
+export interface DocumentMetaEnvelope {
+  pageSetup: DocPageSetup;
+  comments: DocCommentThread[];
+  trackedChanges: DocTrackedChange[];
+  footnotes: DocFootnote[];
+}
+
+export type PreflightSeverity = 'ERROR' | 'WARNING';
+
+export interface DocumentPreflightIssue {
+  id: string;
+  severity: PreflightSeverity;
+  code:
+    | 'UNRESOLVED_TOKEN'
+    | 'FORMULA_ERROR'
+    | 'MISSING_SIGNATORY'
+    | 'NO_SIGNATURE_BLOCK'
+    | 'UNRESOLVED_COMMENTS'
+    | 'PENDING_TRACK_CHANGES'
+    | 'MISSING_TITLE'
+    | 'EMPTY_DOCUMENT'
+    | 'BLOCK_OVERFLOW';
+  blockId?: string;
+  messageId: string;
+  messageEn: string;
+  detail?: string;
+}
+
+export interface DocumentPreflightReport {
+  passed: boolean;
+  errorCount: number;
+  warningCount: number;
+  issues: DocumentPreflightIssue[];
+}
+
+export interface WordDiffSegment {
+  kind: 'equal' | 'added' | 'removed';
+  text: string;
+}
+
+export interface VersionDiffItem {
+  id: string;
+  blockId: string;
+  blockType: string;
+  label: string;
+  status: 'ADDED' | 'REMOVED' | 'MODIFIED' | 'UNCHANGED';
+  beforeText: string;
+  afterText: string;
+  wordDiff: WordDiffSegment[];
+}
+
+export type MailMergeSourceType = 'CUSTOMER' | 'VENDOR' | 'EMPLOYEE' | 'PROJECT' | 'QUOTATION' | 'PO';
+
+export interface MailMergeSourceRecord {
+  id: string;
+  sourceType: MailMergeSourceType;
+  code: string;
+  label: string;
+  subtitle: string;
+  fields: Record<string, string>;
+}
+
+export interface FindMatch {
+  id: string;
+  blockId: string;
+  fieldPath: string;
+  startIndex: number;
+  endIndex: number;
+  excerpt: string;
+}
+
+export interface PaginatedPage {
+  pageNumber: number;
+  totalPages: number;
+  blocks: DocBlock[];
+  usedHeightPx: number;
+  availableHeightPx: number;
 }
 
 export interface DocSignatureSlot {

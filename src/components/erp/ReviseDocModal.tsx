@@ -142,7 +142,7 @@ export function ReviseDocModal({
         </div>
 
         {/* Action Controls */}
-        <div className="pt-3 border-t border-stone-100 flex items-center justify-end gap-3">
+        <div className="pt-3 border-t border-stone-100 flex flex-wrap items-center justify-end gap-3">
           <Button
             variant="secondary"
             type="button"

@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Plus, Check, Eye, Lock } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Plus, Check, Eye, Package } from "lucide-react";
 import { ShopProduct } from "@/types/shop";
 import { formatIDR } from "@/lib/utils";
 
@@ -16,9 +16,13 @@ export function ProductCard({
   onAddToCart,
   onViewDetail,
   onContactSales,
-  isAuthenticated = false,
 }: ProductCardProps) {
   const [isAdded, setIsAdded] = useState(false);
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [product.id, product.image_url]);
 
   const hasDiscount = product.promo_price > 0 && product.promo_price < product.unit_price;
   const displayPrice = hasDiscount ? product.promo_price : product.unit_price;
@@ -27,21 +31,26 @@ export function ProductCard({
     (product.availability_type === "AUTO" && displayPrice <= 0);
 
   const photoCount = React.useMemo(() => {
-    let count = product.image_url ? 1 : 0;
+    const urls = new Set<string>();
+    if (product.image_url && product.image_url.trim()) {
+      urls.add(product.image_url.trim());
+    }
     if (Array.isArray(product.gallery_urls)) {
-      count = Math.max(count, product.gallery_urls.length);
+      product.gallery_urls.forEach((u) => {
+        if (typeof u === "string" && u.trim()) urls.add(u.trim());
+      });
     } else if (typeof product.shop_gallery_urls === "string") {
       try {
         const parsed = JSON.parse(product.shop_gallery_urls);
-        if (Array.isArray(parsed)) count = Math.max(count, parsed.length);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((u) => {
+            if (typeof u === "string" && u.trim()) urls.add(u.trim());
+          });
+        }
       } catch {}
     }
-    return count;
+    return urls.size;
   }, [product]);
-
-  const handleCardClick = () => {
-    onViewDetail(product);
-  };
 
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -58,6 +67,8 @@ export function ProductCard({
     setTimeout(() => setIsAdded(false), 1400);
   };
 
+  const hasValidCover = Boolean(product.image_url && product.image_url.trim() !== "") && !imgError;
+
   return (
     <div
       onClick={() => onViewDetail(product)}
@@ -65,14 +76,26 @@ export function ProductCard({
     >
       {/* Top Image Container */}
       <div className="relative aspect-4/3 w-full bg-stone-100 overflow-hidden">
-        <img
-          src={product.image_url}
-          alt={product.name}
-          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-        />
+        {hasValidCover ? (
+          <img
+            src={product.image_url}
+            alt={product.name}
+            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-stone-100 via-stone-200/70 to-stone-100 flex flex-col items-center justify-center p-4 text-center">
+            <div className="w-11 h-11 rounded-xl bg-white/90 border border-stone-200 flex items-center justify-center text-stone-400 shadow-2xs mb-2">
+              <Package className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] font-mono font-bold text-stone-500 uppercase tracking-wider">
+              {product.item_code}
+            </span>
+          </div>
+        )}
 
         {/* Badges */}
         <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">

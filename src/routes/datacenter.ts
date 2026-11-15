@@ -626,7 +626,7 @@ export const router = Router();
             code: c.code,
             subtitle: `Contact: ${c.contact_person || "-"}`,
             meta: "CUSTOMER",
-            link: "/crm",
+            link: "/customers",
           }),
         );
 

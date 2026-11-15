@@ -81,15 +81,18 @@ export function seedMasterBaseline(targetDb: any = db) {
         name: "Bachtiar Ludy",
       },
       {
-        id: "USR-ADMIN",
+        id: "admin",
         username: "admin",
         hash: "$2b$10$KbOKkHur8AGjc.Gy1dYkROOC4XsHt6GNVSDtFFIlCYygjxEXwmmAu",
         role: "FC",
         level: "MANAGER",
-        name: "System Administrator",
+        name: "System Admin",
       },
     ];
 
+    const findExistingUserStmt = targetDb.prepare(`
+      SELECT id FROM users WHERE LOWER(TRIM(username)) = LOWER(?)
+    `);
     const userStmt = targetDb.prepare(`
       INSERT OR IGNORE INTO users (id, username, password, role, level, name, status, is_approved)
       VALUES (?, ?, ?, ?, ?, ?, 'APPROVED', 1)
@@ -102,8 +105,14 @@ export function seedMasterBaseline(targetDb: any = db) {
     `);
 
     for (const exec of baselineExecs) {
-      userStmt.run(exec.id, exec.username, exec.hash, exec.role, exec.level, exec.name);
+      const existing = findExistingUserStmt.get(exec.username);
+      if (!existing) {
+        userStmt.run(exec.id, exec.username, exec.hash, exec.role, exec.level, exec.name);
+      }
       enforceBcryptStmt.run(exec.hash, exec.username);
+      targetDb.prepare(
+        `INSERT OR IGNORE INTO chat_participants (thread_id, username) VALUES ('THREAD-GENERAL', ?)`,
+      ).run(exec.username);
     }
 
     // 2. Ensure non-project internal categories exist and are categorized as internal overhead
@@ -227,18 +236,18 @@ export function seedMasterBaseline(targetDb: any = db) {
       VALUES ('heijunka_threshold', '0.85'), ('default_tax_rate', '11'), ('default_tax_scheme', 'DPP_NILAI_LAIN'), ('currency', 'IDR')
     `).run();
 
-    // 8. Data Remediation: Purge Back-Office ERP/HRIS users from production_manpower
-    // Only dedicated Shop-Floor Operators (role = 'OPERATOR') belong in production_manpower.
+    // 8. Data Remediation: Purge unregistered or non-OPERATOR entries from production_manpower
+    // Auto-seeding of dummy shop-floor operators is disabled; operators must be registered via HRIS.
     try {
-      const nonOperatorManpower = targetDb.prepare(`
-        SELECT mp.id, mp.user_username, mp.name, u.role
+      const invalidManpower = targetDb.prepare(`
+        SELECT mp.id, mp.user_username, mp.name
         FROM production_manpower mp
-        INNER JOIN users u ON LOWER(TRIM(mp.user_username)) = LOWER(TRIM(u.username))
-        WHERE UPPER(COALESCE(u.role, '')) != 'OPERATOR'
-      `).all() as Array<{ id: string; user_username: string; name: string; role: string }>;
+        LEFT JOIN users u ON LOWER(TRIM(mp.user_username)) = LOWER(TRIM(u.username))
+        WHERE u.id IS NULL OR UPPER(COALESCE(u.role, '')) != 'OPERATOR'
+      `).all() as Array<{ id: string; user_username: string; name: string }>;
 
-      if (nonOperatorManpower.length > 0) {
-        for (const badMp of nonOperatorManpower) {
+      if (invalidManpower.length > 0) {
+        for (const badMp of invalidManpower) {
           targetDb.prepare(`DELETE FROM production_manpower_assignments WHERE manpower_id = ?`).run(badMp.id);
           targetDb.prepare(`DELETE FROM production_manpower WHERE id = ?`).run(badMp.id);
           targetDb.prepare(`
@@ -248,264 +257,11 @@ export function seedMasterBaseline(targetDb: any = db) {
           `).run(badMp.user_username || "", badMp.name || "");
         }
         console.log(
-          `[Database] Cleaned ${nonOperatorManpower.length} Back-Office ERP user(s) from production_manpower: ${nonOperatorManpower.map((m) => m.user_username).join(", ")}`,
+          `[Database] Cleaned ${invalidManpower.length} unregistered/non-operator record(s) from production_manpower`,
         );
-      }
-
-      // Ensure standard Shop-Floor Operators exist in production_manpower & users (role = 'OPERATOR')
-      // Password hash below is bcrypt for 'paving123'
-      const defaultOperatorHash = "$2b$10$KbOKkHur8AGjc.Gy1dYkROOC4XsHt6GNVSDtFFIlCYygjxEXwmmAu";
-      const defaultShopFloorOperators = [
-        {
-          id: "mp-001",
-          user_id: "USR-OP-001",
-          user_username: "bambang_cnc",
-          nik: "MP-2024-001",
-          name: "Bambang Sudirman",
-          role_title: "Senior CNC Machinist & Programmer",
-          skill_level: "MASTER",
-          specialization: "Machining (CNC / Milling)",
-          shift: "SHIFT_1",
-          status: "ON_DUTY",
-          phone: "+62 812-3456-7801",
-          email: "bambang.cnc@factory.local",
-          hourly_rate: 65000,
-          basic_salary: 6500000,
-          work_center_id: "WC-CUT",
-          certifications: JSON.stringify(["Fanuc 5-Axis Certified", "ISO 9001:2015 Machining"]),
-          active_task_name: "CNC Milling Impeller Shaft Housing",
-          total_hours_worked: 320.5,
-          completed_tasks_count: 48,
-          efficiency_rating: 98.4,
-          notes: "Lead machinist for high-precision components and turbine casings.",
-        },
-        {
-          id: "mp-002",
-          user_id: "USR-OP-002",
-          user_username: "agus_welder",
-          nik: "MP-2024-002",
-          name: "Agus Pratama",
-          role_title: "Certified ASME TIG/MIG Welder",
-          skill_level: "SENIOR",
-          specialization: "Welding & Fabrication",
-          shift: "SHIFT_1",
-          status: "AVAILABLE",
-          phone: "+62 813-9876-5402",
-          email: "agus.welder@factory.local",
-          hourly_rate: 55000,
-          basic_salary: 5800000,
-          work_center_id: "WC-FAB",
-          certifications: JSON.stringify(["ASME Section IX 6G 6GR", "MIG/MAG Heavy Structure"]),
-          active_task_name: null,
-          total_hours_worked: 245.0,
-          completed_tasks_count: 36,
-          efficiency_rating: 96.2,
-          notes: "Expert in stainless steel piping and pressure vessel welding.",
-        },
-        {
-          id: "mp-003",
-          user_id: "USR-OP-003",
-          user_username: "dedi_fitter",
-          nik: "MP-2024-003",
-          name: "Dedi Supriyanto",
-          role_title: "Mechanical Assembly Technician",
-          skill_level: "SENIOR",
-          specialization: "Assembly & Fitting",
-          shift: "SHIFT_2",
-          status: "ON_DUTY",
-          phone: "+62 818-1234-5603",
-          email: "dedi.assembly@factory.local",
-          hourly_rate: 48000,
-          basic_salary: 5200000,
-          work_center_id: "WC-ASSY",
-          certifications: JSON.stringify(["Hydraulic Systems Specialist", "Torque Tightening QA"]),
-          active_task_name: "Hydraulic Pump Sub-assembly & Torque Alignment",
-          total_hours_worked: 210.0,
-          completed_tasks_count: 29,
-          efficiency_rating: 94.8,
-          notes: "Precision gearbox alignment and bearing press-fitting specialist.",
-        },
-        {
-          id: "mp-004",
-          user_id: "USR-OP-004",
-          user_username: "rian_qc",
-          nik: "MP-2024-004",
-          name: "Rian Hidayat",
-          role_title: "Quality Control & NDT Inspector",
-          skill_level: "SENIOR",
-          specialization: "Quality Control",
-          shift: "SHIFT_1",
-          status: "AVAILABLE",
-          phone: "+62 819-5566-7704",
-          email: "rian.qc@factory.local",
-          hourly_rate: 52000,
-          basic_salary: 5400000,
-          work_center_id: "WC-QC",
-          certifications: JSON.stringify(["NDT Ultrasonic Testing Level II", "CMM Mitutoyo Operator"]),
-          active_task_name: null,
-          total_hours_worked: 180.0,
-          completed_tasks_count: 52,
-          efficiency_rating: 99.1,
-          notes: "Authorized final dimensional report and CMM coordinate verifier.",
-        },
-        {
-          id: "mp-005",
-          user_id: "USR-OP-005",
-          user_username: "hendra_finishing",
-          nik: "MP-2024-005",
-          name: "Hendra Wijaya",
-          role_title: "Surface Finishing & Epoxy Specialist",
-          skill_level: "JUNIOR",
-          specialization: "Finishing & Coating",
-          shift: "SHIFT_2",
-          status: "AVAILABLE",
-          phone: "+62 811-9988-3305",
-          email: "hendra.finishing@factory.local",
-          hourly_rate: 42000,
-          basic_salary: 4800000,
-          work_center_id: "WC-FIN",
-          certifications: JSON.stringify(["Sandblasting Safety SA 2.5", "High-Solid Polyurethane Painting"]),
-          active_task_name: null,
-          total_hours_worked: 140.0,
-          completed_tasks_count: 18,
-          efficiency_rating: 91.5,
-          notes: "Expert in heavy duty marine-grade blasting and primer spray.",
-        },
-        {
-          id: "mp-006",
-          user_id: "USR-OP-006",
-          user_username: "fajar_electric",
-          nik: "MP-2024-006",
-          name: "Fajar Nugroho",
-          role_title: "Electrical & Control Wiring Tech",
-          skill_level: "SENIOR",
-          specialization: "Electrical & Wiring",
-          shift: "GENERAL",
-          status: "ON_DUTY",
-          phone: "+62 812-7711-4406",
-          email: "fajar.electric@factory.local",
-          hourly_rate: 58000,
-          basic_salary: 5900000,
-          work_center_id: "WC-ASSY",
-          certifications: JSON.stringify(["PLC Schneider Wiring", "K3 Listrik Kemnaker RI"]),
-          active_task_name: "Control Panel Terminal Termination & Wire Harnessing",
-          total_hours_worked: 310.0,
-          completed_tasks_count: 41,
-          efficiency_rating: 97.0,
-          notes: "Control panel layout wiring and PLC I/O loop verification.",
-        },
-        {
-          id: "mp-007",
-          user_id: "USR-OP-007",
-          user_username: "wahyu_lathe",
-          nik: "MP-2024-007",
-          name: "Wahyu Setiawan",
-          role_title: "Junior CNC Lathe Operator",
-          skill_level: "JUNIOR",
-          specialization: "Machining (CNC / Milling)",
-          shift: "SHIFT_3",
-          status: "AVAILABLE",
-          phone: "+62 856-1122-3307",
-          email: "wahyu.s@factory.local",
-          hourly_rate: 38000,
-          basic_salary: 4600000,
-          work_center_id: "WC-CUT",
-          certifications: JSON.stringify(["Basic G-Code Machining", "Tool Offset Calibration"]),
-          active_task_name: null,
-          total_hours_worked: 95.0,
-          completed_tasks_count: 14,
-          efficiency_rating: 89.2,
-          notes: "Third shift CNC night turning operator under supervision.",
-        },
-        {
-          id: "mp-008",
-          user_id: "USR-OP-008",
-          user_username: "tri_toolmaker",
-          nik: "MP-2024-008",
-          name: "Tri Wibowo",
-          role_title: "Tool & Die Maker",
-          skill_level: "MASTER",
-          specialization: "Machining (CNC / Milling)",
-          shift: "SHIFT_1",
-          status: "ON_LEAVE",
-          phone: "+62 813-2233-4408",
-          email: "tri.wibowo@factory.local",
-          hourly_rate: 62000,
-          basic_salary: 6200000,
-          work_center_id: "WC-CUT",
-          certifications: JSON.stringify(["Progressive Die Design", "Jig & Fixture Prototyping"]),
-          active_task_name: null,
-          total_hours_worked: 410.0,
-          completed_tasks_count: 65,
-          efficiency_rating: 98.9,
-          notes: "Jig & fixture fabrication expert with 15+ years experience.",
-        },
-      ];
-
-      const validMpCount = (
-        targetDb.prepare(`SELECT COUNT(*) as cnt FROM production_manpower WHERE archived_at IS NULL`).get() as any
-      )?.cnt || 0;
-
-      const insertOpMpStmt = targetDb.prepare(`
-        INSERT OR IGNORE INTO production_manpower (
-          id, user_username, nik, name, role_title, skill_level, specialization, shift, status,
-          phone, email, hourly_rate, certifications, active_project_id, active_task_name,
-          total_hours_worked, completed_tasks_count, efficiency_rating, notes, work_center_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
-      `);
-
-      const insertOpUserStmt = targetDb.prepare(`
-        INSERT OR IGNORE INTO users (
-          id, username, password, role, level, name, status, is_approved,
-          employee_no, contract_type, ptkp_status, work_center_id
-        ) VALUES (?, ?, ?, 'OPERATOR', 'STAFF', ?, 'APPROVED', 1, ?, 'PKWT', 'TK/0', ?)
-      `);
-
-      const insertOpSalStmt = targetDb.prepare(`
-        INSERT OR IGNORE INTO hr_salaries (
-          employee_username, basic_salary, allowances, deductions, ptkp_status, bpjs_kesehatan_active, bpjs_tk_active
-        ) VALUES (?, ?, 450000, 0, 'TK/0', 1, 1)
-      `);
-
-      for (const op of defaultShopFloorOperators) {
-        if (validMpCount === 0) {
-          insertOpMpStmt.run(
-            op.id,
-            op.user_username,
-            op.nik,
-            op.name,
-            op.role_title,
-            op.skill_level,
-            op.specialization,
-            op.shift,
-            op.status,
-            op.phone,
-            op.email,
-            op.hourly_rate,
-            op.certifications,
-            op.active_task_name,
-            op.total_hours_worked,
-            op.completed_tasks_count,
-            op.efficiency_rating,
-            op.notes,
-            op.work_center_id,
-          );
-        }
-        insertOpUserStmt.run(
-          op.user_id,
-          op.user_username,
-          defaultOperatorHash,
-          op.name,
-          op.nik,
-          op.work_center_id,
-        );
-        insertOpSalStmt.run(op.user_username, op.basic_salary);
-        targetDb.prepare(
-          `INSERT OR IGNORE INTO chat_participants (thread_id, username) VALUES ('THREAD-GENERAL', ?)`,
-        ).run(op.user_username);
       }
     } catch (cleanErr) {
-      console.warn("[Database] Operator remediation notice:", cleanErr);
+      console.warn("[Database] Manpower remediation notice:", cleanErr);
     }
 
   } catch (e) {
@@ -596,6 +352,12 @@ export function resetFactoryData() {
       safeResetRun("DELETE FROM material_requests");
       safeResetRun("DELETE FROM material_dispatches");
       safeResetRun("DELETE FROM project_manpower");
+      safeResetRun("DELETE FROM lean_vsm_baselines");
+      safeResetRun("DELETE FROM lean_heijunka_schedules");
+      safeResetRun("DELETE FROM lean_kanban_cards");
+      safeResetRun("DELETE FROM lean_tpm_logs");
+      safeResetRun("DELETE FROM lean_smed_sessions");
+      safeResetRun("DELETE FROM lean_kaizen_8d");
 
       // 4. Clear Projects & Tasks
       safeResetRun("DELETE FROM project_tasks");
@@ -612,7 +374,8 @@ export function resetFactoryData() {
       safeResetRun("DELETE FROM items");
 
       // 6. Clear HRIS & Personnel Data (Retain exactly 3 Core Baseline Users: Eghy, Ludy, and admin)
-      safeResetRun("DELETE FROM users WHERE username NOT IN ('Eghy', 'Ludy', 'admin')");
+      safeResetRun("DELETE FROM attendance_db.hr_attendances WHERE LOWER(TRIM(employee_username)) NOT IN ('eghy', 'ludy', 'admin')");
+      safeResetRun("DELETE FROM users WHERE LOWER(TRIM(username)) NOT IN ('eghy', 'ludy', 'admin')");
       safeResetRun("DELETE FROM hr_jobs");
       safeResetRun("DELETE FROM hr_applications");
       safeResetRun("DELETE FROM hr_kpis");
@@ -625,7 +388,7 @@ export function resetFactoryData() {
 
       // 7. Clear Social/Chat/Forum/Audit
       safeResetRun("DELETE FROM chat_messages");
-      safeResetRun("DELETE FROM chat_participants WHERE thread_id != 'THREAD-GENERAL'");
+      safeResetRun("DELETE FROM chat_participants WHERE thread_id != 'THREAD-GENERAL' OR LOWER(TRIM(username)) NOT IN ('eghy', 'ludy', 'admin')");
       safeResetRun("DELETE FROM chat_threads WHERE id != 'THREAD-GENERAL'");
       safeResetRun("DELETE FROM forum_comments");
       safeResetRun("DELETE FROM forum_posts");
@@ -666,6 +429,9 @@ export function resetHrData() {
       safeResetRun("DELETE FROM hr_leaves");
       safeResetRun("DELETE FROM hr_payslips");
       safeResetRun("DELETE FROM hr_salaries");
+      safeResetRun("DELETE FROM production_manpower_assignments");
+      safeResetRun("DELETE FROM production_manpower");
+      safeResetRun("DELETE FROM project_manpower");
     })();
   } finally {
     db.pragma("foreign_keys = ON");

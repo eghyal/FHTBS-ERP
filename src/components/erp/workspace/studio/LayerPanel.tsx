@@ -1,13 +1,5 @@
-import React, {
-  useState,
-  useMemo,
-  useEffect,
-  useRef,
-  useCallback,
-} from "react";
-import { QRCodeSVG } from "qrcode.react";
+import React, { useRef } from "react";
 import {
-  FileText,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -16,80 +8,45 @@ import {
   Italic,
   Underline,
   Strikethrough,
-  Palette,
-  Highlighter,
-  CaseSensitive,
   Plus,
   Minus,
   Trash2,
   Copy,
   ChevronUp,
   ChevronDown,
-  Building2,
-  MapPin,
   CheckCircle2,
-  PenTool,
-  ZoomIn,
-  ZoomOut,
   Maximize2,
   ShieldCheck,
-  Send,
-  Save,
   X,
-  Sparkles,
-  Layers,
-  Eye,
   AlertTriangle,
   Table as TableIcon,
-  ListOrdered,
   Type,
-  UserCheck,
   Grid3X3,
   GripVertical,
-  Move,
   RotateCcw,
-  Undo2,
-  Redo2,
-  Printer,
-  Keyboard,
-  PanelLeft,
   SlidersHorizontal,
   Search,
   Lock,
   Check,
   Info,
   Upload,
-  Download,
-  Calculator,
-  Landmark,
-  CheckSquare,
-  SeparatorHorizontal,
-  FileCheck2,
   Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
-import { generatePDF } from "@/lib/pdfGenerator";
 import {
   DocBlock,
-  DocBlockType,
   BlockCategory,
   LayoutPreset,
   TargetDepartment,
-  AuthorizationRole,
 } from "@/types/workspace";
 import {
   ERP_DEPARTMENT_OPTIONS,
   normalizeDepartmentToRole,
 } from "@/constants/rbac";
 import {
-  evaluateTableFormula,
-  parseDocxPackageToBlocks,
-  generateDocxBinaryBuffer,
-  generateDeterministicPdfBuffer,
   normalizeHorizontalAlign,
   normalizeVerticalAlign,
-  normalizeBlockAlignment,
 } from "@/services/docxEngine";
 import {
   LibraryItem,
@@ -143,6 +100,7 @@ interface StudioInspectorProps {
   readinessChecks?: Array<{ id: string; label: string; passed: boolean; isWarning?: boolean; detail: string }>;
   signerChain?: any[];
   versions?: any[];
+  onCollapse?: () => void;
 }
 
 export function StudioInspector({
@@ -178,13 +136,17 @@ export function StudioInspector({
   readinessChecks = [],
   signerChain = [],
   versions = [],
+  onCollapse,
 }: StudioInspectorProps) {
   const isKop = selectedBlock?.type === "OFFICIAL_LETTERHEAD" || Boolean(selectedBlock?.isLocked);
+  const isFooter = selectedBlock?.type === "FOOTER" || selectedBlock?.type === "FOOTER_BLOCK";
+  const firstFooterIdx = blocks.findIndex((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK");
+  const lastBodyMovableIdx = firstFooterIdx >= 0 ? firstFooterIdx - 1 : blocks.length - 1;
   const isSignature =
     selectedBlock?.type === "SIGNATURE_COLUMN" ||
     selectedBlock?.type === "SIGNATURE_STAMP" ||
     selectedBlock?.type === "DUAL_SIGNATURE";
-  const isMoved = Boolean(selectedBlock?.x || selectedBlock?.y);
+  const isMoved = !isKop && !isFooter && Boolean(selectedBlock?.x || selectedBlock?.y);
 
   const curHorizontalAlign = selectedBlock
     ? normalizeHorizontalAlign(
@@ -228,16 +190,28 @@ export function StudioInspector({
 
   return (
     <>
-      <div className="p-3 border-b border-stone-200/80 bg-stone-50 flex items-center justify-between shrink-0">
+      <div className="p-3 border-b border-stone-200/80 bg-stone-50 flex items-center justify-between gap-2 shrink-0">
         <span className="text-xs font-black text-stone-900 uppercase tracking-tight flex items-center gap-1.5">
           <SlidersHorizontal className="w-4 h-4 text-stone-700" />
           {isId ? "Inspektor" : "Inspector"}
         </span>
-        {selectedBlock && (
-          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-stone-200/80 text-stone-700">
-            {BLOCK_TYPE_LABELS[selectedBlock.type] || selectedBlock.type}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {selectedBlock && (
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-stone-200/80 text-stone-700 truncate max-w-36">
+              {BLOCK_TYPE_LABELS[selectedBlock.type] || selectedBlock.type}
+            </span>
+          )}
+          {onCollapse && (
+            <button
+              type="button"
+              onClick={onCollapse}
+              className="p-1 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 cursor-pointer shrink-0"
+              title="Collapse Inspector"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs custom-scrollbar">
@@ -279,7 +253,20 @@ export function StudioInspector({
           ) : (
             /* ---- Editable block props ---- */
             <div className="space-y-4">
-              {/* Order & Canvas Alignment controls */}
+              {/* Order & Canvas Alignment controls (locked for pinned Footer) */}
+              {isFooter ? (
+                <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-[10px] font-black text-amber-900 uppercase">
+                    <Lock className="w-3.5 h-3.5 text-amber-700" />
+                    <span>{isId ? "Posisi Footer Terkunci di Bawah" : "Footer Pinned at Bottom"}</span>
+                  </div>
+                  <p className="text-[10.5px] text-amber-800/90 leading-snug">
+                    {isId
+                      ? "Blok footer selalu menempel di dasar halaman dan otomatis naik sedikit di atas nomor halaman saat aktif."
+                      : "Footer stays anchored at the bottom of the page and shifts cleanly above page numbers when enabled."}
+                  </p>
+                </div>
+              ) : (
               <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-stone-700 uppercase">
@@ -299,7 +286,7 @@ export function StudioInspector({
                   </button>
                   <button
                     onClick={() => onMoveBlock(selectedBlock.id, "DOWN")}
-                    disabled={selectedIndex === blocks.length - 1}
+                    disabled={selectedIndex >= lastBodyMovableIdx}
                     className="py-1.5 px-2 rounded-lg text-[10.5px] font-bold bg-white hover:bg-stone-100 border border-stone-200 text-stone-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1"
                   >
                     <ChevronDown className="w-3 h-3" /> {isId ? "Turun" : "Down"}
@@ -392,6 +379,7 @@ export function StudioInspector({
                   </button>
                 )}
               </div>
+              )}
 
               {/* Universal Content Alignment & Typography (Available for all editable blocks) */}
               <div className="space-y-2.5">
@@ -731,6 +719,165 @@ export function StudioInspector({
                       }
                       className="w-full px-2.5 py-1.5 text-[11px] bg-white border border-indigo-200 rounded-lg outline-none focus:border-indigo-600 font-medium text-stone-800"
                     />
+                  </div>
+                </div>
+              )}
+
+              {/* GridCraft Table Inspector Controls */}
+              {selectedBlock.type === "TABLE" && selectedBlock.tableData && (
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-stone-900 uppercase flex items-center gap-1.5">
+                      <TableIcon className="w-3.5 h-3.5 text-stone-700" />
+                      <span>{isId ? "Pengaturan Tabel GridCraft" : "GridCraft Table Settings"}</span>
+                    </span>
+                    <span className="font-mono tabular-nums text-[10px] font-bold text-stone-600 bg-white px-2 py-0.5 rounded border border-stone-200">
+                      {selectedBlock.tableData.rows.length}R × {selectedBlock.tableData.headers.length}C
+                    </span>
+                  </div>
+
+                  {/* Zebra Striping Toggle */}
+                  <div className="flex items-center justify-between bg-white px-2.5 py-2 rounded-lg border border-stone-200">
+                    <div>
+                      <div className="text-[10.5px] font-bold text-stone-800">
+                        {isId ? "Baris Selang-Seling (Zebra)" : "Zebra Alternating Rows"}
+                      </div>
+                      <div className="text-[9.5px] text-stone-500">
+                        {isId ? "Warna latar baris genap otomatis" : "Subtle shading on alternating rows"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateBlock(selectedBlock.id, {
+                          tableData: {
+                            ...selectedBlock.tableData!,
+                            zebraStriping: !selectedBlock.tableData!.zebraStriping,
+                          },
+                        })
+                      }
+                      className={cn(
+                        "px-2.5 py-1 rounded-md text-[10px] font-bold border transition-colors cursor-pointer",
+                        selectedBlock.tableData.zebraStriping
+                          ? "bg-stone-900 text-white border-stone-900"
+                          : "bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200"
+                      )}
+                    >
+                      {selectedBlock.tableData.zebraStriping ? "ON" : "OFF"}
+                    </button>
+                  </div>
+
+                  {/* Equalize Columns & Reset Row Heights */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateBlock(selectedBlock.id, {
+                          tableData: {
+                            ...selectedBlock.tableData!,
+                            colWidths: undefined,
+                          },
+                        })
+                      }
+                      className="py-1.5 px-2 rounded-lg bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      title={isId ? "Samakan lebar seluruh kolom" : "Distribute column widths equally"}
+                    >
+                      <Grid3X3 className="w-3 h-3 text-stone-500" />
+                      <span>{isId ? "Samakan Kolom" : "Equalize Cols"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateBlock(selectedBlock.id, {
+                          tableData: {
+                            ...selectedBlock.tableData!,
+                            rowHeights: undefined,
+                          },
+                        })
+                      }
+                      className="py-1.5 px-2 rounded-lg bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      title={isId ? "Reset tinggi seluruh baris ke otomatis" : "Reset all row heights to auto"}
+                    >
+                      <RotateCcw className="w-3 h-3 text-stone-500" />
+                      <span>{isId ? "Reset Tinggi" : "Auto Row Height"}</span>
+                    </button>
+                  </div>
+
+                  {/* Quick Add Row / Column / Summary Row */}
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const td = selectedBlock.tableData!;
+                        const colCount = td.headers.length;
+                        onUpdateBlock(selectedBlock.id, {
+                          tableData: {
+                            ...td,
+                            rows: [...td.rows, Array.from({ length: colCount }, () => "")],
+                          },
+                        });
+                      }}
+                      className="py-1.5 px-2 rounded-lg bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isId ? "Baris" : "Row"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const td = selectedBlock.tableData!;
+                        const nextColNum = td.headers.length + 1;
+                        onUpdateBlock(selectedBlock.id, {
+                          tableData: {
+                            ...td,
+                            headers: [
+                              ...td.headers,
+                              isId ? `Kolom ${nextColNum}` : `Column ${nextColNum}`,
+                            ],
+                            rows: td.rows.map((r) => [...r, ""]),
+                          },
+                        });
+                      }}
+                      className="py-1.5 px-2 rounded-lg bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isId ? "Kolom" : "Col"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const td = selectedBlock.tableData!;
+                        const colCount = td.headers.length;
+                        const lastRowIdx = td.rows.length;
+                        const summaryRow = Array.from({ length: colCount }, (_, ci) => {
+                          if (ci === 0) return "TOTAL";
+                          if (lastRowIdx === 0) return "0";
+                          const colLetter = String.fromCharCode(65 + (ci % 26));
+                          return `=SUM(${colLetter}1:${colLetter}${lastRowIdx})`;
+                        });
+                        const nextMeta = { ...(td.cellMeta || {}) };
+                        for (let ci = 0; ci < colCount; ci++) {
+                          nextMeta[`${lastRowIdx}:${ci}`] = {
+                            ...(nextMeta[`${lastRowIdx}:${ci}`] || {}),
+                            bold: true,
+                            backgroundColor: "#F5F5F4",
+                            textAlign: ci === 0 ? "left" : "right",
+                          };
+                        }
+                        onUpdateBlock(selectedBlock.id, {
+                          tableData: {
+                            ...td,
+                            rows: [...td.rows, summaryRow],
+                            cellMeta: nextMeta,
+                          },
+                        });
+                      }}
+                      className="py-1.5 px-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      title={isId ? "Tambah baris TOTAL (=SUM) otomatis" : "Append automatic TOTAL (=SUM) row"}
+                    >
+                      <span className="font-mono font-black">Σ</span>
+                      <span>Total</span>
+                    </button>
                   </div>
                 </div>
               )}
@@ -1321,7 +1468,7 @@ export function StudioInspector({
                     <span className="text-[11px] font-bold text-stone-700 truncate flex-1">
                       {BLOCK_TYPE_LABELS[b.type] || b.type}
                     </span>
-                    {(b.type === "OFFICIAL_LETTERHEAD" || b.isLocked) && (
+                    {(b.type === "OFFICIAL_LETTERHEAD" || b.type === "FOOTER" || b.type === "FOOTER_BLOCK" || b.isLocked) && (
                       <Lock className="w-3 h-3 text-amber-600 shrink-0" />
                     )}
                   </button>
@@ -1385,6 +1532,9 @@ export function LayerPanel({
     setShowLeftPanel,
     showRightPanel,
     setShowRightPanel,
+    rightInspectorOpen,
+    setRightInspectorOpen,
+    layoutMode,
     quickInsertIndex,
     setQuickInsertIndex,
   } = state;
@@ -1534,6 +1684,7 @@ export function LayerPanel({
   }
 
   if (mode === "right-desktop") {
+    if (!rightInspectorOpen || layoutMode === "FOCUS") return null;
     return (
         <aside className="hidden lg:flex w-72 xl:w-80 bg-white border-l border-stone-200/90 flex-col shrink-0 z-10">
           <StudioInspector
@@ -1587,6 +1738,7 @@ export function LayerPanel({
             readinessChecks={readinessChecks}
             signerChain={signerChain}
             versions={versions}
+            onCollapse={() => setRightInspectorOpen(false)}
           />
         </aside>
     );

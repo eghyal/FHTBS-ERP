@@ -1424,7 +1424,7 @@ export const ProductionSetupAndMaster: React.FC<ProductionSetupAndMasterProps> =
               lockKey={`commit-plan-${projectId}`}
               disabled={isCommitting || processConfigs.length === 0 || project?.bop_status !== "AUTHORIZED"}
               title={project?.bop_status !== "AUTHORIZED" ? "BOP requires Engineering authorization" : ""}
-              className="h-11 px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs whitespace-nowrap shrink-0 flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-11 px-6 bg-stone-900 hover:bg-stone-800 text-white rounded-xl font-bold text-xs whitespace-nowrap shrink-0 flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>
@@ -1478,7 +1478,7 @@ export const ProductionSetupAndMaster: React.FC<ProductionSetupAndMasterProps> =
                   type="button"
                   size="sm"
                   onClick={() => setShiftHours((prev) => Math.min(24, prev + 4))}
-                  className="h-8 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                  className="h-8 px-3 bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold"
                 >
                   <Zap className="w-3.5 h-3.5 mr-1.5" />
                   +4h Overtime ({Math.min(24, shiftHours + 4)}h/day)

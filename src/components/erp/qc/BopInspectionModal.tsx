@@ -40,7 +40,7 @@ export const BopInspectionModal = memo(function BopInspectionModal({
       title={`BOP Station Quality Inspection — ${
         activeBopStep?.process_name || ""
       }`}
-      size="lg"
+      size="4xl"
     >
       <form onSubmit={onSubmit} className="space-y-4">
         {activeBopStep && (
@@ -83,7 +83,7 @@ export const BopInspectionModal = memo(function BopInspectionModal({
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-end">
           <Select
             label="Inspection Gate Type"
             value={inspectForm.inspection_type}
@@ -127,7 +127,7 @@ export const BopInspectionModal = memo(function BopInspectionModal({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-end">
           <Input
             label="Parameter Inspected"
             value={inspectForm.parameter_name}
@@ -163,7 +163,7 @@ export const BopInspectionModal = memo(function BopInspectionModal({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5 items-end">
           <Input
             label="Actual Measured Value"
             placeholder="e.g. +0.2 mm / Conforms"
@@ -241,7 +241,7 @@ export const BopInspectionModal = memo(function BopInspectionModal({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-end">
           <Select
             label="Quality Disposition"
             value={inspectForm.disposition}
@@ -273,7 +273,7 @@ export const BopInspectionModal = memo(function BopInspectionModal({
           />
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
+        <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-stone-200">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>

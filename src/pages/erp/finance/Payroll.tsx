@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { getDailyAuthKey } from "@/utils/auth";
 import { AuthorizeDocModal } from "@/components/erp/AuthorizeDocModal";
+import { ClosingReminderBanner } from "@/components/finance/ClosingReminderBanner";
 import { ConfirmModal } from "@/components/shared/ConfirmModal";
 import { PageHeader } from "@/components/shared/PageHeader";
 import {
@@ -195,13 +197,17 @@ export default function Payroll() {
   const [prqAttachment, setPrqAttachment] = useState<File | null>(null);
 
   const handleApproveAndConvertPrq = async (prqId: string) => {
+    if (!prqAuthPin.trim()) {
+      showToast("Daily Authorization PIN is required to approve and convert PRq", "error");
+      return;
+    }
     setIsProcessingPrq(true);
     try {
       const res = await apiFetch(
         `/api/hr/payroll-requisitions/${prqId}/convert`,
         {
           method: "POST",
-          body: JSON.stringify({ approved: true }),
+          body: JSON.stringify({ approved: true, pin: prqAuthPin.trim() }),
         },
         user?.username,
       );
@@ -209,6 +215,7 @@ export default function Payroll() {
       if (res.ok) {
         showToast("PRq submission successfully approved & converted to Payroll Disbursement Order!", "success");
         setIsPrqReviewModalOpen(false);
+        setPrqAuthPin("");
         fetchPayrolls();
       } else {
         showToast(res.error || "Failed to convert PRq", "error");
@@ -350,6 +357,13 @@ export default function Payroll() {
         icon={<WalletCards className="w-5 h-5" />}
         actions={
           <div className="flex items-center gap-2.5">
+            <Link
+              to="/book-closing"
+              className="h-8 px-3 inline-flex items-center gap-1.5 bg-white hover:bg-stone-50 border border-stone-200 rounded-lg text-xs font-semibold text-stone-700 whitespace-nowrap"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-stone-500" />
+              <span>Book Closing</span>
+            </Link>
             <Button
               onClick={() => setIsGenerateModalOpen(true)}
               variant="primary"
@@ -361,6 +375,8 @@ export default function Payroll() {
           </div>
         }
       />
+
+      <ClosingReminderBanner compact />
 
       <div className="flex gap-4 items-center">
         <div className="flex-1 max-w-lg">
@@ -563,12 +579,12 @@ export default function Payroll() {
         onClose={() => setIsGenerateModalOpen(false)}
         title="HR Payroll Submissions (PRq)"
         description="HR cost packing list submitted by the HR Division. Review and approve to convert into an official Payroll Disbursement Order."
-        maxWidth="5xl"
-        contentClassName="p-0 border-t border-stone-100"
+        maxWidth="6xl"
+        contentClassName="p-0"
       >
-        <div className="p-6">
-          <div className="rounded-xl border border-stone-200 overflow-hidden bg-white">
-            <Table>
+        <div className="p-5 sm:p-6">
+          <div className="rounded-xl border border-stone-200 overflow-x-auto bg-white">
+            <Table className="min-w-[700px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>No. Requisition</TableHead>
@@ -685,10 +701,30 @@ export default function Payroll() {
         isOpen={isDetailsModalOpen}
         onClose={() => setIsDetailsModalOpen(false)}
         title={`Payroll Summary Document: ${selectedPayrollHeader ? (selectedPayrollHeader.period_name || `${months[(selectedPayrollHeader.period_month || 1) - 1] || ""} ${selectedPayrollHeader.period_year || ""}`) : "PERIOD"}`}
-        maxWidth="5xl"
-        contentClassName="p-0 flex flex-col h-[85vh] border-t border-stone-100"
+        maxWidth="6xl"
+        contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+        footer={
+          <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsDetailsModalOpen(false)}
+            >
+              {t("Close")}
+            </Button>
+            <Button
+              variant="dark"
+              size="sm"
+              onClick={exportPayrollPdf}
+              isLoading={isExportingPdf}
+              leftIcon={!isExportingPdf ? <Download className="w-4 h-4" /> : undefined}
+            >
+              {isExportingPdf ? "Exporting..." : "Export PDF (A4)"}
+            </Button>
+          </div>
+        }
       >
-        <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+        <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
           <PdfPreviewWrapper>
             <PrintTemplate
               ref={docRef}
@@ -852,25 +888,6 @@ export default function Payroll() {
             </PrintTemplate>
           </PdfPreviewWrapper>
         </div>
-
-        <div className="p-6 border-t border-stone-100 bg-white flex justify-center gap-4">
-          <Button
-            variant="secondary"
-            onClick={() => setIsDetailsModalOpen(false)}
-            className="px-6 py-2.5 rounded-xl text-sm"
-          >
-            {t("Close")}
-          </Button>
-          <Button
-            variant="dark"
-            onClick={exportPayrollPdf}
-            isLoading={isExportingPdf}
-            className="px-6 py-2.5 rounded-xl text-sm shadow-md"
-          >
-            {!isExportingPdf && <Download className="w-4 h-4" />}
-            {isExportingPdf ? "Exporting..." : "Export PDF (A4)"}
-          </Button>
-        </div>
       </Modal>
       {/* PRq REVIEW & CONVERT MODAL FOR FINANCE */}
       <Modal
@@ -878,7 +895,7 @@ export default function Payroll() {
         onClose={() => setIsPrqReviewModalOpen(false)}
         title="Review HR Payroll Submission Document (PRq)"
         description="Verify HR cost component packing list before approving issuance of Payroll Disbursement Order."
-        maxWidth="5xl"
+        maxWidth="6xl"
       >
         {selectedPrq && (
           <div className="space-y-6 text-left">
@@ -893,7 +910,15 @@ export default function Payroll() {
                   </span>
                 </div>
                 <p className="text-xs font-medium text-stone-500">
-                  Submitted By HR: <span className="font-bold text-stone-800">@{selectedPrq.prepared_by || "HR Team"}</span>
+                  Submitted By HR:{" "}
+                  <span className="font-bold text-stone-800">
+                    @{selectedPrq.submitted_by || selectedPrq.prepared_by || "HR Team"}
+                  </span>
+                  {selectedPrq.period_key && (
+                    <span className="ml-2 font-mono text-stone-500">
+                      · Period {selectedPrq.period_key}
+                    </span>
+                  )}
                 </p>
               </div>
 
@@ -935,7 +960,7 @@ export default function Payroll() {
                 </h4>
               </div>
 
-              <div className="border border-stone-200/80 rounded-xl shadow-2xs max-h-80 overflow-y-auto bg-white">
+              <div className="border border-stone-200/80 rounded-xl shadow-2xs max-h-80 overflow-x-auto overflow-y-auto bg-white">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -1027,6 +1052,19 @@ export default function Payroll() {
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
                   placeholder="Example: Overtime detail does not attach supervisor approval report, please fix."
+                />
+              </div>
+            )}
+
+            {selectedPrq.status === "SUBMITTED" && !showRejectInput && (
+              <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl space-y-1.5">
+                <Input
+                  label="Daily Authorization PIN (Required to Approve & Issue Payroll PDV)"
+                  type="password"
+                  value={prqAuthPin}
+                  onChange={(e) => setPrqAuthPin(e.target.value)}
+                  placeholder="Enter your Daily Auth Key to authorize PRq conversion"
+                  className="font-mono"
                 />
               </div>
             )}

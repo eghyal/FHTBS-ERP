@@ -18,6 +18,7 @@ import {
   printOfficialPayslip,
   printPrqSummaryReport,
 } from "@/utils/hrDocuments";
+import { ClosingReminderBanner } from "@/components/finance/ClosingReminderBanner";
 
 interface HrPayrollTabProps {
   users: any[];
@@ -80,7 +81,6 @@ export const HrPayrollTab: React.FC<HrPayrollTabProps> = React.memo(
     const [subTab, setSubTab] = useState<
       "PRQ_HUB" | "SALARY_MASTER" | "PAYSLIP_ARCHIVE"
     >("PRQ_HUB");
-    const [windowOverride, setWindowOverride] = useState(true);
 
     // Salary editing local state
     const [salaryDrafts, setSalaryDrafts] = useState<
@@ -104,7 +104,7 @@ export const HrPayrollTab: React.FC<HrPayrollTabProps> = React.memo(
     const todayDayOfMonth = new Date().getDate();
     const isStandardClosingWindow =
       todayDayOfMonth >= 15 && todayDayOfMonth <= 24;
-    const canPreparePrq = isStandardClosingWindow || windowOverride;
+    const canPreparePrq = isStandardClosingWindow;
 
     const salaryMap = useMemo(() => {
       const m = new Map<string, any>();
@@ -222,24 +222,20 @@ export const HrPayrollTab: React.FC<HrPayrollTabProps> = React.memo(
             </button>
           </div>
 
-          <div className="h-10 flex items-center justify-between sm:justify-start gap-2.5 px-3.5 bg-stone-50 rounded-xl border border-stone-200 text-xs font-bold text-stone-700 shrink-0">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-stone-800" />
-              <span>HR Closing Override:</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setWindowOverride((v) => !v)}
-              className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase cursor-pointer transition-colors ${
-                windowOverride
-                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                  : "bg-stone-200 text-stone-600"
-              }`}
-            >
-              {windowOverride ? "ENABLED" : "STANDARD (15th-24th)"}
-            </button>
+          <div className="h-10 flex items-center justify-between sm:justify-start gap-2.5 px-3.5 bg-stone-50 rounded-xl border border-stone-200 text-xs font-semibold text-stone-700 shrink-0">
+            <ShieldCheck className="w-4 h-4 text-stone-800 shrink-0" />
+            <span>
+              {isStandardClosingWindow
+                ? "Jendela Tutup Buku AKTIF (Tgl 15–24)"
+                : "Jendela PRq Terkunci (Hanya Tgl 15–24)"}
+            </span>
           </div>
         </div>
+
+        <ClosingReminderBanner
+          compact
+          periodKey={`${prqYear}-${String(prqMonth).padStart(2, "0")}`}
+        />
 
         {/* SUB-TAB 1: PRQ HUB */}
         {subTab === "PRQ_HUB" && (
@@ -260,7 +256,7 @@ export const HrPayrollTab: React.FC<HrPayrollTabProps> = React.memo(
                   </div>
                   <p className="text-xs font-medium text-stone-500 mt-0.5">
                     {!canPreparePrq
-                      ? "Standard closing window is 15th–24th. Enable HR Override above to prepare PRq today."
+                      ? "Kebijakan ERP mengunci pembuatan & pengajuan PRq di luar tanggal 15–24 setiap bulan."
                       : "Auto-syncs Attendance, Certified Overtime, Leave Deductions & Income Tax/Social Security"}
                   </p>
                 </div>

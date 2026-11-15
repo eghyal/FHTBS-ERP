@@ -1,7 +1,4 @@
 import { Router } from "express";
-import fs from "fs";
-import path from "path";
-import { z } from "zod";
 import db from "../db/database.ts";
 import { outboxService } from "../services/outboxService.ts";
 import { type AuthenticatedRequest } from "../middleware/auth.ts";
@@ -15,538 +12,39 @@ import {
   signDocumentAccessToken,
   verifyDocumentAccessToken,
 } from "../services/docxEngine.ts";
+import {
+  applyMailMergeToBlocks,
+  exportBlocksToHtml,
+  exportBlocksToMarkdown,
+  exportBlocksToPlainText,
+  extractDocumentMeta,
+  stripMetaBlocks,
+} from "../services/workspaceDocumentUtils.ts";
+import {
+  initWorkspaceTable,
+  generateNextDocumentCode,
+  recordDocumentEvent,
+  saveDocxArtifactToDisk,
+  savePdfArtifactToDisk,
+  workspaceDocPayloadSchema,
+  workspaceDocUpdateSchema,
+  resolveRoleAndDept,
+  extractRoutingFromContent,
+  synchronizeSignatureBlocksRouting,
+  parseAndValidateBlocks,
+  isExecutiveOrFc,
+  isPrivateDraftStatus,
+  canUserReadDocument,
+  canUserMutateDraft,
+  canTokenAccessPrivateDraft,
+  getActiveLock,
+} from "./documentRouteHelpers.ts";
+
+export { generateNextDocumentCode, resolveRoleAndDept, extractRoutingFromContent };
 
 export const workspaceDocumentsRouter = Router();
 
-const STORAGE_DIR = "/tmp/workspace_docs";
-try {
-  fs.mkdirSync(STORAGE_DIR, { recursive: true });
-} catch (_) {}
-
-// Ensure workspace_documents, document_sequences, versions, events, and locks tables exist
-function initWorkspaceTable() {
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS document_sequences (
-        scope TEXT PRIMARY KEY,
-        next_val INTEGER NOT NULL DEFAULT 1,
-        next_value INTEGER NOT NULL DEFAULT 1,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS workspace_documents (
-        id TEXT PRIMARY KEY,
-        document_code TEXT NOT NULL UNIQUE,
-        title TEXT NOT NULL,
-        document_type TEXT NOT NULL,
-        created_by_user_id TEXT DEFAULT 'system',
-        created_by_username TEXT NOT NULL,
-        created_by_name TEXT NOT NULL,
-        department TEXT,
-        content_format TEXT NOT NULL DEFAULT 'DOCX',
-        current_version INTEGER NOT NULL DEFAULT 1,
-        content_json TEXT NOT NULL,
-        legacy_content_json TEXT,
-        docx_file_path TEXT,
-        pdf_file_path TEXT,
-        file_hash TEXT,
-        approved_file_hash TEXT,
-        layout_preset TEXT DEFAULT 'A4_PORTRAIT',
-        custom_width_mm INTEGER DEFAULT 210,
-        custom_height_mm INTEGER DEFAULT 297,
-        authorization_role TEXT DEFAULT 'HR_MANAGER',
-        authorization_department TEXT DEFAULT 'HR',
-        authorization_user_name TEXT,
-        status TEXT NOT NULL DEFAULT 'DRAFT',
-        revision_note TEXT,
-        approved_by TEXT,
-        approved_by_user_id TEXT,
-        approved_by_username TEXT,
-        approved_by_role TEXT,
-        approved_at TEXT,
-        locked_by_user_id TEXT,
-        locked_by_username TEXT,
-        locked_at TEXT,
-        lock_expires_at TEXT,
-        idempotency_key TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_ws_docs_auth ON workspace_documents(authorization_role, status);
-      CREATE INDEX IF NOT EXISTS idx_ws_docs_dept_status ON workspace_documents(authorization_department, status);
-      CREATE INDEX IF NOT EXISTS idx_ws_docs_creator ON workspace_documents(created_by_username);
-
-      CREATE TABLE IF NOT EXISTS workspace_document_versions (
-        id TEXT PRIMARY KEY,
-        document_id TEXT NOT NULL,
-        version INTEGER NOT NULL,
-        file_path TEXT,
-        file_hash TEXT,
-        file_size INTEGER DEFAULT 0,
-        content_json TEXT NOT NULL,
-        created_by_user_id TEXT,
-        created_by_username TEXT,
-        change_summary TEXT,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_doc_versions_unique
-        ON workspace_document_versions(document_id, version);
-
-      CREATE TABLE IF NOT EXISTS workspace_document_events (
-        id TEXT PRIMARY KEY,
-        document_id TEXT NOT NULL,
-        actor_user_id TEXT NOT NULL,
-        actor_username TEXT,
-        actor_role TEXT NOT NULL,
-        event_type TEXT NOT NULL,
-        from_status TEXT,
-        to_status TEXT,
-        note TEXT,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_ws_doc_events_doc
-        ON workspace_document_events(document_id, created_at DESC);
-
-      CREATE TABLE IF NOT EXISTS workspace_document_locks (
-        document_id TEXT PRIMARY KEY,
-        locked_by_user_id TEXT,
-        locked_by_username TEXT NOT NULL,
-        locked_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL
-      );
-    `);
-
-    const alterColumns = [
-      "ALTER TABLE document_sequences ADD COLUMN next_value INTEGER NOT NULL DEFAULT 1;",
-      "ALTER TABLE workspace_documents ADD COLUMN created_by_user_id TEXT DEFAULT 'system';",
-      "ALTER TABLE workspace_documents ADD COLUMN content_format TEXT NOT NULL DEFAULT 'DOCX';",
-      "ALTER TABLE workspace_documents ADD COLUMN current_version INTEGER NOT NULL DEFAULT 1;",
-      "ALTER TABLE workspace_documents ADD COLUMN legacy_content_json TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN docx_file_path TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN pdf_file_path TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN file_hash TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN approved_file_hash TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN authorization_department TEXT DEFAULT 'PURCHASING';",
-      "ALTER TABLE workspace_documents ADD COLUMN approved_by_user_id TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN approved_by_username TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN approved_by_role TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN locked_by_user_id TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN locked_by_username TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN locked_at TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN lock_expires_at TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN idempotency_key TEXT;",
-      "ALTER TABLE workspace_documents ADD COLUMN custom_width_mm INTEGER DEFAULT 210;",
-      "ALTER TABLE workspace_documents ADD COLUMN custom_height_mm INTEGER DEFAULT 297;",
-      "ALTER TABLE workspace_document_versions ADD COLUMN file_path TEXT;",
-      "ALTER TABLE workspace_document_versions ADD COLUMN file_hash TEXT;",
-      "ALTER TABLE workspace_document_versions ADD COLUMN file_size INTEGER DEFAULT 0;",
-      "ALTER TABLE workspace_document_versions ADD COLUMN created_by_user_id TEXT;",
-      "ALTER TABLE workspace_document_versions ADD COLUMN change_summary TEXT;",
-      "ALTER TABLE workspace_document_locks ADD COLUMN locked_by_user_id TEXT;",
-    ];
-
-    for (const stmt of alterColumns) {
-      try {
-        db.exec(stmt);
-      } catch (_) {}
-    }
-  } catch (err) {
-    console.error("[WorkspaceDocuments] Error initializing schema:", err);
-  }
-}
-
 initWorkspaceTable();
-
-// Atomic document code generator preventing race conditions and collision bugs (P0-05)
-export function generateNextDocumentCode(customScopePrefix?: string): string {
-  const dateStr = new Date().toISOString().slice(0, 7).replace("-", "");
-  const scope = customScopePrefix || `DOC-${dateStr}`;
-  const nowIso = new Date().toISOString();
-
-  const runTx = db.transaction(() => {
-    db.prepare(`
-      INSERT INTO document_sequences (scope, next_val, next_value, updated_at)
-      VALUES (?, 1, 1, ?)
-      ON CONFLICT(scope) DO UPDATE SET
-        next_val = next_val + 1,
-        next_value = next_val + 1,
-        updated_at = excluded.updated_at
-    `).run(scope, nowIso);
-
-    const row: any = db.prepare("SELECT next_val, next_value FROM document_sequences WHERE scope = ?").get(scope);
-    const seqVal = row?.next_val || row?.next_value || 1;
-    const seqNum = String(seqVal).padStart(3, "0");
-    return `${scope}-${seqNum}`;
-  });
-
-  return runTx();
-}
-
-function recordDocumentEvent(params: {
-  documentId: string;
-  actorUserId: string;
-  actorUsername: string;
-  actorRole: string;
-  eventType: string;
-  fromStatus?: string | null;
-  toStatus?: string | null;
-  note?: string | null;
-  createdAt?: string;
-}) {
-  const eventId = `WSE-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const nowIso = params.createdAt || new Date().toISOString();
-  db.prepare(`
-    INSERT INTO workspace_document_events (
-      id, document_id, actor_user_id, actor_username, actor_role,
-      event_type, from_status, to_status, note, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    eventId,
-    params.documentId,
-    params.actorUserId || "system",
-    params.actorUsername || "system",
-    params.actorRole || "STAFF",
-    params.eventType,
-    params.fromStatus ?? null,
-    params.toStatus ?? null,
-    params.note ?? null,
-    nowIso
-  );
-  return eventId;
-}
-
-function saveDocxArtifactToDisk(docId: string, version: number, buffer: Uint8Array): string {
-  const fileName = `${docId}_v${version}.docx`;
-  const filePath = path.join(STORAGE_DIR, fileName);
-  try {
-    fs.writeFileSync(filePath, Buffer.from(buffer));
-  } catch (_) {}
-  return filePath;
-}
-
-function savePdfArtifactToDisk(docId: string, version: number, buffer: Uint8Array): string {
-  const fileName = `${docId}_v${version}.pdf`;
-  const filePath = path.join(STORAGE_DIR, fileName);
-  try {
-    fs.writeFileSync(filePath, Buffer.from(buffer));
-  } catch (_) {}
-  return filePath;
-}
-
-// Strict Zod Schema for Document Payload Validation (P0-06)
-const docBlockSchema = z
-  .object({
-    id: z.string().optional(),
-    type: z.string().min(1, "Block type is required"),
-  })
-  .passthrough();
-
-const LAYOUT_PRESET_ENUM = z.enum([
-  "A4_PORTRAIT",
-  "A4_LANDSCAPE",
-  "F4_PORTRAIT",
-  "F4_LANDSCAPE",
-  "US_LETTER_PORTRAIT",
-  "US_LETTER_LANDSCAPE",
-  "US_LEGAL_PORTRAIT",
-  "US_LEGAL_LANDSCAPE",
-  "A3_PORTRAIT",
-  "A3_LANDSCAPE",
-  "A5_PORTRAIT",
-  "A5_LANDSCAPE",
-  "B5_PORTRAIT",
-  "THERMAL_80MM",
-  "EXECUTIVE_MEMO",
-  "CUSTOM",
-]);
-
-const workspaceDocPayloadSchema = z.object({
-  title: z
-    .string({ message: "Document title must be a string" })
-    .trim()
-    .min(1, "Document title is required")
-    .max(255, "Title must not exceed 255 characters"),
-  document_type: z.string().trim().min(1).max(64).optional().default("MEMORANDUM"),
-  department: z.string().trim().max(64).optional().default("General"),
-  content: z.union([z.array(docBlockSchema), z.string()]).optional().default([]),
-  content_format: z.enum(["DOCX", "LEGACY_BLOCKS"]).optional().default("DOCX"),
-  layout_preset: LAYOUT_PRESET_ENUM.optional().default("A4_PORTRAIT"),
-  custom_width_mm: z.number().nullable().optional(),
-  custom_height_mm: z.number().nullable().optional(),
-  authorization_role: z.string().optional(),
-  authorization_department: z.string().optional(),
-  authorization_user_name: z.string().optional().default(""),
-  submitForApproval: z.boolean().optional().default(false),
-  idempotency_key: z.string().optional(),
-});
-
-const workspaceDocUpdateSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, "Document title cannot be empty")
-    .max(255, "Title must not exceed 255 characters")
-    .optional(),
-  document_type: z.string().trim().min(1).max(64).optional(),
-  department: z.string().trim().max(64).optional(),
-  content: z.union([z.array(docBlockSchema), z.string()]).optional(),
-  content_format: z.enum(["DOCX", "LEGACY_BLOCKS"]).optional(),
-  layout_preset: LAYOUT_PRESET_ENUM.optional(),
-  custom_width_mm: z.number().nullable().optional(),
-  custom_height_mm: z.number().nullable().optional(),
-  authorization_role: z.string().optional(),
-  authorization_department: z.string().optional(),
-  authorization_user_name: z.string().optional(),
-  expected_version: z.number().int().positive().optional(),
-  change_summary: z.string().max(500).optional(),
-});
-
-export function resolveRoleAndDept(
-  deptOrRole?: string | null,
-  explicitRole?: string | null
-): { role: string; department: string } | null {
-  const dept = (deptOrRole || "").toString().trim().toUpperCase();
-  const role = (explicitRole || "").toString().trim().toUpperCase();
-  const combined = `${dept} ${role}`;
-  if (!dept && !role) return null;
-
-  const isSupervisorTier = role === "SUPERVISOR" || role.endsWith("_SUPERVISOR");
-  const isFcTier =
-    role === "FC" ||
-    dept === "FC" ||
-    combined.includes("CONTROLLER") ||
-    combined.includes("PLANT") ||
-    combined.includes("DIREKSI") ||
-    combined.includes("MANAGEMENT");
-
-  if (isFcTier) {
-    return { role: "FC", department: "FC" };
-  }
-  if (combined.includes("FINANCE") || combined.includes("KEUANGAN") || combined.includes("ACCOUNTING")) {
-    return {
-      role: isSupervisorTier ? "FINANCE_SUPERVISOR" : "FINANCE_MANAGER",
-      department: "FINANCE",
-    };
-  }
-  if (combined.includes("PROD")) {
-    return {
-      role: isSupervisorTier ? "PRODUCTION_SUPERVISOR" : "PRODUCTION_MANAGER",
-      department: "PRODUCTION",
-    };
-  }
-  if (combined.includes("WAREHOUSE") || combined.includes("GUDANG") || combined.includes("LOGISTIK")) {
-    return {
-      role: isSupervisorTier ? "WAREHOUSE_SUPERVISOR" : "WAREHOUSE_MANAGER",
-      department: "WAREHOUSE",
-    };
-  }
-  if (dept === "HR" || combined.includes("HUMAN RESOURCE") || combined.includes("HRD") || role === "HR" || role.startsWith("HR_")) {
-    return {
-      role: isSupervisorTier ? "HR_SUPERVISOR" : "HR_MANAGER",
-      department: "HR",
-    };
-  }
-  if (combined.includes("ENGINEER") || combined.includes("TEKNIK") || combined.includes("BOP")) {
-    return {
-      role: isSupervisorTier ? "ENGINEERING_SUPERVISOR" : "ENGINEERING_MANAGER",
-      department: "ENGINEERING",
-    };
-  }
-  if (combined.includes("SALES") || combined.includes("COMMERCIAL") || combined.includes("MARKETING")) {
-    return {
-      role: isSupervisorTier ? "SALES_SUPERVISOR" : "SALES_MANAGER",
-      department: "SALES",
-    };
-  }
-  if (combined.includes("PPIC")) {
-    return {
-      role: isSupervisorTier ? "PPIC_SUPERVISOR" : "PPIC_MANAGER",
-      department: "PPIC",
-    };
-  }
-  if (dept === "QC" || dept === "QA_QC" || combined.includes("QUALITY")) {
-    return {
-      role: isSupervisorTier ? "QA_QC_SUPERVISOR" : "QA_QC_MANAGER",
-      department: "QA_QC",
-    };
-  }
-  if (combined.includes("PURCHAS") || combined.includes("PENGADAAN") || combined.includes("PROCUREMENT")) {
-    return {
-      role: isSupervisorTier ? "PURCHASING_SUPERVISOR" : "PURCHASING_MANAGER",
-      department: "PURCHASING",
-    };
-  }
-  if (role || dept) {
-    return { role: role || `${dept}_MANAGER`, department: dept || "HR" };
-  }
-  return null;
-}
-
-// Helper to auto-extract authorization department and role from signature column blocks (scans backwards so the latest/bottom block wins)
-export function extractRoutingFromContent(content: any[]): { role: string; department: string } | null {
-  if (!Array.isArray(content)) return null;
-  for (let i = content.length - 1; i >= 0; i--) {
-    const block = content[i];
-    if (
-      block?.type === "SIGNATURE_COLUMN" ||
-      block?.type === "SIGNATURE_STAMP" ||
-      block?.type === "DUAL_SIGNATURE" ||
-      block?.type === "signature"
-    ) {
-      const resolved = resolveRoleAndDept(
-        block.targetDepartment || block.department,
-        block.targetRole || block.authorization_role
-      );
-      if (resolved) return resolved;
-    }
-  }
-  return null;
-}
-
-// Synchronize all signature blocks in content with the final resolved department & role
-function synchronizeSignatureBlocksRouting(blocks: any[], targetDept: string, targetRole: string): any[] {
-  if (!Array.isArray(blocks) || !targetDept) return blocks;
-  return blocks.map((b) => {
-    if (
-      b &&
-      (b.type === "SIGNATURE_COLUMN" ||
-        b.type === "SIGNATURE_STAMP" ||
-        b.type === "DUAL_SIGNATURE" ||
-        b.type === "signature")
-    ) {
-      return {
-        ...b,
-        targetDepartment: targetDept,
-        targetRole: targetRole,
-      };
-    }
-    return b;
-  });
-}
-
-function parseAndValidateBlocks(rawContent: any): { ok: boolean; blocks: any[]; error?: string } {
-  if (rawContent === undefined || rawContent === null) {
-    return { ok: true, blocks: [] };
-  }
-  let arr: any[];
-  if (Array.isArray(rawContent)) {
-    arr = rawContent;
-  } else if (typeof rawContent === "string") {
-    try {
-      const parsed = JSON.parse(rawContent || "[]");
-      if (!Array.isArray(parsed)) {
-        return { ok: false, blocks: [], error: "Content must be a JSON array of document blocks." };
-      }
-      arr = parsed;
-    } catch (e: any) {
-      return { ok: false, blocks: [], error: "Malformed content JSON: " + e.message };
-    }
-  } else {
-    return { ok: false, blocks: [], error: "Content must be an array of document blocks." };
-  }
-
-  for (let i = 0; i < arr.length; i++) {
-    const b = arr[i];
-    if (!b || typeof b !== "object" || typeof b.type !== "string" || !b.type.trim()) {
-      return { ok: false, blocks: [], error: `Invalid block at index ${i}: 'type' string is required.` };
-    }
-    const rawAlign = (b.alignment || b.align || "").toString().trim().toUpperCase();
-    const defaultAlign =
-      b.type === "HEADER" || b.type === "heading"
-        ? "CENTER"
-        : b.type === "SIGNATURE_COLUMN" || b.type === "SIGNATURE_STAMP"
-        ? "RIGHT"
-        : "LEFT";
-    const normAlign =
-      rawAlign === "CENTER" || rawAlign === "RIGHT" || rawAlign === "JUSTIFY" || rawAlign === "LEFT"
-        ? rawAlign
-        : defaultAlign;
-    const rawVAlign = (b.verticalAlignment || b.verticalAlign || "").toString().trim().toUpperCase();
-    const normVAlign =
-      rawVAlign === "MIDDLE" || rawVAlign === "BOTTOM" || rawVAlign === "TOP" ? rawVAlign : "TOP";
-
-    arr[i] = {
-      ...b,
-      alignment: normAlign,
-      align: normAlign.toLowerCase(),
-      verticalAlignment: normVAlign,
-      verticalAlign: normVAlign.toLowerCase(),
-      x: typeof b.x === "number" && Number.isFinite(b.x) ? Math.round(b.x) : 0,
-      y: typeof b.y === "number" && Number.isFinite(b.y) ? Math.round(b.y) : 0,
-    };
-  }
-  return { ok: true, blocks: arr };
-}
-
-function isExecutiveOrFc(role?: string, level?: string): boolean {
-  const r = (role || "").toUpperCase();
-  const l = (level || "").toUpperCase();
-  return (
-    r === "FC" ||
-    r === "ADMIN" ||
-    r === "SUPER_ADMIN" ||
-    r === "SUPERADMIN" ||
-    r === "DIRECTOR" ||
-    r === "BOD" ||
-    r === "FACTORY_CONTROLLER" ||
-    r === "PLANT_HEAD" ||
-    l === "SUPER_ADMIN" ||
-    normalizeDepartmentToRole(r) === "FC"
-  );
-}
-
-function isStrictDocumentOwner(doc: any, authReq: AuthenticatedRequest): boolean {
-  const username = (authReq.username || authReq.user?.username || "").toString().trim().toLowerCase();
-  const userId = (authReq.userId || authReq.user?.id || "").toString().trim();
-  const docUsername = (doc?.created_by_username || "").toString().trim().toLowerCase();
-  const docUserId = (doc?.created_by_user_id || "").toString().trim();
-
-  if (username && docUsername && username === docUsername) return true;
-  if (userId && userId !== "system" && docUserId && docUserId !== "system" && userId === docUserId) return true;
-  return false;
-}
-
-function canUserReadDocument(doc: any, authReq: AuthenticatedRequest): boolean {
-  const userRole = authReq.userRole || authReq.user?.role || "";
-
-  if (isStrictDocumentOwner(doc, authReq)) return true;
-  if (isExecutiveOrFc(userRole, authReq.userLevel)) return true;
-  if (doc.status === "APPROVED") return true;
-
-  // Target department or author department match
-  if (
-    canUserApproveDepartment(userRole, doc.authorization_department) ||
-    canUserApproveDepartment(userRole, doc.authorization_role) ||
-    canUserApproveDepartment(userRole, doc.department)
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function canUserMutateDraft(doc: any, authReq: AuthenticatedRequest): boolean {
-  return isStrictDocumentOwner(doc, authReq);
-}
-
-function getActiveLock(docId: string): { locked_by_username: string; locked_by_user_id?: string; expires_at: string } | null {
-  try {
-    const lock: any = db
-      .prepare("SELECT * FROM workspace_document_locks WHERE document_id = ?")
-      .get(docId);
-    if (!lock) return null;
-    if (new Date(lock.expires_at).getTime() <= Date.now()) {
-      db.prepare("DELETE FROM workspace_document_locks WHERE document_id = ?").run(docId);
-      return null;
-    }
-    return lock;
-  } catch (_) {
-    return null;
-  }
-}
 
 // 1. Get List of Workspace Documents (P1-05 Paginated, ACL Scoped, Optional Lightweight Projection)
 workspaceDocumentsRouter.get("/api/workspace-documents", (req, res) => {
@@ -602,9 +100,10 @@ workspaceDocumentsRouter.get("/api/workspace-documents", (req, res) => {
         content = [];
       }
       const { content_json, legacy_content_json, ...rest } = r;
+      const visibleBlocks = Array.isArray(content) ? stripMetaBlocks(content) : [];
       return {
         ...rest,
-        block_count: Array.isArray(content) ? content.length : 0,
+        block_count: visibleBlocks.length,
         content: omitFullContent ? undefined : content,
       };
     });
@@ -663,7 +162,7 @@ workspaceDocumentsRouter.get("/api/workspace-documents/pending-approvals", (req,
       }
       return {
         ...r,
-        block_count: content.length,
+        block_count: stripMetaBlocks(content).length,
         content,
       };
     });
@@ -672,6 +171,207 @@ workspaceDocumentsRouter.get("/api/workspace-documents/pending-approvals", (req,
   } catch (err: any) {
     console.error("Error fetching pending workspace approvals:", err);
     res.status(500).json({ error: "Failed to fetch pending approvals: " + err.message });
+  }
+});
+
+// 2b. Live ERP Mail Merge Data Sources (Read-only projection from SQLite/PG tables)
+workspaceDocumentsRouter.get("/api/workspace-documents/mail-merge-sources", (req, res) => {
+  try {
+    const sourceType = String(req.query.type || "ALL").toUpperCase();
+    const qRaw = String(req.query.q || "").trim();
+    const qLike = `%${qRaw}%`;
+    const limit = Math.max(5, Math.min(40, Number(req.query.limit) || 20));
+    const records: any[] = [];
+
+    if (sourceType === "ALL" || sourceType === "CUSTOMER") {
+      try {
+        const rows = db
+          .prepare(
+            `SELECT id, code, name, contact_person, email, phone, address, npwp, customer_type
+             FROM customers
+             WHERE archived_at IS NULL AND (? = '' OR name LIKE ? OR code LIKE ? OR contact_person LIKE ?)
+             ORDER BY name ASC LIMIT ?`
+          )
+          .all(qRaw, qLike, qLike, qLike, limit) as any[];
+        for (const r of rows) {
+          records.push({
+            id: `cust:${r.id}`,
+            sourceType: "CUSTOMER",
+            code: r.code || r.id,
+            label: r.name,
+            subtitle: [r.code, r.contact_person, r.phone].filter(Boolean).join(" · "),
+            fields: {
+              "customer.code": r.code || "",
+              "customer.name": r.name || "",
+              "customer.contact": r.contact_person || "",
+              "customer.email": r.email || "",
+              "customer.phone": r.phone || "",
+              "customer.address": r.address || "",
+              "customer.npwp": r.npwp || "",
+              "customer.type": r.customer_type || "B2B",
+            },
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (sourceType === "ALL" || sourceType === "VENDOR") {
+      try {
+        const rows = db
+          .prepare(
+            `SELECT id, code, name, contact_person, email, phone, address, npwp, payment_terms
+             FROM suppliers
+             WHERE (? = '' OR name LIKE ? OR COALESCE(code,'') LIKE ? OR COALESCE(contact_person,'') LIKE ?)
+             ORDER BY name ASC LIMIT ?`
+          )
+          .all(qRaw, qLike, qLike, qLike, limit) as any[];
+        for (const r of rows) {
+          records.push({
+            id: `sup:${r.id}`,
+            sourceType: "VENDOR",
+            code: r.code || r.id,
+            label: r.name,
+            subtitle: [r.code, r.contact_person, r.payment_terms].filter(Boolean).join(" · "),
+            fields: {
+              "vendor.code": r.code || "",
+              "vendor.name": r.name || "",
+              "vendor.contact": r.contact_person || "",
+              "vendor.email": r.email || "",
+              "vendor.phone": r.phone || "",
+              "vendor.address": r.address || "",
+              "vendor.npwp": r.npwp || "",
+              "vendor.payment_terms": r.payment_terms || "",
+            },
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (sourceType === "ALL" || sourceType === "EMPLOYEE") {
+      try {
+        const rows = db
+          .prepare(
+            `SELECT id, username, name, role, level, COALESCE(nik_ktp, '') AS nik_ktp
+             FROM users
+             WHERE is_approved = 1 AND (? = '' OR name LIKE ? OR username LIKE ? OR role LIKE ?)
+             ORDER BY name ASC LIMIT ?`
+          )
+          .all(qRaw, qLike, qLike, qLike, limit) as any[];
+        for (const r of rows) {
+          records.push({
+            id: `emp:${r.id}`,
+            sourceType: "EMPLOYEE",
+            code: r.username,
+            label: r.name,
+            subtitle: [r.role, r.level, r.username].filter(Boolean).join(" · "),
+            fields: {
+              "employee.name": r.name || "",
+              "employee.username": r.username || "",
+              "employee.role": r.role || "",
+              "employee.level": r.level || "",
+              "employee.nik": r.nik_ktp || "",
+            },
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (sourceType === "ALL" || sourceType === "PROJECT") {
+      try {
+        const rows = db
+          .prepare(
+            `SELECT id, name, spk_number, customer, due_date, status, urgency
+             FROM projects
+             WHERE deleted_at IS NULL AND (? = '' OR name LIKE ? OR COALESCE(spk_number,'') LIKE ? OR COALESCE(customer,'') LIKE ?)
+             ORDER BY created_at DESC LIMIT ?`
+          )
+          .all(qRaw, qLike, qLike, qLike, limit) as any[];
+        for (const r of rows) {
+          records.push({
+            id: `prj:${r.id}`,
+            sourceType: "PROJECT",
+            code: r.spk_number || r.id,
+            label: r.name,
+            subtitle: [r.spk_number, r.customer, r.status].filter(Boolean).join(" · "),
+            fields: {
+              "project.name": r.name || "",
+              "project.spk_number": r.spk_number || "",
+              "project.customer": r.customer || "",
+              "project.due_date": r.due_date || "",
+              "project.status": r.status || "",
+            },
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (sourceType === "ALL" || sourceType === "QUOTATION") {
+      try {
+        const rows = db
+          .prepare(
+            `SELECT q.id, q.quotation_number, q.title, q.grand_total, q.payment_terms, q.status, c.name AS customer_name
+             FROM quotations q
+             LEFT JOIN customers c ON c.id = q.customer_id
+             WHERE q.archived_at IS NULL AND (? = '' OR q.quotation_number LIKE ? OR q.title LIKE ? OR COALESCE(c.name,'') LIKE ?)
+             ORDER BY q.created_at DESC LIMIT ?`
+          )
+          .all(qRaw, qLike, qLike, qLike, limit) as any[];
+        for (const r of rows) {
+          records.push({
+            id: `qtn:${r.id}`,
+            sourceType: "QUOTATION",
+            code: r.quotation_number,
+            label: `${r.quotation_number} — ${r.title}`,
+            subtitle: [r.customer_name, r.status, `IDR ${Number(r.grand_total || 0).toLocaleString("id-ID")}`]
+              .filter(Boolean)
+              .join(" · "),
+            fields: {
+              "quotation.number": r.quotation_number || "",
+              "quotation.title": r.title || "",
+              "quotation.customer": r.customer_name || "",
+              "quotation.grand_total": `IDR ${Number(r.grand_total || 0).toLocaleString("id-ID")}`,
+              "quotation.payment_terms": r.payment_terms || "",
+            },
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (sourceType === "ALL" || sourceType === "PO") {
+      try {
+        const rows = db
+          .prepare(
+            `SELECT id, po_number, supplier_name, expected_date, grand_total, payment_terms, status
+             FROM purchase_orders
+             WHERE archived = 0 AND (? = '' OR po_number LIKE ? OR supplier_name LIKE ?)
+             ORDER BY created_at DESC LIMIT ?`
+          )
+          .all(qRaw, qLike, qLike, limit) as any[];
+        for (const r of rows) {
+          records.push({
+            id: `po:${r.id}`,
+            sourceType: "PO",
+            code: r.po_number,
+            label: `${r.po_number} — ${r.supplier_name}`,
+            subtitle: [r.status, r.expected_date, `IDR ${Number(r.grand_total || 0).toLocaleString("id-ID")}`]
+              .filter(Boolean)
+              .join(" · "),
+            fields: {
+              "po.number": r.po_number || "",
+              "po.supplier": r.supplier_name || "",
+              "po.expected_date": r.expected_date || "",
+              "po.grand_total": `IDR ${Number(r.grand_total || 0).toLocaleString("id-ID")}`,
+              "po.payment_terms": r.payment_terms || "",
+            },
+          });
+        }
+      } catch (_) {}
+    }
+
+    res.json({ success: true, data: records });
+  } catch (err: any) {
+    console.error("Error fetching mail merge sources:", err);
+    res.status(500).json({ error: "Failed to fetch mail merge sources: " + err.message });
   }
 });
 
@@ -701,7 +401,7 @@ workspaceDocumentsRouter.get("/api/workspace-documents/:id", (req, res) => {
 
     const versions = db
       .prepare(
-        "SELECT id, document_id, version, file_path, file_hash, file_size, created_by_user_id, created_by_username, change_summary, created_at FROM workspace_document_versions WHERE document_id = ? ORDER BY version DESC"
+        "SELECT id, document_id, version, file_path, file_hash, file_size, content_json, created_by_user_id, created_by_username, change_summary, created_at FROM workspace_document_versions WHERE document_id = ? ORDER BY version DESC"
       )
       .all(id);
 
@@ -935,7 +635,7 @@ workspaceDocumentsRouter.post("/api/workspace-documents", (req, res) => {
         content_format: content_format || "DOCX",
         current_version: 1,
         content: parsedContent,
-        block_count: parsedContent.length,
+        block_count: stripMetaBlocks(parsedContent).length,
         file_hash: docxArtifact.sha256,
         layout_preset,
         custom_width_mm: safeCustomWidthMm,
@@ -2086,6 +1786,12 @@ workspaceDocumentsRouter.post("/api/workspace-documents/:id/lock", (req, res) =>
       return res.status(404).json({ error: "Document not found" });
     }
 
+    if (!canUserReadDocument(existing, authReq) || !canUserMutateDraft(existing, authReq)) {
+      return res.status(403).json({
+        error: "Forbidden: Anda tidak dapat mengakses atau mengunci dokumen milik pengguna lain.",
+      });
+    }
+
     const activeLock = getActiveLock(id);
 
     if (action === "release" || action === "unlock") {
@@ -2116,12 +1822,6 @@ workspaceDocumentsRouter.post("/api/workspace-documents/:id/lock", (req, res) =>
         code: "LOCKED_BY_OTHER_USER",
         locked_by: activeLock.locked_by_username,
         expires_at: activeLock.expires_at,
-      });
-    }
-
-    if (!canUserMutateDraft(existing, authReq)) {
-      return res.status(403).json({
-        error: "Forbidden: Anda tidak dapat mengunci atau mengedit dokumen milik pengguna lain.",
       });
     }
 
@@ -2174,6 +1874,14 @@ workspaceDocumentsRouter.delete("/api/workspace-documents/:id/lock", (req, res) 
     const { id } = req.params;
     const currentUsername = authReq.username || authReq.user?.username || "";
     const currentUserRole = authReq.userRole || authReq.user?.role || "";
+
+    const existing: any = db.prepare("SELECT * FROM workspace_documents WHERE id = ?").get(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+    if (!canUserReadDocument(existing, authReq) || (isPrivateDraftStatus(existing.status) && !canUserMutateDraft(existing, authReq))) {
+      return res.status(403).json({ error: "Forbidden: Anda tidak dapat membuka kunci dokumen milik pengguna lain." });
+    }
 
     const activeLock = getActiveLock(id);
     if (
@@ -2602,6 +2310,11 @@ workspaceDocumentsRouter.get("/api/workspace-documents/:id/file", (req, res) => 
           error: `Forbidden: Invalid or expired file access token (${verification.reason}).`,
         });
       }
+      if (!canTokenAccessPrivateDraft(doc, verification.payload, authReq)) {
+        return res.status(403).json({
+          error: "Forbidden: Draft documents are private to their creator.",
+        });
+      }
     } else if (!authReq.userId || !canUserReadDocument(doc, authReq)) {
       return res.status(403).json({
         error: "Forbidden: Valid signed document token or authorized session required to stream DOCX file.",
@@ -2676,6 +2389,12 @@ workspaceDocumentsRouter.post("/api/workspace-documents/:id/callback", (req, res
         return res.status(403).json({
           error: 1,
           message: "Forbidden: View-only token cannot commit callback changes.",
+        });
+      }
+      if (!canTokenAccessPrivateDraft(doc, verification.payload, authReq)) {
+        return res.status(403).json({
+          error: 1,
+          message: "Forbidden: Draft documents can only be modified by their creator.",
         });
       }
       actorUserId = verification.payload.userId;
@@ -2814,6 +2533,11 @@ const handleExportPdf = (req: any, res: any) => {
       if (!verification.valid) {
         return res.status(403).json({ error: `Forbidden: ${verification.reason}` });
       }
+      if (!canTokenAccessPrivateDraft(doc, verification.payload, authReq)) {
+        return res.status(403).json({
+          error: "Forbidden: Draft documents are private to their creator.",
+        });
+      }
     } else if (!authReq.userId || !canUserReadDocument(doc, authReq)) {
       return res.status(403).json({
         error: "Forbidden: You do not have permission to export this document.",
@@ -2910,6 +2634,201 @@ const handleExportPdf = (req: any, res: any) => {
 
 workspaceDocumentsRouter.get("/api/workspace-documents/:id/export/pdf", handleExportPdf);
 workspaceDocumentsRouter.post("/api/workspace-documents/:id/export/pdf", handleExportPdf);
+
+// 20. Batch Mail Merge Draft Generator (Clone template per selected ERP record)
+workspaceDocumentsRouter.post("/api/workspace-documents/:id/batch-merge", (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const { id } = req.params;
+    const records: any[] = Array.isArray(req.body?.records) ? req.body.records : [];
+    const customBlocks: any[] | null = Array.isArray(req.body?.content) ? req.body.content : null;
+    const baseTitle: string | undefined = typeof req.body?.title === "string" ? req.body.title : undefined;
+
+    if (records.length === 0 || records.length > 25) {
+      return res.status(400).json({ error: "Select between 1 and 25 ERP records for batch generation." });
+    }
+
+    const templateDoc: any = db.prepare("SELECT * FROM workspace_documents WHERE id = ?").get(id);
+    if (!templateDoc && !customBlocks) {
+      return res.status(404).json({ error: "Template document not found." });
+    }
+    if (templateDoc && !canUserReadDocument(templateDoc, authReq)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    let sourceBlocks: any[] = customBlocks || [];
+    if (!customBlocks && templateDoc) {
+      try {
+        sourceBlocks = JSON.parse(templateDoc.content_json || "[]");
+      } catch (_) {
+        sourceBlocks = [];
+      }
+    }
+
+    const createdByUserId = authReq.userId || authReq.user?.id || "system";
+    const createdByUsername = authReq.username || authReq.user?.username || "system";
+    const createdByName = authReq.user?.name || createdByUsername;
+    const createdByRole = authReq.userRole || authReq.user?.role || "STAFF";
+    const nowIso = new Date().toISOString();
+    const createdDocs: Array<{ id: string; document_code: string; title: string }> = [];
+
+    const runTx = db.transaction(() => {
+      for (const rec of records) {
+        const mergedBlocks = applyMailMergeToBlocks(sourceBlocks, rec);
+        const docId = "WSD-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+        const docCode = generateNextDocumentCode();
+        const titlePrefix = baseTitle || templateDoc?.title || "ERP Document";
+        const mergedTitle = `${titlePrefix} — ${rec.label || rec.code || docCode}`.slice(0, 180);
+        const contentJson = JSON.stringify(mergedBlocks);
+
+        const docxArtifact = generateDocxBinaryBuffer({
+          id: docId,
+          document_code: docCode,
+          title: mergedTitle,
+          document_type: templateDoc?.document_type || "MEMORANDUM",
+          department: templateDoc?.department || "GENERAL",
+          layout_preset: templateDoc?.layout_preset || "A4_PORTRAIT",
+          custom_width_mm: templateDoc?.custom_width_mm || 210,
+          custom_height_mm: templateDoc?.custom_height_mm || 297,
+          status: "DRAFT",
+          blocks: mergedBlocks,
+        });
+        const docxPath = saveDocxArtifactToDisk(docId, 1, docxArtifact.buffer);
+
+        db.prepare(`
+          INSERT INTO workspace_documents (
+            id, document_code, title, document_type, created_by_user_id, created_by_username, created_by_name,
+            department, content_format, current_version, content_json, docx_file_path, file_hash,
+            layout_preset, custom_width_mm, custom_height_mm, authorization_role, authorization_department,
+            authorization_user_name, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DOCX', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?)
+        `).run(
+          docId,
+          docCode,
+          mergedTitle,
+          templateDoc?.document_type || "MEMORANDUM",
+          createdByUserId,
+          createdByUsername,
+          createdByName,
+          templateDoc?.department || "GENERAL",
+          contentJson,
+          docxPath,
+          docxArtifact.sha256,
+          templateDoc?.layout_preset || "A4_PORTRAIT",
+          templateDoc?.custom_width_mm || 210,
+          templateDoc?.custom_height_mm || 297,
+          templateDoc?.authorization_role || "HR_MANAGER",
+          templateDoc?.authorization_department || "HR",
+          templateDoc?.authorization_user_name || "",
+          nowIso,
+          nowIso
+        );
+
+        const verId = `WSV-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        db.prepare(`
+          INSERT INTO workspace_document_versions (
+            id, document_id, version, file_path, file_hash, file_size,
+            content_json, created_by_user_id, created_by_username, change_summary, created_at
+          ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          verId,
+          docId,
+          docxPath,
+          docxArtifact.sha256,
+          docxArtifact.size,
+          contentJson,
+          createdByUserId,
+          createdByUsername,
+          `Batch mail-merge draft (${rec.sourceType || "ERP"}: ${rec.label || rec.code})`,
+          nowIso
+        );
+
+        recordDocumentEvent({
+          documentId: docId,
+          actorUserId: createdByUserId,
+          actorUsername: createdByUsername,
+          actorRole: createdByRole,
+          eventType: "CREATED",
+          fromStatus: null,
+          toStatus: "DRAFT",
+          note: `Generated via batch mail merge from ${templateDoc?.document_code || "Studio"}`,
+          createdAt: nowIso,
+        });
+
+        outboxService.enqueue(db, "WORKSPACE_DOCUMENTS", docId, "CREATE", {
+          id: docId,
+          document_code: docCode,
+          title: mergedTitle,
+          status: "DRAFT",
+          current_version: 1,
+          file_hash: docxArtifact.sha256,
+        });
+
+        createdDocs.push({ id: docId, document_code: docCode, title: mergedTitle });
+      }
+    });
+
+    runTx();
+    res.json({
+      success: true,
+      count: createdDocs.length,
+      data: createdDocs,
+    });
+  } catch (err: any) {
+    console.error("Error running batch mail merge:", err);
+    res.status(500).json({ error: "Batch mail merge failed: " + err.message });
+  }
+});
+
+// 21. Deterministic Multi-Format Export (.html, .md, .txt)
+workspaceDocumentsRouter.get("/api/workspace-documents/:id/export/:fmt", (req, res) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const { id, fmt } = req.params;
+    const format = String(fmt || "").toLowerCase();
+    if (!["html", "md", "txt"].includes(format)) {
+      return res.status(400).json({ error: "Unsupported format. Use html, md, or txt." });
+    }
+
+    const doc: any = db.prepare("SELECT * FROM workspace_documents WHERE id = ?").get(id);
+    if (!doc) return res.status(404).json({ error: "Document not found" });
+    if (!canUserReadDocument(doc, authReq)) return res.status(403).json({ error: "Forbidden" });
+
+    let blocks: any[] = [];
+    try {
+      blocks = JSON.parse(doc.content_json || "[]");
+    } catch (_) {}
+
+    const meta = extractDocumentMeta(blocks);
+    const safeCode = (doc.document_code || doc.id || "document").replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    if (format === "html") {
+      const html = exportBlocksToHtml(blocks, meta, {
+        title: doc.title,
+        documentCode: doc.document_code,
+        department: doc.department,
+        status: doc.status,
+      });
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeCode}.html"`);
+      return res.send(html);
+    }
+
+    if (format === "md") {
+      const md = exportBlocksToMarkdown(blocks, meta, doc.title);
+      res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeCode}.md"`);
+      return res.send(md);
+    }
+
+    const txt = exportBlocksToPlainText(blocks, meta, doc.title);
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeCode}.txt"`);
+    return res.send(txt);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 export default workspaceDocumentsRouter;
 

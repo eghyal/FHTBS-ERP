@@ -36,7 +36,7 @@ export const PrDetailsModal = memo(function PrDetailsModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="3xl"
+      maxWidth="5xl"
       title={
         <div>
           <Badge variant="success" size="sm" className="mb-1">
@@ -55,7 +55,7 @@ export const PrDetailsModal = memo(function PrDetailsModal({
     >
       <div className="space-y-5">
         {/* PR Information Block */}
-        <div className="bg-stone-50/70 border border-stone-200/80 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div className="bg-stone-50/70 border border-stone-200/80 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-1">
               Project Name
@@ -120,7 +120,8 @@ export const PrDetailsModal = memo(function PrDetailsModal({
           <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">
             Requested Materials & Components
           </h4>
-          <Table compact>
+          <div className="overflow-x-auto border border-stone-200 rounded-xl">
+            <Table compact className="min-w-[580px]">
             <TableHeader>
               <TableRow hoverable={false}>
                 <TableHead>Material Item</TableHead>
@@ -162,6 +163,7 @@ export const PrDetailsModal = memo(function PrDetailsModal({
                 ))}
             </TableBody>
           </Table>
+          </div>
         </div>
       </div>
     </Modal>

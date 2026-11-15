@@ -94,7 +94,7 @@ export default function BopEngineeringPage() {
                 onClick={() => setShowPrintModal(true)}
                 variant="primary"
                 size="sm"
-                className="text-xs font-bold gap-1.5 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-xs"
+                className="text-xs font-bold gap-1.5 h-9 rounded-xl shadow-xs"
               >
                 <Printer className="w-3.5 h-3.5 text-white" />
                 Export PDF

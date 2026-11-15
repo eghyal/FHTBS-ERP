@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { ClosingReminderBanner } from "@/components/finance/ClosingReminderBanner";
 import { apiFetch } from "@/utils/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -115,6 +117,7 @@ export default function GeneralLedger() {
   // Trial Balance State
   const [trialBalance, setTrialBalance] = useState<TrialBalanceItem[]>([]);
   const [trialSummary, setTrialSummary] = useState<any>({ total_debit: 0, total_credit: 0, is_balanced: true });
+  const [tbPeriodKey, setTbPeriodKey] = useState<string>("ALL");
 
   // Accounting Periods State
   const [periods, setPeriods] = useState<Period[]>([]);
@@ -150,9 +153,13 @@ export default function GeneralLedger() {
     }
   };
 
-  const fetchTrialBalance = async () => {
+  const fetchTrialBalance = async (targetPeriod: string = tbPeriodKey) => {
     try {
-      const res = await apiFetch("/api/finance/trial-balance", {}, user?.username);
+      const qs =
+        targetPeriod && targetPeriod !== "ALL"
+          ? `?period_key=${encodeURIComponent(targetPeriod)}`
+          : "";
+      const res = await apiFetch(`/api/finance/trial-balance${qs}`, {}, user?.username);
       if (res.ok && res.data?.data) {
         setTrialBalance(res.data.data);
         setTrialSummary(res.data.summary || {});
@@ -186,7 +193,7 @@ export default function GeneralLedger() {
 
   const loadData = async () => {
     setIsLoading(true);
-    await Promise.all([fetchJournals(), fetchTrialBalance(), fetchPeriods(), fetchCoa()]);
+    await Promise.all([fetchJournals(), fetchTrialBalance(tbPeriodKey), fetchPeriods(), fetchCoa()]);
     setIsLoading(false);
   };
 
@@ -194,15 +201,30 @@ export default function GeneralLedger() {
     loadData();
   }, [filterType]);
 
+  useEffect(() => {
+    fetchTrialBalance(tbPeriodKey);
+  }, [tbPeriodKey]);
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     fetchJournals();
   };
 
+  const userRoleUpper = String(user?.role || "").trim().toUpperCase();
+  const isBodOrFc = ["BOD", "FC", "DIRECTOR"].includes(userRoleUpper);
+
   const handleUpdatePeriodStatus = async () => {
     if (!selectedPeriodForStatus) return;
-    if ((newStatus === "HARD_CLOSED" || newStatus === "OPEN") && !statusPin) {
+    if (selectedPeriodForStatus.status === "HARD_CLOSED" && !isBodOrFc) {
+      showToast("Periode HARD_CLOSED hanya dapat dibuka kembali oleh BOD atau Finance Controller (FC).", "error");
+      return;
+    }
+    if ((newStatus === "HARD_CLOSED" || newStatus === "OPEN" || selectedPeriodForStatus.status === "HARD_CLOSED") && !statusPin) {
       showToast("Daily authorization PIN is required for this action", "error");
+      return;
+    }
+    if (selectedPeriodForStatus.status === "HARD_CLOSED" && statusNotes.trim().length < 10) {
+      showToast("Alasan reopen periode HARD_CLOSED wajib diisi minimal 10 karakter.", "error");
       return;
     }
 
@@ -216,6 +238,7 @@ export default function GeneralLedger() {
             status: newStatus,
             pin: statusPin,
             notes: statusNotes,
+            reopen_reason: statusNotes,
           }),
         },
         user?.username
@@ -228,7 +251,7 @@ export default function GeneralLedger() {
         setStatusNotes("");
         fetchPeriods();
       } else {
-        showToast(res.data?.error || "Failed to update period status", "error");
+        showToast(res.error || res.data?.error || "Failed to update period status", "error");
       }
     } catch (e: any) {
       showToast(e.message || "Connection error", "error");
@@ -304,6 +327,14 @@ export default function GeneralLedger() {
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
             </Button>
 
+            <Link
+              to="/book-closing"
+              className="h-8 px-3 inline-flex items-center gap-1.5 bg-white hover:bg-stone-50 border border-stone-200/90 hover:border-stone-300 text-stone-700 hover:text-stone-900 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-stone-500" />
+              <span>Book Closing</span>
+            </Link>
+
             {["FC", "FINANCE", "BOD", "ADMIN"].includes(user?.role || "") && (
               <Button
                 size="sm"
@@ -316,6 +347,8 @@ export default function GeneralLedger() {
           </div>
         }
       />
+
+      <ClosingReminderBanner compact />
 
       {/* Navigation Tabs */}
       <div className="flex border-b border-stone-200 space-x-6 text-sm font-medium">
@@ -498,7 +531,7 @@ export default function GeneralLedger() {
       {/* TAB 2: TRIAL BALANCE */}
       {activeTab === "TRIAL_BALANCE" && (
         <div className="space-y-4">
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div>
               <h3 className="font-semibold text-stone-900 text-sm">
                 Trial Balance Summary
@@ -507,7 +540,22 @@ export default function GeneralLedger() {
                 Verification of double-entry ledger balance across all active accounts
               </p>
             </div>
-            <div className="flex items-center gap-6 text-xs">
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs">
+              <div>
+                <label className="text-stone-400 block text-[11px] mb-0.5">Period Scope</label>
+                <select
+                  value={tbPeriodKey}
+                  onChange={(e) => setTbPeriodKey(e.target.value)}
+                  className="h-8 px-2.5 bg-stone-50 border border-stone-200 rounded-lg text-xs font-mono font-semibold text-stone-800 outline-none"
+                >
+                  <option value="ALL">ALL CUMULATIVE</option>
+                  {periods.map((p) => (
+                    <option key={p.id} value={p.period_key}>
+                      {p.period_key} ({p.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <span className="text-stone-400 block">Total Debits</span>
                 <span className="font-mono font-bold text-stone-900 text-sm tabular-nums">
@@ -746,9 +794,21 @@ export default function GeneralLedger() {
           isOpen={!!selectedJournal}
           onClose={() => setSelectedJournal(null)}
           title={`Journal Entry: ${selectedJournal.entry_number}`}
+          maxWidth="5xl"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setSelectedJournal(null)}
+              >
+                Close
+              </Button>
+            </div>
+          }
         >
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-xs bg-stone-50 p-3 rounded-lg border border-stone-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-stone-50 p-3 rounded-lg border border-stone-200">
               <div>
                 <span className="text-stone-400 block text-[10px]">
                   Reference
@@ -771,7 +831,7 @@ export default function GeneralLedger() {
                   )}
                 </span>
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <span className="text-stone-400 block text-[10px]">
                   Description
                 </span>
@@ -781,8 +841,8 @@ export default function GeneralLedger() {
               </div>
             </div>
 
-            <div className="border border-stone-200 rounded-lg overflow-hidden">
-              <Table>
+            <div className="border border-stone-200 rounded-lg overflow-x-auto">
+              <Table className="min-w-[540px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Account</TableHead>
@@ -826,15 +886,6 @@ export default function GeneralLedger() {
               </Table>
             </div>
 
-            <div className="flex justify-end pt-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setSelectedJournal(null)}
-              >
-                Close
-              </Button>
-            </div>
           </div>
         </Modal>
       )}
@@ -845,6 +896,26 @@ export default function GeneralLedger() {
           isOpen={!!selectedPeriodForStatus}
           onClose={() => setSelectedPeriodForStatus(null)}
           title={`Update Accounting Period: ${selectedPeriodForStatus.period_key}`}
+          maxWidth="2xl"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedPeriodForStatus(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={selectedPeriodForStatus.status === "HARD_CLOSED" && !isBodOrFc}
+                onClick={handleUpdatePeriodStatus}
+                isLoading={isUpdatingStatus}
+              >
+                Save Status
+              </Button>
+            </div>
+          }
         >
           <div className="space-y-4">
             <div className="text-xs text-stone-600 bg-stone-50 p-3 rounded-lg border border-stone-200">
@@ -862,12 +933,21 @@ export default function GeneralLedger() {
               </div>
             </div>
 
+            {selectedPeriodForStatus.status === "HARD_CLOSED" && !isBodOrFc && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800">
+                Periode ini sudah disegel (HARD_CLOSED). Pembukaan kembali hanya diizinkan oleh BOD atau Finance Controller (FC).
+              </div>
+            )}
+
             <Select
               label="New Period Status"
               value={newStatus}
+              disabled={selectedPeriodForStatus.status === "HARD_CLOSED" && !isBodOrFc}
               onChange={(e: any) => setNewStatus(e.target.value)}
             >
-              <option value="OPEN">OPEN (Normal Posting Active)</option>
+              {selectedPeriodForStatus.status !== "HARD_CLOSED" && (
+                <option value="OPEN">OPEN (Normal Posting Active)</option>
+              )}
               <option value="SOFT_LOCKED">
                 SOFT_LOCKED (Reconciliation / Restrict New Postings)
               </option>
@@ -876,10 +956,23 @@ export default function GeneralLedger() {
               </option>
             </Select>
 
-            {(newStatus === "HARD_CLOSED" || newStatus === "OPEN") && (
+            {newStatus === "HARD_CLOSED" && selectedPeriodForStatus.status !== "HARD_CLOSED" && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                Hard-Close hanya akan berhasil dalam jendela Tgl 15–24 dan setelah 100% Required Items di modul{" "}
+                <Link to={`/book-closing?period=${selectedPeriodForStatus.period_key}`} className="underline font-semibold">
+                  Book Closing
+                </Link>{" "}
+                terverifikasi.
+              </p>
+            )}
+
+            {(newStatus === "HARD_CLOSED" ||
+              newStatus === "OPEN" ||
+              selectedPeriodForStatus.status === "HARD_CLOSED") && (
               <Input
                 label="Daily Authorization PIN"
                 type="password"
+                disabled={selectedPeriodForStatus.status === "HARD_CLOSED" && !isBodOrFc}
                 value={statusPin}
                 onChange={(e) => setStatusPin(e.target.value)}
                 placeholder="Enter 4-6 digit authorization PIN"
@@ -888,29 +981,18 @@ export default function GeneralLedger() {
             )}
 
             <Textarea
-              label="Audit Notes"
+              label={
+                selectedPeriodForStatus.status === "HARD_CLOSED"
+                  ? "Alasan Reopen Periode (Wajib min 10 karakter)"
+                  : "Audit Notes"
+              }
               rows={2}
+              disabled={selectedPeriodForStatus.status === "HARD_CLOSED" && !isBodOrFc}
               value={statusNotes}
               onChange={(e) => setStatusNotes(e.target.value)}
               placeholder="Reason for period status adjustment..."
             />
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedPeriodForStatus(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleUpdatePeriodStatus}
-                isLoading={isUpdatingStatus}
-              >
-                Save Status
-              </Button>
-            </div>
           </div>
         </Modal>
       )}
@@ -921,8 +1003,29 @@ export default function GeneralLedger() {
           isOpen={showPeriodModal}
           onClose={() => setShowPeriodModal(false)}
           title="Create Accounting Period"
+          maxWidth="2xl"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPeriodModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="create-period-form"
+                size="sm"
+                isLoading={isCreatingPeriod}
+              >
+                Create Period
+              </Button>
+            </div>
+          }
         >
-          <form onSubmit={handleCreatePeriod} className="space-y-4">
+          <form id="create-period-form" onSubmit={handleCreatePeriod} className="space-y-4">
             <Input
               label="Period Key (e.g. 2026-10)"
               type="text"
@@ -942,7 +1045,7 @@ export default function GeneralLedger() {
               placeholder="e.g. October 2026 Fiscal Month"
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input
                 label="Start Date"
                 type="date"
@@ -960,23 +1063,6 @@ export default function GeneralLedger() {
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-3">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowPeriodModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                size="sm"
-                isLoading={isCreatingPeriod}
-              >
-                Create Period
-              </Button>
-            </div>
           </form>
         </Modal>
       )}

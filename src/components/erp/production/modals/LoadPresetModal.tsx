@@ -29,9 +29,27 @@ export const LoadPresetModal: React.FC<LoadPresetModalProps> = ({
       onClose={onClose}
       title="Load BOM Preset"
       maxWidth="md"
-      contentClassName="p-0 border-t border-stone-100"
+      footer={
+        <div className="flex flex-wrap justify-end gap-2.5 w-full">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={!loadPresetFile}
+            type="submit"
+            form="load-preset-form"
+            className="bg-stone-900 text-white hover:bg-stone-800"
+          >
+            Load Preset
+          </Button>
+        </div>
+      }
     >
-      <form onSubmit={handleLoadPresetConfirm} className="p-6 space-y-6">
+      <form id="load-preset-form" onSubmit={handleLoadPresetConfirm} className="space-y-4">
         <div className="space-y-2">
           <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest px-1">
             Upload BOM Preset File (.json)
@@ -64,26 +82,9 @@ export const LoadPresetModal: React.FC<LoadPresetModalProps> = ({
               </span>
             </div>
           </div>
-          <p className="text-[8px] text-stone-400 font-medium tracking-wide text-center uppercase mt-2">
+          <p className="text-[10px] text-stone-400 font-medium tracking-wide text-center uppercase mt-2">
             * Only accepts .json files generated from the Save Preset feature
           </p>
-        </div>
-
-        <div className="pt-2 flex justify-end gap-3 border-t border-stone-100">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            disabled={!loadPresetFile}
-            type="submit"
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
-          >
-            Load Preset
-          </Button>
         </div>
       </form>
     </Modal>

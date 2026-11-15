@@ -30,6 +30,23 @@ export const SavePresetModal: React.FC<SavePresetModalProps> = ({
       onClose={onClose}
       maxWidth="md"
       title="Save BOM as Preset / Template"
+      footer={
+        <div className="flex flex-wrap items-center justify-end gap-2.5 w-full">
+          <Button
+            variant="secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSavePresetConfirm}
+            className="bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs gap-1.5"
+          >
+            <Save className="w-3.5 h-3.5" />
+            Save Preset
+          </Button>
+        </div>
+      }
     >
       <div className="space-y-4">
         <p className="text-xs text-stone-600">
@@ -60,22 +77,6 @@ export const SavePresetModal: React.FC<SavePresetModalProps> = ({
             rows={2}
             placeholder="Target specifications or preset purpose..."
           />
-        </div>
-
-        <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
-          <Button
-            variant="secondary"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSavePresetConfirm}
-            className="bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs gap-1.5"
-          >
-            <Save className="w-3.5 h-3.5" />
-            Save Preset
-          </Button>
         </div>
       </div>
     </Modal>

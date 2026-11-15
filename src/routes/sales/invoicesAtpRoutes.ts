@@ -6,6 +6,7 @@ import { calculateFinancialBreakdown } from "../../lib/financialEngine.ts";
 import {
   postCommercialInvoiceJournal,
   postFinalSettlementInvoiceJournal,
+  assertAccountingPeriodOpen,
 } from "../../utils/accountingBridge.ts";
 import { outboxService } from "../../services/outboxService.ts";
 import {
@@ -535,6 +536,7 @@ export function registerInvoicesAtpRoutes(salesRouter: Router) {
           ? `${finalJobDesc} (Pelunasan Final - Potong DP ${linkedDpInvoice.ci_number})`
           : finalJobDesc;
 
+        assertAccountingPeriodOpen(db);
         db.transaction(() => {
           db.prepare(
             `

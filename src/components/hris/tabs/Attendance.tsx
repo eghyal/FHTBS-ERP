@@ -658,10 +658,30 @@ export const HrAttendanceTab: React.FC<HrAttendanceTabProps> = React.memo(
               : "Manual Attendance Entry (HR Override)"
           }
           description="Directly log or adjust employee shift hours, project allocation, and certified overtime."
-          maxWidth="lg"
+          maxWidth="4xl"
           uiTheme="hris"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2.5">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setIsManualOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="hris-attendance-form"
+                variant="primary"
+                isLoading={isSavingManual}
+              >
+                Save Attendance Record
+              </Button>
+            </div>
+          }
         >
           <form
+            id="hris-attendance-form"
             onSubmit={handleSaveManualAttendance}
             className="space-y-4 text-left font-bold"
           >
@@ -765,22 +785,6 @@ export const HrAttendanceTab: React.FC<HrAttendanceTabProps> = React.memo(
               placeholder="Reason for manual entry or overtime approval..."
             />
 
-            <div className="pt-4 border-t border-stone-200 flex justify-end gap-2.5">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setIsManualOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={isSavingManual}
-              >
-                Save Attendance Record
-              </Button>
-            </div>
           </form>
         </Modal>
       </div>

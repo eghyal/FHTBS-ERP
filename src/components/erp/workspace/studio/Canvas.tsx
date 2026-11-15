@@ -1,93 +1,39 @@
 import React, {
-  useState,
   useMemo,
   useEffect,
   useRef,
-  useCallback,
 } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  FileText,
   AlignLeft,
   AlignCenter,
   AlignRight,
   AlignJustify,
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  Palette,
-  Highlighter,
-  CaseSensitive,
   Plus,
-  Minus,
   Trash2,
   Copy,
   ChevronUp,
   ChevronDown,
-  Building2,
-  MapPin,
   CheckCircle2,
-  PenTool,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  ShieldCheck,
-  Send,
-  Save,
   X,
-  Sparkles,
-  Layers,
-  Eye,
   AlertTriangle,
-  Table as TableIcon,
-  ListOrdered,
   Type,
-  UserCheck,
-  Grid3X3,
   GripVertical,
   Move,
   RotateCcw,
-  Undo2,
-  Redo2,
-  Printer,
-  Keyboard,
-  PanelLeft,
-  SlidersHorizontal,
-  Search,
   Lock,
-  Check,
-  Info,
   Upload,
-  Download,
-  Calculator,
   Landmark,
   CheckSquare,
-  SeparatorHorizontal,
-  FileCheck2,
   Image as ImageIcon,
   Clock,
+  MessageSquare,
 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
-import { generatePDF } from "@/lib/pdfGenerator";
+import { DocBlock } from "@/types/workspace";
 import {
-  DocBlock,
-  DocBlockType,
-  BlockCategory,
-  LayoutPreset,
-  TargetDepartment,
-  AuthorizationRole,
-} from "@/types/workspace";
-import { ERP_DEPARTMENT_OPTIONS } from "@/constants/rbac";
-import {
-  evaluateTableFormula,
-  parseDocxPackageToBlocks,
-  generateDocxBinaryBuffer,
-  generateDeterministicPdfBuffer,
   normalizeHorizontalAlign,
   normalizeVerticalAlign,
-  normalizeBlockAlignment,
 } from "@/services/docxEngine";
 import {
   DEPARTMENT_ROUTING_CONFIG,
@@ -99,7 +45,13 @@ import {
   extractTierFromRole,
   cleanBoldMarkdown,
 } from "./config";
+import {
+  mmToPx,
+  isMetaBlock,
+  DEFAULT_PAGE_SETUP,
+} from "@/services/workspaceDocumentUtils";
 import type { CanvaStudioState } from "./useStudioState";
+import { GridCraftTableEditor } from "./GridCraftTableEditor";
 
 interface InlineTextProps {
   value: string;
@@ -119,9 +71,10 @@ function InlineInput({ value, onChange, className, placeholder, editable, onEnte
   const cleanVal = cleanBoldMarkdown(value || "");
 
   if (!editable) {
+    if (!cleanVal) return null;
     return (
       <span style={style} className={cn("block w-full", className)}>
-        {cleanVal || <span className="opacity-40">{placeholder}</span>}
+        {cleanVal}
       </span>
     );
   }
@@ -151,7 +104,7 @@ function InlineInput({ value, onChange, className, placeholder, editable, onEnte
       onClick={(e) => e.stopPropagation()}
       style={style}
       className={cn(
-        "bg-transparent outline-none w-full rounded-sm transition-colors",
+        "bg-transparent outline-none w-full p-0 m-0 border-0 rounded-sm transition-colors leading-inherit",
         "hover:bg-stone-100/70 focus:bg-stone-100/90 focus:ring-1 focus:ring-stone-400/60",
         className
       )}
@@ -159,7 +112,7 @@ function InlineInput({ value, onChange, className, placeholder, editable, onEnte
   );
 }
 
-/** Auto-growing textarea for paragraph blocks that expands to content height while respecting vertical alignment. */
+/** Auto-growing textarea for paragraph blocks that expands to exact content height while matching static preview typography. */
 function InlineTextarea({ value, onChange, className, placeholder, editable, style, onFocus }: InlineTextProps) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const cleanVal = cleanBoldMarkdown(value || "");
@@ -170,7 +123,7 @@ function InlineTextarea({ value, onChange, className, placeholder, editable, sty
 
     const adjustHeight = () => {
       el.style.height = "auto";
-      el.style.height = `${Math.max(el.scrollHeight + 2, 24)}px`;
+      el.style.height = `${Math.max(el.scrollHeight, 19)}px`;
     };
 
     adjustHeight();
@@ -189,7 +142,7 @@ function InlineTextarea({ value, onChange, className, placeholder, editable, sty
   if (!editable) {
     return (
       <div style={style} className={cn("whitespace-pre-line w-full", className)}>
-        {cleanVal || <span className="opacity-40">{placeholder}</span>}
+        {cleanVal}
       </div>
     );
   }
@@ -211,7 +164,7 @@ function InlineTextarea({ value, onChange, className, placeholder, editable, sty
       onClick={(e) => e.stopPropagation()}
       style={style}
       className={cn(
-        "bg-transparent outline-none w-full resize-none rounded-sm transition-colors",
+        "bg-transparent outline-none w-full p-0 m-0 border-0 resize-none overflow-hidden rounded-sm transition-colors",
         "hover:bg-stone-100/70 focus:bg-stone-100/90 focus:ring-1 focus:ring-stone-400/60",
         className
       )}
@@ -253,8 +206,6 @@ function BlockContent({
   onTableColResizeStart,
   onTableRowResizeStart,
 }: BlockContentProps) {
-  const [editingCell, setEditingCell] = useState<{ r: number; c: number } | null>(null);
-  const [lastFocusedCell, setLastFocusedCell] = useState<{ r: number; c: number } | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   const handlePhotoUploadChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -301,54 +252,6 @@ function BlockContent({
     const items = [...(block.listItems || [])];
     items.splice(idx, 1);
     onUpdate({ listItems: items });
-  };
-
-  const updateHeader = (idx: number, value: string) => {
-    if (!block.tableData) return;
-    const headers = [...block.tableData.headers];
-    headers[idx] = value;
-    onUpdate({ tableData: { ...block.tableData, headers } });
-  };
-  const updateCell = (r: number, c: number, value: string) => {
-    if (!block.tableData) return;
-    const rows = block.tableData.rows.map((row, ri) =>
-      ri === r ? row.map((cell, ci) => (ci === c ? value : cell)) : row
-    );
-    onUpdate({ tableData: { ...block.tableData, rows } });
-  };
-  const addRow = () => {
-    if (!block.tableData) return;
-    const colCount = block.tableData.headers.length;
-    onUpdate({
-      tableData: {
-        ...block.tableData,
-        rows: [...block.tableData.rows, Array.from({ length: colCount }, () => "")],
-      },
-    });
-  };
-  const removeRow = () => {
-    if (!block.tableData || block.tableData.rows.length <= 1) return;
-    onUpdate({
-      tableData: { ...block.tableData, rows: block.tableData.rows.slice(0, -1) },
-    });
-  };
-  const addCol = () => {
-    if (!block.tableData) return;
-    onUpdate({
-      tableData: {
-        headers: [...block.tableData.headers, isId ? `Kolom ${block.tableData.headers.length + 1}` : `Column ${block.tableData.headers.length + 1}`],
-        rows: block.tableData.rows.map((r) => [...r, ""]),
-      },
-    });
-  };
-  const removeCol = () => {
-    if (!block.tableData || block.tableData.headers.length <= 1) return;
-    onUpdate({
-      tableData: {
-        headers: block.tableData.headers.slice(0, -1),
-        rows: block.tableData.rows.map((r) => r.slice(0, -1)),
-      },
-    });
   };
 
   const normalizedMetaList = useMemo(() => {
@@ -600,14 +503,16 @@ function BlockContent({
             style={{ fontSize: block.fontSize ? `${block.fontSize}px` : undefined }}
             className={cn("text-lg font-black tracking-tight text-stone-950 uppercase", alignClass)}
           />
-          <InlineInput
-            editable={editable}
-            value={block.content || ""}
-            onChange={(v) => onUpdate({ content: v })}
-            onFocus={onSelectBlock}
-            placeholder="NO: REF/PJ/001"
-            className={cn("text-xs font-bold text-stone-500 font-mono tracking-wider", alignClass)}
-          />
+          {(block.content || (editable && isSelected)) && (
+            <InlineInput
+              editable={editable}
+              value={block.content || ""}
+              onChange={(v) => onUpdate({ content: v })}
+              onFocus={onSelectBlock}
+              placeholder="NO: REF/PJ/001"
+              className={cn("text-xs font-bold text-stone-500 font-mono tracking-wider", alignClass)}
+            />
+          )}
         </div>
       );
 
@@ -693,14 +598,16 @@ function BlockContent({
           className={cn("space-y-1.5 text-xs text-stone-800 w-full h-full min-h-full flex flex-col", vJustifyClass, alignClass)}
           style={blockTextStyle}
         >
-          <InlineInput
-            editable={editable}
-            value={block.title || ""}
-            onChange={(v) => onUpdate({ title: v })}
-            onFocus={onSelectBlock}
-            placeholder={isId ? "Judul daftar (opsional)" : "List title (optional)"}
-            className={cn("font-bold text-stone-900", alignClass)}
-          />
+          {(block.title || (editable && isSelected)) && (
+            <InlineInput
+              editable={editable}
+              value={block.title || ""}
+              onChange={(v) => onUpdate({ title: v })}
+              onFocus={onSelectBlock}
+              placeholder={isId ? "Judul daftar (opsional)" : "List title (optional)"}
+              className={cn("font-bold text-stone-900", alignClass)}
+            />
+          )}
           <ol className="space-y-1">
             {(block.listItems || []).map((item, liIdx) => (
               <li key={liIdx} className={cn("flex items-start gap-2 group/li", flexRowJustifyClass)}>
@@ -753,13 +660,8 @@ function BlockContent({
       );
     }
 
-    /* --- 7. TABLE (fully editable with column & row resizing + per-column alignment + DOCX Formula Engine) --- */
+    /* --- 7. TABLE (GridCraft-Inspired Interactive Spreadsheet Engine) --- */
     case "TABLE": {
-      const td = block.tableData || { headers: [], rows: [] };
-      const colWidths = td.colWidths || [];
-      const rowHeights = td.rowHeights || [];
-      const colAligns = td.columnAlignments || block.columnAlignments || [];
-
       const vAlignClass =
         normVAlign === "TOP"
           ? "align-top"
@@ -767,284 +669,20 @@ function BlockContent({
           ? "align-bottom"
           : "align-middle";
 
-      const getColumnAlignClass = (cIdx: number) => {
-        const ca = colAligns[cIdx];
-        if (ca === "center") return "text-center";
-        if (ca === "right") return "text-right";
-        if (ca === "left") return "text-left";
-        return alignClass;
-      };
-
-      const cycleColumnAlignment = (cIdx: number) => {
-        if (!block.tableData) return;
-        const currentList: Array<"left" | "center" | "right"> = td.headers.map(
-          (_, i) => colAligns[i] || (normAlign === "CENTER" ? "center" : normAlign === "RIGHT" ? "right" : "left")
-        );
-        const cur = currentList[cIdx] || "left";
-        const nextVal: "left" | "center" | "right" =
-          cur === "left" ? "center" : cur === "center" ? "right" : "left";
-        currentList[cIdx] = nextVal;
-        onUpdate({
-          columnAlignments: currentList,
-          tableData: {
-            ...block.tableData,
-            columnAlignments: currentList,
-          },
-        });
-      };
-
-      const applyQuickFormula = (formulaExpr: string, label: string) => {
-        if (!block.tableData) return;
-        const headers = block.tableData.headers;
-        const rows = block.tableData.rows.map((r) => [...r]);
-        if (lastFocusedCell && rows[lastFocusedCell.r] && rows[lastFocusedCell.r][lastFocusedCell.c] !== undefined) {
-          rows[lastFocusedCell.r][lastFocusedCell.c] = formulaExpr;
-          onUpdate({ tableData: { ...block.tableData, rows } });
-          return;
-        }
-        // Otherwise append a summary row with the formula in numeric columns
-        const newRow = headers.map((_, cIdx) => {
-          if (cIdx === 0) return "";
-          if (cIdx === 1) return label;
-          const hasNumericAbove = rows.some((r) => {
-            const raw = (r[cIdx] || "").replace(/[^\d.,-]/g, "").trim();
-            return raw.length > 0 && !Number.isNaN(parseFloat(raw));
-          });
-          return hasNumericAbove || cIdx === headers.length - 2 ? formulaExpr : "";
-        });
-        onUpdate({
-          tableData: {
-            ...block.tableData,
-            rows: [...rows, newRow],
-          },
-        });
-      };
-
       return (
-        <div className="space-y-1.5 text-xs">
-          <InlineInput
-            editable={editable}
-            value={block.title || ""}
-            onChange={(v) => onUpdate({ title: v })}
-            onFocus={onSelectBlock}
-            placeholder={isId ? "Judul tabel (opsional)" : "Table title (optional)"}
-            className={cn("font-bold text-stone-900", alignClass)}
-          />
-          <div className="overflow-x-auto border border-stone-200 rounded-xl relative select-none">
-            <table className="w-full text-left border-collapse table-fixed">
-              <thead>
-                <tr className="bg-stone-100 text-stone-700 font-bold border-b border-stone-200">
-                  {td.headers.map((h, hIdx) => {
-                    const colW = colWidths[hIdx] || 120;
-                    const colAlignCls = getColumnAlignClass(hIdx);
-                    const curColAlign =
-                      colAligns[hIdx] ||
-                      (normAlign === "CENTER" ? "center" : normAlign === "RIGHT" ? "right" : "left");
-                    return (
-                      <th
-                        key={hIdx}
-                        style={{ width: `${colW}px` }}
-                        className={cn(
-                          "p-1 relative group/th border-r border-stone-200/80 last:border-r-0 transition-colors",
-                          vAlignClass,
-                          colAlignCls
-                        )}
-                      >
-                        <div className="flex items-center gap-0.5">
-                          <InlineInput
-                            editable={editable}
-                            value={h}
-                            onChange={(v) => updateHeader(hIdx, v)}
-                            onFocus={onSelectBlock}
-                            placeholder={`Column ${hIdx + 1}`}
-                            className={cn("font-bold text-stone-700 px-1.5 py-1 flex-1", colAlignCls)}
-                          />
-                          {editable && isSelected && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                cycleColumnAlignment(hIdx);
-                              }}
-                              title={
-                                isId
-                                  ? `Perataan Kolom ${hIdx + 1}: ${curColAlign.toUpperCase()} (Klik untuk ubah L/C/R)`
-                                  : `Column ${hIdx + 1} Alignment: ${curColAlign.toUpperCase()} (Click to cycle L/C/R)`
-                              }
-                              className="opacity-0 group-hover/th:opacity-100 focus:opacity-100 p-1 rounded bg-stone-200/80 hover:bg-stone-900 hover:text-white text-stone-700 transition-all cursor-pointer shrink-0"
-                            >
-                              {curColAlign === "center" ? (
-                                <AlignCenter className="w-2.5 h-2.5" />
-                              ) : curColAlign === "right" ? (
-                                <AlignRight className="w-2.5 h-2.5" />
-                              ) : (
-                                <AlignLeft className="w-2.5 h-2.5" />
-                              )}
-                            </button>
-                          )}
-                        </div>
-                        {editable && isSelected && onTableColResizeStart && (
-                          <div
-                            onMouseDown={(e) => onTableColResizeStart(e, block.id, hIdx, colW)}
-                            className="absolute top-0 right-0 bottom-0 w-2 cursor-col-resize hover:bg-stone-900/80 z-20 group-hover/th:bg-stone-400/50 transition-colors"
-                            title={isId ? "Seret untuk meresize lebar kolom" : "Drag to resize column width"}
-                          />
-                        )}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {td.rows.map((row, rIdx) => {
-                  const rowH = rowHeights[rIdx] || 36;
-                  return (
-                    <tr
-                      key={rIdx}
-                      style={{ height: `${rowH}px` }}
-                      className="border-b border-stone-100 hover:bg-stone-50/50 relative group/tr"
-                    >
-                      {row.map((cell, cIdx) => {
-                        const colW = colWidths[cIdx] || 120;
-                        const isFormula = typeof cell === "string" && cell.trim().startsWith("=");
-                        const isFocused = editingCell?.r === rIdx && editingCell?.c === cIdx;
-                        const evaluatedVal =
-                          isFormula && !isFocused
-                            ? evaluateTableFormula(cell, rIdx, cIdx, td)
-                            : cell;
-                        const colAlignCls = getColumnAlignClass(cIdx);
-
-                        return (
-                          <td
-                            key={cIdx}
-                            style={{ width: `${colW}px` }}
-                            className={cn(
-                              "p-1 relative border-r border-stone-100 last:border-r-0",
-                              isFormula && !isFocused && "bg-stone-50/90",
-                              vAlignClass,
-                              colAlignCls
-                            )}
-                          >
-                            <div className="flex items-center gap-1">
-                              {isFormula && !isFocused && (
-                                <span
-                                  className="px-1 py-0.2 rounded bg-stone-200/80 text-stone-700 font-mono text-[9px] font-black shrink-0"
-                                  title={cell}
-                                >
-                                  fx
-                                </span>
-                              )}
-                              <InlineInput
-                                editable={editable}
-                                value={evaluatedVal}
-                                onChange={(v) => updateCell(rIdx, cIdx, v)}
-                                onFocus={() => {
-                                  if (onSelectBlock) onSelectBlock();
-                                  setEditingCell({ r: rIdx, c: cIdx });
-                                  setLastFocusedCell({ r: rIdx, c: cIdx });
-                                }}
-                                onBlur={() => {
-                                  setEditingCell((prev) =>
-                                    prev?.r === rIdx && prev?.c === cIdx ? null : prev
-                                  );
-                                }}
-                                placeholder="—"
-                                className={cn(
-                                  "text-stone-800 px-1.5 py-1",
-                                  colAlignCls,
-                                  isFormula && "font-bold text-stone-950 font-mono"
-                                )}
-                              />
-                            </div>
-                            {editable && isSelected && onTableColResizeStart && (
-                              <div
-                                onMouseDown={(e) => onTableColResizeStart(e, block.id, cIdx, colW)}
-                                className="absolute top-0 right-0 bottom-0 w-1.5 cursor-col-resize hover:bg-stone-900/80 z-20 transition-colors"
-                              />
-                            )}
-                          </td>
-                        );
-                      })}
-                      {editable && isSelected && onTableRowResizeStart && (
-                        <td className="p-0 border-none w-0">
-                          <div
-                            onMouseDown={(e) => onTableRowResizeStart(e, block.id, rIdx, rowH)}
-                            className="absolute left-0 right-0 bottom-0 h-2 cursor-row-resize hover:bg-stone-900/80 z-20 group-hover/tr:bg-stone-400/50 transition-colors"
-                            title={isId ? "Seret untuk meresize tinggi baris" : "Drag to resize row height"}
-                          />
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {editable && isSelected && (
-            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-              <button
-                onClick={(e) => { e.stopPropagation(); addRow(); }}
-                className="px-2 py-1 rounded-lg text-[10px] font-bold bg-stone-100 text-stone-800 border border-stone-200 hover:bg-stone-200 cursor-pointer flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" /> {isId ? "Baris" : "Row"}
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); removeRow(); }}
-                disabled={td.rows.length <= 1}
-                className="px-2 py-1 rounded-lg text-[10px] font-bold bg-white text-stone-600 border border-stone-200 hover:bg-stone-100 disabled:opacity-40 cursor-pointer flex items-center gap-1"
-              >
-                <Minus className="w-3 h-3" /> {isId ? "Baris" : "Row"}
-              </button>
-              <span className="w-px h-4 bg-stone-200" />
-              <button
-                onClick={(e) => { e.stopPropagation(); addCol(); }}
-                className="px-2 py-1 rounded-lg text-[10px] font-bold bg-stone-100 text-stone-800 border border-stone-200 hover:bg-stone-200 cursor-pointer flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" /> {isId ? "Kolom" : "Column"}
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); removeCol(); }}
-                disabled={td.headers.length <= 1}
-                className="px-2 py-1 rounded-lg text-[10px] font-bold bg-white text-stone-600 border border-stone-200 hover:bg-stone-100 disabled:opacity-40 cursor-pointer flex items-center gap-1"
-              >
-                <Minus className="w-3 h-3" /> {isId ? "Kolom" : "Column"}
-              </button>
-              <span className="w-px h-4 bg-stone-200" />
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-stone-500 px-1">
-                <Calculator className="w-3 h-3 text-stone-700" />
-                {isId ? "Rumus:" : "Formula:"}
-              </span>
-              {[
-                { expr: "=SUM(ABOVE)", label: "SUM", rowLabel: "TOTAL (SUM)" },
-                { expr: "=AVERAGE(ABOVE)", label: "AVG", rowLabel: "AVERAGE (AVG)" },
-                { expr: "=COUNT(ABOVE)", label: "COUNT", rowLabel: "ITEM COUNT (COUNT)" },
-                { expr: "=MIN(ABOVE)", label: "MIN", rowLabel: "MINIMUM (MIN)" },
-                { expr: "=MAX(ABOVE)", label: "MAX", rowLabel: "MAXIMUM (MAX)" },
-              ].map((f) => (
-                <button
-                  key={f.label}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    applyQuickFormula(f.expr, f.rowLabel);
-                  }}
-                  title={
-                    lastFocusedCell
-                      ? isId
-                        ? `Masukkan ${f.expr} ke sel aktif`
-                        : `Insert ${f.expr} into active cell`
-                      : isId
-                      ? `Tambah baris kalkulasi ${f.expr}`
-                      : `Append ${f.expr} summary row`
-                  }
-                  className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-stone-900 text-white hover:bg-stone-800 cursor-pointer transition-colors"
-                >
-                  ={f.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <GridCraftTableEditor
+          block={block}
+          editable={editable}
+          isSelected={isSelected}
+          isId={isId}
+          alignClass={alignClass}
+          vAlignClass={vAlignClass}
+          normAlign={normAlign}
+          onUpdate={onUpdate}
+          onSelectBlock={onSelectBlock}
+          onTableColResizeStart={onTableColResizeStart}
+          onTableRowResizeStart={onTableRowResizeStart}
+        />
       );
     }
 
@@ -1053,14 +691,16 @@ function BlockContent({
     case "metadata":
       return (
         <div className="space-y-2 w-full">
-          <InlineInput
-            editable={editable}
-            value={block.title || ""}
-            onChange={(v) => onUpdate({ title: v })}
-            onFocus={onSelectBlock}
-            placeholder={isId ? "Judul grid (opsional)" : "Grid title (optional)"}
-            className={cn("font-bold text-stone-900 text-xs", alignClass)}
-          />
+          {(block.title || (editable && isSelected)) && (
+            <InlineInput
+              editable={editable}
+              value={block.title || ""}
+              onChange={(v) => onUpdate({ title: v })}
+              onFocus={onSelectBlock}
+              placeholder={isId ? "Judul grid (opsional)" : "Grid title (optional)"}
+              className={cn("font-bold text-stone-900 text-xs", alignClass)}
+            />
+          )}
           <div className="grid grid-cols-2 gap-2 text-xs">
             {normalizedMetaList.map((m, mIdx) => (
               <div
@@ -1559,7 +1199,7 @@ function BlockContent({
           )}
 
           {/* Inline Photo Caption */}
-          {(editable || captionVal) && (
+          {(captionVal || (editable && isSelected)) && (
             <InlineInput
               editable={editable}
               value={captionVal}
@@ -1585,9 +1225,152 @@ function BlockContent({
       );
     }
 
+    case "PAGE_BREAK": {
+      if (!editable) {
+        return <div className="h-0 break-after-page print:break-after-page" aria-hidden="true" />;
+      }
+      return (
+        <div className="py-2 flex items-center gap-3 select-none">
+          <div className="flex-1 border-t-2 border-dashed border-stone-300" />
+          <span className="px-2.5 py-0.5 rounded-md bg-stone-100 border border-stone-200 text-[10px] font-mono font-bold uppercase tracking-wider text-stone-500 whitespace-nowrap">
+            {isId ? "Pemisah Halaman" : "Page Break"}
+          </span>
+          <div className="flex-1 border-t-2 border-dashed border-stone-300" />
+        </div>
+      );
+    }
+
     default:
       return null;
   }
+}
+
+function BlockHeightTracker({
+  blockId,
+  enabled,
+  onHeight,
+  children,
+}: {
+  blockId: string;
+  enabled: boolean;
+  onHeight: (blockId: string, heightPx: number) => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled || typeof ResizeObserver === "undefined") return;
+    const initialH = Math.round(el.getBoundingClientRect().height);
+    if (initialH > 0) onHeight(blockId, initialH);
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = Math.round(entry.contentRect.height);
+        if (h > 0) onHeight(blockId, h);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [blockId, enabled, onHeight]);
+
+  return <div ref={ref}>{children}</div>;
+}
+
+function HorizontalMillimeterRuler({
+  widthMm,
+  marginLeftMm,
+  marginRightMm,
+}: {
+  widthMm: number;
+  marginLeftMm: number;
+  marginRightMm: number;
+}) {
+  const widthPx = mmToPx(widthMm);
+  const leftMarginPx = mmToPx(marginLeftMm);
+  const rightMarginPx = mmToPx(marginRightMm);
+  const ticks: number[] = [];
+  for (let m = 0; m <= widthMm; m += 10) ticks.push(m);
+
+  return (
+    <div
+      style={{ width: `${widthPx}px` }}
+      className="h-5 bg-white border border-stone-300 rounded-t-md relative overflow-hidden select-none shrink-0 print:hidden"
+    >
+      <div
+        style={{ width: `${leftMarginPx}px` }}
+        className="absolute left-0 top-0 bottom-0 bg-stone-200/70 border-r border-stone-300"
+      />
+      <div
+        style={{ width: `${rightMarginPx}px` }}
+        className="absolute right-0 top-0 bottom-0 bg-stone-200/70 border-l border-stone-300"
+      />
+      {ticks.map((mm) => {
+        const cm = Math.round(mm / 10);
+        return (
+          <div
+            key={mm}
+            style={{ left: `${mmToPx(mm)}px` }}
+            className="absolute bottom-0 top-0 flex flex-col justify-end pointer-events-none"
+          >
+            {mm > 0 && mm < widthMm && (
+              <span className="text-[8px] font-mono text-stone-500 leading-none pl-0.5 mb-0.5 tabular-nums">
+                {cm}
+              </span>
+            )}
+            <div className="w-px h-1.5 bg-stone-400" />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function VerticalMillimeterRuler({
+  heightMm,
+  marginTopMm,
+  marginBottomMm,
+}: {
+  heightMm: number;
+  marginTopMm: number;
+  marginBottomMm: number;
+}) {
+  const heightPx = mmToPx(heightMm);
+  const topMarginPx = mmToPx(marginTopMm);
+  const bottomMarginPx = mmToPx(marginBottomMm);
+  const ticks: number[] = [];
+  for (let m = 0; m <= heightMm; m += 20) ticks.push(m);
+
+  return (
+    <div
+      style={{ height: `${heightPx}px` }}
+      className="w-5 bg-white border border-stone-300 rounded-l-md relative overflow-hidden select-none shrink-0 print:hidden"
+    >
+      <div
+        style={{ height: `${topMarginPx}px` }}
+        className="absolute top-0 left-0 right-0 bg-stone-200/70 border-b border-stone-300"
+      />
+      <div
+        style={{ height: `${bottomMarginPx}px` }}
+        className="absolute bottom-0 left-0 right-0 bg-stone-200/70 border-t border-stone-300"
+      />
+      {ticks.map((mm) => {
+        const cm = Math.round(mm / 10);
+        return (
+          <div
+            key={mm}
+            style={{ top: `${mmToPx(mm)}px` }}
+            className="absolute left-0 right-0 flex items-start justify-end pointer-events-none"
+          >
+            {mm > 0 && mm < heightMm && (
+              <span className="text-[7px] font-mono text-stone-500 leading-none pr-0.5 pt-0.5 tabular-nums">
+                {cm}
+              </span>
+            )}
+            <div className="h-px w-1.5 bg-stone-400" />
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 
@@ -1634,551 +1417,889 @@ export function StudioCanvas({ state }: { state: CanvaStudioState }) {
     duplicateBlock,
     handleTableColResizeStart,
     handleTableRowResizeStart,
+    displayBlocks,
+    paginatedPages,
+    pageSetup,
+    layoutMode,
+    showRuler,
+    comments,
+    trackedChanges,
+    findOpen,
+    findMatches,
+    activeMatchIndex,
+    setLeftReviewTab,
+    registerBlockHeight,
+    setActivePageNumber,
+    lastPageJumpAtRef,
+    isMergePreview,
+    activeMergeRecord,
+    setIsMergePreview,
   } = state;
 
-  const headerBlock = blocks.find((b) => b.type === "HEADER" || b.type === "heading");
+  const activeSetup = pageSetup || DEFAULT_PAGE_SETUP;
+  const headerBlock = displayBlocks.find((b) => b.type === "HEADER" || b.type === "heading");
   const headerRef = headerBlock?.content
     ? headerBlock.content.replace(/^(NO\.?|REF\.?|NOMOR)\s*[:.]?\s*/i, "").trim()
     : "";
   const effectiveDocCode = documentCode || headerRef || documentId || `DOC/ERP/${new Date().getFullYear()}`;
-  const hasFooterBlock = blocks.some((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK");
+  const isFooterBlock = (b: DocBlock) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK";
+  const firstFooterIdx = displayBlocks.findIndex(isFooterBlock);
   const paperDims = getPaperDimensions(
     layoutPreset,
     (state as any).customWidthMm,
     (state as any).customHeightMm
   );
 
-  return (
-        <main
-          ref={scrollRef}
-          onClick={() => {
-            setSelectedBlockId(null);
-            setQuickInsertIndex(null);
+  const activeFindMatch = findOpen && findMatches.length > 0 ? findMatches[activeMatchIndex] : null;
+  const watermarkLabel = !isApproved ? "DRAFT" : activeSetup.watermarkText || "";
+  const isFocus = layoutMode === "FOCUS";
+  const showRulersNow = showRuler && !isFocus;
+
+  const sheetPaddingStyle: React.CSSProperties = {
+    paddingTop: `${mmToPx(activeSetup.marginTopMm)}px`,
+    paddingRight: `${mmToPx(activeSetup.marginRightMm)}px`,
+    paddingBottom: `${mmToPx(activeSetup.marginBottomMm)}px`,
+    paddingLeft: `${mmToPx(activeSetup.marginLeftMm)}px`,
+  };
+
+  // Sync activePageNumber smoothly as the user scrolls paginated sheets
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller || layoutMode !== "PAGINATED" || paginatedPages.length <= 1) return;
+
+    let rafId = 0;
+    const syncVisiblePage = () => {
+      if (Date.now() - (lastPageJumpAtRef?.current || 0) < 650) return;
+      const containerRect = scroller.getBoundingClientRect();
+      const targetLineY = containerRect.top + Math.min(220, containerRect.height * 0.35);
+      const sheetEls = scroller.querySelectorAll<HTMLElement>("[data-studio-page]");
+      let bestPage = 1;
+      let bestDist = Infinity;
+      sheetEls.forEach((el) => {
+        const pageNum = Number(el.getAttribute("data-studio-page"));
+        if (!pageNum) return;
+        const rect = el.getBoundingClientRect();
+        // Prefer page whose vertical bounds bracket targetLineY; otherwise nearest edge
+        const dist =
+          targetLineY >= rect.top && targetLineY <= rect.bottom
+            ? 0
+            : Math.min(Math.abs(rect.top - targetLineY), Math.abs(rect.bottom - targetLineY));
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestPage = pageNum;
+        }
+      });
+      setActivePageNumber((prev) => (prev === bestPage ? prev : bestPage));
+    };
+
+    const onScroll = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(syncVisiblePage);
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [scrollRef, layoutMode, paginatedPages.length, setActivePageNumber, lastPageJumpAtRef]);
+
+  const renderBlockCard = (block: DocBlock, idx: number, showGapBefore: boolean) => {
+    if (isMetaBlock(block)) return null;
+    const isSelected = selectedBlockId === block.id;
+    const isKop =
+      block.type === "OFFICIAL_LETTERHEAD" ||
+      block.type === "letterhead" ||
+      Boolean(block.isLocked);
+    const isFooter = block.type === "FOOTER" || block.type === "FOOTER_BLOCK";
+    const isPositionLocked = isKop || isFooter;
+    const isImage =
+      block.type === "IMAGE" ||
+      block.type === "image" ||
+      block.type === "IMAGE_STAMP";
+    const isMoved = !isPositionLocked && Boolean(block.x || block.y);
+    const blockAlign = normalizeHorizontalAlign(
+      block.alignment || block.align,
+      isImage
+        ? "CENTER"
+        : block.type === "HEADER" || block.type === "heading"
+        ? "CENTER"
+        : block.type === "SIGNATURE_COLUMN" || block.type === "SIGNATURE_STAMP"
+        ? "RIGHT"
+        : "LEFT"
+    );
+    const hasCustomWidth =
+      !isPositionLocked &&
+      Boolean(block.width || (isImage && block.mediaData?.widthPx));
+    const selfAlignClass =
+      hasCustomWidth && !isMoved
+        ? blockAlign === "LEFT"
+          ? "mr-auto"
+          : blockAlign === "RIGHT"
+          ? "ml-auto"
+          : blockAlign === "CENTER"
+          ? "mx-auto"
+          : ""
+        : "";
+
+    const openCommentsCount = comments.filter((c) => c.blockId === block.id && !c.resolved).length;
+    const pendingTrackCount = trackedChanges.filter(
+      (c) => c.blockId === block.id && c.status === "PENDING"
+    ).length;
+    const isActiveFindHit = activeFindMatch?.blockId === block.id;
+    const hasAnyFindHit = findOpen && findMatches.some((m) => m.blockId === block.id);
+
+    return (
+      <BlockHeightTracker
+        key={block.id}
+        blockId={block.id}
+        enabled={true}
+        onHeight={registerBlockHeight}
+      >
+        <div
+          id={`doc-container-${block.id}`}
+          data-block-id={block.id}
+          style={{
+            width:
+              isPositionLocked
+                ? "100%"
+                : block.width
+                ? typeof block.width === "number"
+                  ? `${block.width}px`
+                  : block.width
+                : isImage && block.mediaData?.widthPx
+                ? `${block.mediaData.widthPx}px`
+                : "100%",
+            minHeight:
+              !isFooter && block.height
+                ? typeof block.height === "number"
+                  ? `${block.height}px`
+                  : block.height
+                : undefined,
+            maxWidth: "100%",
+            transform:
+              !isPositionLocked && (block.x || block.y)
+                ? `translate(${block.x || 0}px, ${block.y || 0}px)`
+                : undefined,
           }}
-          onDragOver={(e) => {
-            if (e.dataTransfer.types.includes(LIB_DRAG_MIME)) e.preventDefault();
+          onMouseEnter={(e) => {
+            setHoveredBlockId(block.id);
+            const rect = e.currentTarget.getBoundingClientRect();
+            setHoveredBlockRect({
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+            });
           }}
-          onDrop={(e) => {
-            const key = e.dataTransfer.getData(LIB_DRAG_MIME);
-            if (key) {
-              e.preventDefault();
-              const item = LIBRARY_ITEMS.find((i) => i.key === key);
-              if (item) insertBlock(item, null);
+          onMouseLeave={() => {
+            if (hoveredBlockId === block.id) {
+              setHoveredBlockId(null);
+              setHoveredBlockRect(null);
             }
           }}
-          className="studio-canvas-scroll flex-1 bg-stone-200/70 overflow-auto p-4 sm:p-8 flex justify-center items-start custom-scrollbar bg-[radial-gradient(#d6d3d1_1px,transparent_1px)] [background-size:16px_16px]"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isEditable) setSelectedBlockId(block.id);
+          }}
+          onDragOver={(e) => {
+            if (!isEditable || isFooter) return;
+            if (dragBlockId || e.dataTransfer.types.includes(LIB_DRAG_MIME)) {
+              e.preventDefault();
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              const pos = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+              setDropIndicator({ id: block.id, pos });
+            }
+          }}
+          onDragLeave={() => {
+            if (dropIndicator?.id === block.id) setDropIndicator(null);
+          }}
+          onDrop={(e) => {
+            if (!isEditable || isFooter) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pos = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+            const libKey = e.dataTransfer.getData(LIB_DRAG_MIME);
+            if (libKey) {
+              const item = LIBRARY_ITEMS.find((i) => i.key === libKey);
+              if (item) {
+                const targetIdx = blocksRef.current.findIndex((b) => b.id === block.id);
+                insertBlock(item, pos === "before" ? targetIdx : targetIdx + 1);
+              }
+            } else if (dragBlockId) {
+              reorderBlock(dragBlockId, block.id, pos);
+            }
+            setDropIndicator(null);
+            setDragBlockId(null);
+          }}
+          className={cn(
+            "relative group/block transition-shadow rounded-xl print:ring-0 print:bg-transparent",
+            selfAlignClass,
+            isKop ? "w-full px-0 py-1" : "p-2",
+            isEditable && isSelected
+              ? "ring-2 ring-blue-500 bg-blue-50/10"
+              : isActiveFindHit
+              ? "ring-2 ring-amber-500 bg-amber-50/30"
+              : hasAnyFindHit
+              ? "ring-1 ring-amber-300 bg-amber-50/10"
+              : pendingTrackCount > 0 && isEditable
+              ? "ring-1 ring-emerald-300 bg-emerald-50/10"
+              : isEditable
+              ? "hover:ring-1 hover:ring-stone-300"
+              : "",
+            isEditable && isKop && "hover:ring-amber-300",
+            dragging && dragging.blockId === block.id && "opacity-90 shadow-2xl ring-2 ring-amber-500 cursor-grabbing z-30"
+          )}
         >
-          <div
-            ref={sheetRef}
-            style={{
-              width: `${paperDims.widthPx}px`,
-              minHeight: `${paperDims.heightPx}px`,
-              transform: `scale(${zoomLevel / 100})`,
-              transformOrigin: "top center",
-              transition: "transform 0.15s ease-out",
-            }}
-            className={cn(
-              "studio-sheet bg-white shadow-xl rounded-xl border border-stone-300 relative print:shadow-none print:border-none z-0 shrink-0 flex flex-col",
-              paperDims.paddingClass
-            )}
-          >
-            {/* ERP Standard Diagonal DRAFT Watermark (Matches PrintTemplate.tsx) */}
-            {!isApproved && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden rounded-xl">
-                <div className="text-[150px] font-black text-stone-900 opacity-[0.03] select-none rotate-[-45deg] tracking-widest uppercase">
-                  DRAFT
-                </div>
+          {/* Out-of-flow quick-insert zone (zero impact on flex gap-6 spacing) */}
+          {isEditable && showGapBefore && idx >= 1 && (
+            <div className="absolute -top-5 inset-x-0 h-4 group/gap z-20 flex items-center justify-center print:hidden">
+              <div className="absolute inset-x-8 top-1/2 h-px bg-blue-300 opacity-0 group-hover/gap:opacity-100 transition-opacity" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setQuickInsertIndex(idx);
+                }}
+                className="relative opacity-0 group-hover/gap:opacity-100 transition-opacity w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md hover:scale-110 cursor-pointer"
+                title={isId ? "Sisipkan blok di sini" : "Insert block here"}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+            {/* Non-intrusive review markers on right gutter inside block */}
+            {(openCommentsCount > 0 || pendingTrackCount > 0) && (
+              <div className="absolute top-1 right-1 flex items-center gap-1 z-20 print:hidden">
+                {pendingTrackCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLeftReviewTab("CHANGES");
+                    }}
+                    className="px-1.5 py-0.5 rounded bg-amber-100 border border-amber-300 text-amber-900 text-[9px] font-mono font-bold cursor-pointer"
+                    title="View pending tracked changes"
+                  >
+                    Δ{pendingTrackCount}
+                  </button>
+                )}
+                {openCommentsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedBlockId(block.id);
+                      setLeftReviewTab("COMMENTS");
+                    }}
+                    className="px-1.5 py-0.5 rounded bg-stone-900 text-white text-[9px] font-mono font-bold flex items-center gap-0.5 cursor-pointer"
+                    title="View margin comments on this block"
+                  >
+                    <MessageSquare className="w-2.5 h-2.5" />
+                    <span>{openCommentsCount}</span>
+                  </button>
+                )}
               </div>
             )}
 
-            {/* Grid overlay */}
-            {showGrid && isEditable && (
-              <div className="absolute inset-0 pointer-events-none rounded-xl overflow-hidden z-0 opacity-40 print:hidden">
-                <svg className="w-full h-full" width="100%" height="100%">
-                  <defs>
-                    <pattern id="smallGrid" width="10" height="10" patternUnits="userSpaceOnUse">
-                      <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#cbd5e1" strokeWidth="0.5" strokeDasharray="1,2" />
-                    </pattern>
-                    <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
-                      <rect width="50" height="50" fill="url(#smallGrid)" />
-                      <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#94a3b8" strokeWidth="0.8" />
-                    </pattern>
-                  </defs>
-                  <rect width="100%" height="100%" fill="url(#grid)" />
-                </svg>
+            {/* Hover Tooltip Popover */}
+            {isEditable && hoveredBlockId === block.id && !dragging && !resizing && !isSelected && (
+              <div className="absolute -top-8 left-2 bg-stone-900/95 backdrop-blur-md text-white border border-stone-700/80 rounded-lg px-2.5 py-1 text-[10px] font-mono shadow-xl z-40 flex items-center gap-2 pointer-events-none animate-in fade-in duration-100">
+                <span className="font-bold text-amber-400 uppercase tracking-wide">
+                  {BLOCK_TYPE_LABELS[block.type] || block.type}
+                </span>
+                <span className="text-stone-500">|</span>
+                <span className="text-stone-300">
+                  {hoveredBlockRect ? `${hoveredBlockRect.width}px × ${hoveredBlockRect.height}px` : "Auto"}
+                </span>
+                {block.isLocked && (
+                  <>
+                    <span className="text-stone-500">|</span>
+                    <span className="text-amber-300 font-bold flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" /> Locked
+                    </span>
+                  </>
+                )}
               </div>
             )}
 
-            {/* Blocks flow (coordinate origin for all block offsetLeft/offsetTop & smart alignment guides) */}
-            <div
-              ref={blocksContainerRef}
-              className="flex-1 flex flex-col gap-6 relative z-10 w-full"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Auto Align Guidelines (Smart Magnetic Alignment Guides inside blocksContainerRef coordinate space) */}
-              {alignGuides?.vertical && (
-                <div
-                  className="absolute -top-12 -bottom-12 pointer-events-none z-50 transition-all duration-75"
-                  style={{ left: `${alignGuides.vertical.x}px` }}
-                >
-                  <div className="w-[2px] h-full bg-stone-900 shadow-[0_0_10px_rgba(28,25,23,0.5)]" />
-                  <div className="absolute top-3 -translate-x-1/2 bg-stone-900 text-white font-mono text-[10px] font-black px-2.5 py-1 rounded-md shadow-xl flex items-center gap-1.5 whitespace-nowrap z-50 animate-in fade-in zoom-in-95 duration-100">
-                    <AlignCenter className="w-3 h-3 text-amber-300" />
-                    <span>{alignGuides.vertical.label}</span>
-                  </div>
-                </div>
-              )}
-              {alignGuides?.horizontal && (
-                <div
-                  className="absolute -left-12 -right-12 pointer-events-none z-50 transition-all duration-75"
-                  style={{ top: `${alignGuides.horizontal.y}px` }}
-                >
-                  <div className="h-[2px] w-full bg-stone-900 shadow-[0_0_10px_rgba(28,25,23,0.5)]" />
-                  <div className="absolute left-4 -translate-y-1/2 bg-stone-900 text-white font-mono text-[10px] font-black px-2.5 py-1 rounded-md shadow-xl flex items-center gap-1.5 whitespace-nowrap z-50 animate-in fade-in zoom-in-95 duration-100">
-                    <AlignCenter className="w-3 h-3 text-amber-300 rotate-90" />
-                    <span>{alignGuides.horizontal.label}</span>
-                  </div>
-                </div>
-              )}
+            {/* Drop indicator lines */}
+            {dropIndicator?.id === block.id && dropIndicator.pos === "before" && (
+              <div className="absolute -top-2 inset-x-0 h-1 bg-blue-500 rounded-full z-40 pointer-events-none" />
+            )}
+            {dropIndicator?.id === block.id && dropIndicator.pos === "after" && (
+              <div className="absolute -bottom-2 inset-x-0 h-1 bg-blue-500 rounded-full z-40 pointer-events-none" />
+            )}
 
-              {blocks.map((block, idx) => {
-                const isSelected = selectedBlockId === block.id;
-                const isKop =
-                  block.type === "OFFICIAL_LETTERHEAD" ||
-                  block.type === "letterhead" ||
-                  Boolean(block.isLocked);
-                const isFooter = block.type === "FOOTER" || block.type === "FOOTER_BLOCK";
-                const isImage =
-                  block.type === "IMAGE" ||
-                  block.type === "image" ||
-                  block.type === "IMAGE_STAMP";
-                const isMoved = !isKop && !isFooter && Boolean(block.x || block.y);
-                const blockAlign = normalizeHorizontalAlign(
-                  block.alignment || block.align,
-                  isImage
-                    ? "CENTER"
-                    : block.type === "HEADER" || block.type === "heading"
-                    ? "CENTER"
-                    : block.type === "SIGNATURE_COLUMN" || block.type === "SIGNATURE_STAMP"
-                    ? "RIGHT"
-                    : "LEFT"
-                );
-                const hasCustomWidth =
-                  !isKop &&
-                  !isFooter &&
-                  Boolean(block.width || (isImage && block.mediaData?.widthPx));
-                const selfAlignClass =
-                  hasCustomWidth && !isMoved
-                    ? blockAlign === "LEFT"
-                      ? "mr-auto"
-                      : blockAlign === "RIGHT"
-                      ? "ml-auto"
-                      : blockAlign === "CENTER"
-                      ? "mx-auto"
-                      : ""
-                    : "";
+            {/* Left handles: reorder grip + free move (hidden on locked Kop & pinned Footer) */}
+            {isEditable && isSelected && !isPositionLocked && (
+              <div className="absolute -top-3.5 left-2 flex items-center bg-blue-600 text-white rounded-lg shadow-md z-30 text-[10px] font-bold overflow-hidden">
+                <span
+                  draggable
+                  onDragStart={(e) => {
+                    setDragBlockId(block.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", block.id);
+                  }}
+                  onDragEnd={() => {
+                    setDragBlockId(null);
+                    setDropIndicator(null);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 hover:bg-blue-700 cursor-grab active:cursor-grabbing"
+                  title={isId ? "Seret untuk mengubah urutan blok" : "Drag to reorder block"}
+                >
+                  <GripVertical className="w-3 h-3 text-blue-200" />
+                  <span className="hidden sm:inline">{isId ? "Urutkan" : "Reorder"}</span>
+                </span>
+                <span className="w-px h-4 bg-blue-500" />
+                <span
+                  onMouseDown={(e) => handleStartDrag(e, block.id)}
+                  className="flex items-center gap-1 px-2 py-1 hover:bg-blue-700 cursor-grab active:cursor-grabbing"
+                  title={isId ? "Tahan & geser untuk posisi bebas" : "Hold & drag for free positioning"}
+                >
+                  <Move className="w-3 h-3 text-amber-300" />
+                  <span className="hidden sm:inline">{isId ? "Geser" : "Move"}</span>
+                  {isMoved && (
+                    <span className="font-mono text-[9px] text-blue-200 bg-blue-800/80 px-1 rounded">
+                      ({block.x || 0}, {block.y || 0})
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
 
-                return (
-                  <React.Fragment key={block.id}>
-                    {/* Gap quick-insert zone (rendered before body blocks & before footer so footer stays pinned via mt-auto) */}
-                    {isEditable && idx >= 1 && (
-                      <div className="relative h-4 -my-3 group/gap z-20 flex items-center justify-center">
-                        <div className="absolute inset-x-8 top-1/2 h-px bg-blue-300 opacity-0 group-hover/gap:opacity-100 transition-opacity" />
+            {/* Live drag tooltip */}
+            {dragging && dragging.blockId === block.id && (
+              <div className="absolute -top-9 left-1/2 -translate-x-1/2 bg-blue-900 text-white text-[10px] font-mono px-2.5 py-1 rounded-md shadow-xl z-50 flex items-center gap-1.5 pointer-events-none">
+                <Move className="w-3 h-3 text-amber-300" />
+                <span>
+                  X: {block.x || 0}px, Y: {block.y || 0}px {showGrid ? "(snap)" : ""}
+                </span>
+              </div>
+            )}
+
+            {/* Right floating toolbar with quick text & block alignment + Comment */}
+            {isEditable && isSelected && (
+              <div className="absolute -top-3.5 right-2 flex items-center gap-0.5 bg-stone-900 text-white rounded-lg px-1.5 py-0.5 shadow-md z-30 text-[10px] font-bold">
+                {isKop ? (
+                  <span className="text-amber-400 flex items-center gap-1 px-1">
+                    <Lock className="w-3 h-3" />
+                    <span>{isId ? "Kop Resmi Terkunci" : "Official Letterhead Locked"}</span>
+                  </span>
+                ) : isFooter ? (
+                  <>
+                    <span className="text-amber-400 flex items-center gap-1 px-1">
+                      <Lock className="w-3 h-3" />
+                      <span>{isId ? "Footer Terkunci di Bawah" : "Pinned Bottom Footer"}</span>
+                    </span>
+                    <span className="w-px h-3.5 bg-stone-700 mx-0.5" />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedBlockId(block.id);
+                        setLeftReviewTab("COMMENTS");
+                      }}
+                      className="p-1 hover:bg-stone-800 text-stone-300 hover:text-white rounded cursor-pointer"
+                      title={isId ? "Komentar Blok" : "Comment on block"}
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteBlock(block.id);
+                      }}
+                      className="p-1 hover:bg-rose-600 rounded text-rose-300 hover:text-white cursor-pointer"
+                      title={isId ? "Hapus Footer" : "Delete Footer"}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-stone-400 font-mono px-1">#{idx + 1}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedBlockId(block.id);
+                        setLeftReviewTab("COMMENTS");
+                      }}
+                      className="p-1 hover:bg-stone-800 text-stone-300 hover:text-white rounded cursor-pointer"
+                      title={isId ? "Komentar Blok" : "Comment on block"}
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                    </button>
+                    <span className="w-px h-3.5 bg-stone-700 mx-0.5" />
+                    {(
+                      [
+                        { v: "LEFT", icon: AlignLeft, label: isId ? "Rata Kiri" : "Align Left" },
+                        { v: "CENTER", icon: AlignCenter, label: isId ? "Rata Tengah" : "Align Center" },
+                        { v: "RIGHT", icon: AlignRight, label: isId ? "Rata Kanan" : "Align Right" },
+                        { v: "JUSTIFY", icon: AlignJustify, label: isId ? "Rata Kiri-Kanan" : "Justify" },
+                      ] as const
+                    ).map(({ v, icon: AIcon, label }) => {
+                      const curA = normalizeHorizontalAlign(
+                        block.alignment || block.align,
+                        block.type === "HEADER"
+                          ? "CENTER"
+                          : block.type === "SIGNATURE_COLUMN" || block.type === "SIGNATURE_STAMP"
+                          ? "RIGHT"
+                          : "LEFT"
+                      );
+                      return (
                         <button
+                          key={v}
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setQuickInsertIndex(idx);
+                            updateBlock(block.id, { alignment: v });
                           }}
-                          className="relative opacity-0 group-hover/gap:opacity-100 transition-opacity w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md hover:scale-110 cursor-pointer"
-                          title={isId ? "Sisipkan blok di sini" : "Insert block here"}
+                          className={cn(
+                            "p-1 rounded cursor-pointer transition-colors",
+                            curA === v
+                              ? "bg-white text-stone-900"
+                              : "text-stone-300 hover:bg-stone-800 hover:text-white"
+                          )}
+                          title={label}
                         >
-                          <Plus className="w-3 h-3" />
+                          <AIcon className="w-3 h-3" />
                         </button>
+                      );
+                    })}
+                    <span className="w-px h-3.5 bg-stone-700 mx-0.5" />
+                    {isMoved && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          resetBlockPosition(block.id);
+                        }}
+                        className="p-1 hover:bg-stone-800 text-amber-300 hover:text-white rounded cursor-pointer"
+                        title={isId ? "Reset posisi ke alur dokumen (0, 0)" : "Reset position to flow (0, 0)"}
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        moveBlock(block.id, "UP");
+                      }}
+                      disabled={idx <= 1}
+                      className="p-1 hover:bg-stone-800 disabled:opacity-30 rounded cursor-pointer"
+                      title={isId ? "Pindah ke atas" : "Move up"}
+                    >
+                      <ChevronUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        moveBlock(block.id, "DOWN");
+                      }}
+                      disabled={
+                        idx >= (firstFooterIdx >= 0 ? firstFooterIdx - 1 : displayBlocks.length - 1)
+                      }
+                      className="p-1 hover:bg-stone-800 disabled:opacity-30 rounded cursor-pointer"
+                      title={isId ? "Pindah ke bawah" : "Move down"}
+                    >
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        duplicateBlock(block.id);
+                      }}
+                      className="p-1 hover:bg-stone-800 rounded cursor-pointer"
+                      title={isId ? "Duplikat (Ctrl+D)" : "Duplicate (Ctrl+D)"}
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteBlock(block.id);
+                      }}
+                      className="p-1 hover:bg-rose-600 rounded text-rose-300 hover:text-white cursor-pointer"
+                      title={isId ? "Hapus (Delete)" : "Delete (Del)"}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Resize handles */}
+            {isEditable && isSelected && !isPositionLocked && (
+              <>
+                <div
+                  onMouseDown={(e) => handleStartResize(e, block.id, "se")}
+                  className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-blue-600 border-2 border-white rounded-xs shadow-md cursor-nwse-resize z-40 hover:scale-125 transition-transform"
+                  title={isId ? "Tahan & geser untuk ubah ukuran" : "Hold & drag to resize"}
+                />
+                <div
+                  onMouseDown={(e) => handleStartResize(e, block.id, "s")}
+                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-2 bg-blue-500/80 border border-white rounded-full shadow-2xs cursor-ns-resize z-40 hover:bg-blue-600 transition-colors"
+                />
+                <div
+                  onMouseDown={(e) => handleStartResize(e, block.id, "e")}
+                  className="absolute top-1/2 -right-1 -translate-y-1/2 w-2 h-8 bg-blue-500/80 border border-white rounded-full shadow-2xs cursor-ew-resize z-40 hover:bg-blue-600 transition-colors"
+                />
+                {resizing && resizing.blockId === block.id && liveDimensions && (
+                  <div className="absolute -bottom-8 right-0 bg-stone-900/90 text-white text-[10px] font-mono px-2 py-0.5 rounded shadow-lg z-50 pointer-events-none">
+                    {liveDimensions.width}px × {liveDimensions.height}px
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Block body */}
+            <BlockContent
+              block={block}
+              editable={isEditable && !isKop && !isMergePreview}
+              isId={isId}
+              documentId={documentId}
+              documentCode={effectiveDocCode}
+              docType={docType}
+              isApproved={isApproved}
+              department={department}
+              isSelected={isSelected}
+              onUpdate={(updates) => updateBlock(block.id, updates)}
+              onSelectBlock={() => setSelectedBlockId(block.id)}
+              onTableColResizeStart={handleTableColResizeStart}
+              onTableRowResizeStart={handleTableRowResizeStart}
+            />
+          </div>
+      </BlockHeightTracker>
+    );
+  };
+
+  const renderSheetOverlays = (pageNumber: number) => (
+    <>
+      {watermarkLabel && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden rounded-xl print:rounded-none">
+          <div className="text-[140px] font-black text-stone-900 opacity-[0.03] select-none rotate-[-45deg] tracking-widest uppercase">
+            {watermarkLabel}
+          </div>
+        </div>
+      )}
+      {showGrid && isEditable && !isFocus && (
+        <div className="absolute inset-0 pointer-events-none rounded-xl overflow-hidden z-0 opacity-40 print:hidden">
+          <svg className="w-full h-full" width="100%" height="100%">
+            <defs>
+              <pattern id={`smallGrid-${pageNumber}`} width="10" height="10" patternUnits="userSpaceOnUse">
+                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#cbd5e1" strokeWidth="0.5" strokeDasharray="1,2" />
+              </pattern>
+              <pattern id={`grid-${pageNumber}`} width="50" height="50" patternUnits="userSpaceOnUse">
+                <rect width="50" height="50" fill={`url(#smallGrid-${pageNumber})`} />
+                <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#94a3b8" strokeWidth="0.8" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill={`url(#grid-${pageNumber})`} />
+          </svg>
+        </div>
+      )}
+    </>
+  );
+
+  const renderAlignGuides = () => (
+    <>
+      {alignGuides?.vertical && (
+        <div
+          className="absolute -top-12 -bottom-12 pointer-events-none z-50 transition-all duration-75"
+          style={{ left: `${alignGuides.vertical.x}px` }}
+        >
+          <div className="w-[2px] h-full bg-stone-900 shadow-[0_0_10px_rgba(28,25,23,0.5)]" />
+          <div className="absolute top-3 -translate-x-1/2 bg-stone-900 text-white font-mono text-[10px] font-black px-2.5 py-1 rounded-md shadow-xl flex items-center gap-1.5 whitespace-nowrap z-50">
+            <AlignCenter className="w-3 h-3 text-amber-300" />
+            <span>{alignGuides.vertical.label}</span>
+          </div>
+        </div>
+      )}
+      {alignGuides?.horizontal && (
+        <div
+          className="absolute -left-12 -right-12 pointer-events-none z-50 transition-all duration-75"
+          style={{ top: `${alignGuides.horizontal.y}px` }}
+        >
+          <div className="h-[2px] w-full bg-stone-900 shadow-[0_0_10px_rgba(28,25,23,0.5)]" />
+          <div className="absolute left-4 -translate-y-1/2 bg-stone-900 text-white font-mono text-[10px] font-black px-2.5 py-1 rounded-md shadow-xl flex items-center gap-1.5 whitespace-nowrap z-50">
+            <AlignCenter className="w-3 h-3 text-amber-300 rotate-90" />
+            <span>{alignGuides.horizontal.label}</span>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  const renderAutoFooterBlock = () =>
+    isEditable &&
+    displayBlocks.length > 0 && (
+      <div className="absolute -bottom-5 inset-x-0 h-4 group/gap z-20 flex items-center justify-center print:hidden">
+        <div className="absolute inset-x-8 top-1/2 h-px bg-blue-300 opacity-0 group-hover/gap:opacity-100 transition-opacity" />
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setQuickInsertIndex(firstFooterIdx >= 0 ? firstFooterIdx : displayBlocks.length);
+          }}
+          className="relative opacity-0 group-hover/gap:opacity-100 transition-opacity w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md hover:scale-110 cursor-pointer"
+          title={isId ? "Sisipkan blok di akhir" : "Insert block at end"}
+        >
+          <Plus className="w-3 h-3" />
+        </button>
+      </div>
+    );
+
+  return (
+    <main
+      ref={scrollRef}
+      onClick={() => {
+        setSelectedBlockId(null);
+        setQuickInsertIndex(null);
+      }}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes(LIB_DRAG_MIME)) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        const key = e.dataTransfer.getData(LIB_DRAG_MIME);
+        if (key) {
+          e.preventDefault();
+          const item = LIBRARY_ITEMS.find((i) => i.key === key);
+          if (item) insertBlock(item, null);
+        }
+      }}
+      className={cn(
+        "studio-canvas-scroll flex-1 overflow-auto p-4 sm:p-8 flex flex-col items-center custom-scrollbar",
+        isFocus
+          ? "bg-stone-100"
+          : "bg-stone-200/70 bg-[radial-gradient(#d6d3d1_1px,transparent_1px)] [background-size:16px_16px]"
+      )}
+    >
+      {/* Live Mail Merge Preview Banner */}
+      {isMergePreview && activeMergeRecord && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="mb-4 px-3.5 py-2 rounded-xl bg-emerald-900 text-white text-xs flex items-center gap-3 shadow-md print:hidden"
+        >
+          <span className="font-bold">
+            Live Merge Preview: {activeMergeRecord.label}
+          </span>
+          <button
+            type="button"
+            onClick={() => setIsMergePreview(false)}
+            className="px-2 py-0.5 rounded bg-white/15 hover:bg-white/25 text-[11px] font-bold cursor-pointer"
+          >
+            Exit Preview
+          </button>
+        </div>
+      )}
+
+      <div
+        style={{
+          transform: `scale(${zoomLevel / 100})`,
+          transformOrigin: "top center",
+          transition: "transform 0.15s ease-out",
+        }}
+        className="flex flex-col items-center shrink-0"
+      >
+        {showRulersNow && (
+          <div className="flex items-center mb-1.5 pl-6 print:hidden">
+            <HorizontalMillimeterRuler
+              widthMm={paperDims.widthMm}
+              marginLeftMm={activeSetup.marginLeftMm}
+              marginRightMm={activeSetup.marginRightMm}
+            />
+          </div>
+        )}
+
+        <div className="flex items-start gap-1.5">
+          {showRulersNow && (
+            <div className="print:hidden">
+              <VerticalMillimeterRuler
+                heightMm={paperDims.heightMm}
+                marginTopMm={activeSetup.marginTopMm}
+                marginBottomMm={activeSetup.marginBottomMm}
+              />
+            </div>
+          )}
+
+          {layoutMode === "PAGINATED" ? (
+            <div ref={sheetRef} className="flex flex-col gap-6 items-center">
+              {paginatedPages.map((page, pIdx) => {
+                const isLastPage = pIdx === paginatedPages.length - 1;
+                const pageBodyBlocks = page.blocks.filter((b) => !isFooterBlock(b));
+                const pageFooterBlocks = page.blocks.filter(isFooterBlock);
+                return (
+                  <div
+                    key={page.pageNumber}
+                    data-studio-page={page.pageNumber}
+                    onClick={() => setActivePageNumber(page.pageNumber)}
+                    style={{
+                      width: `${paperDims.widthPx}px`,
+                      minHeight: `${paperDims.heightPx}px`,
+                      ...sheetPaddingStyle,
+                    }}
+                    className="studio-sheet scroll-mt-6 bg-white shadow-xl rounded-xl border border-stone-300 relative print:shadow-none print:border-none print:rounded-none z-0 shrink-0 flex flex-col box-border text-stone-900 font-sans"
+                  >
+                    {watermarkLabel && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden rounded-xl print:rounded-none">
+                        <div className="text-[140px] font-black text-stone-900 opacity-[0.03] select-none rotate-[-45deg] tracking-widest uppercase">
+                          {watermarkLabel}
+                        </div>
+                      </div>
+                    )}
+                    {showGrid && isEditable && (
+                      <div className="absolute inset-0 pointer-events-none rounded-xl overflow-hidden z-0 opacity-40 print:hidden">
+                        <svg className="w-full h-full" width="100%" height="100%">
+                          <defs>
+                            <pattern
+                              id={`smallGrid-p${page.pageNumber}`}
+                              width="10"
+                              height="10"
+                              patternUnits="userSpaceOnUse"
+                            >
+                              <path
+                                d="M 10 0 L 0 0 0 10"
+                                fill="none"
+                                stroke="#cbd5e1"
+                                strokeWidth="0.5"
+                                strokeDasharray="1,2"
+                              />
+                            </pattern>
+                            <pattern
+                              id={`grid-p${page.pageNumber}`}
+                              width="50"
+                              height="50"
+                              patternUnits="userSpaceOnUse"
+                            >
+                              <rect
+                                width="50"
+                                height="50"
+                                fill={`url(#smallGrid-p${page.pageNumber})`}
+                              />
+                              <path
+                                d="M 50 0 L 0 0 0 50"
+                                fill="none"
+                                stroke="#94a3b8"
+                                strokeWidth="0.8"
+                              />
+                            </pattern>
+                          </defs>
+                          <rect
+                            width="100%"
+                            height="100%"
+                            fill={`url(#grid-p${page.pageNumber})`}
+                          />
+                        </svg>
                       </div>
                     )}
 
                     <div
-                      id={`doc-container-${block.id}`}
-                      data-block-id={block.id}
-                      style={{
-                        width:
-                          isKop || isFooter
-                            ? "100%"
-                            : block.width
-                            ? typeof block.width === "number"
-                              ? `${block.width}px`
-                              : block.width
-                            : isImage && block.mediaData?.widthPx
-                            ? `${block.mediaData.widthPx}px`
-                            : "100%",
-                        minHeight: block.height
-                          ? typeof block.height === "number"
-                            ? `${block.height}px`
-                            : block.height
-                          : undefined,
-                        maxWidth: "100%",
-                        transform:
-                          !isKop && !isFooter && (block.x || block.y)
-                            ? `translate(${block.x || 0}px, ${block.y || 0}px)`
-                            : undefined,
-                      }}
-                      onMouseEnter={(e) => {
-                        setHoveredBlockId(block.id);
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setHoveredBlockRect({
-                          width: Math.round(rect.width),
-                          height: Math.round(rect.height),
-                        });
-                      }}
-                      onMouseLeave={() => {
-                        if (hoveredBlockId === block.id) {
-                          setHoveredBlockId(null);
-                          setHoveredBlockRect(null);
-                        }
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isEditable) setSelectedBlockId(block.id);
-                      }}
-                      onDragOver={(e) => {
-                        if (!isEditable) return;
-                        if (dragBlockId || e.dataTransfer.types.includes(LIB_DRAG_MIME)) {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const pos = isFooter ? "before" : e.clientY < rect.top + rect.height / 2 ? "before" : "after";
-                          setDropIndicator({ id: block.id, pos });
-                        }
-                      }}
-                      onDragLeave={() => {
-                        if (dropIndicator?.id === block.id) setDropIndicator(null);
-                      }}
-                      onDrop={(e) => {
-                        if (!isEditable) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const pos = isFooter ? "before" : e.clientY < rect.top + rect.height / 2 ? "before" : "after";
-                        const libKey = e.dataTransfer.getData(LIB_DRAG_MIME);
-                        if (libKey) {
-                          const item = LIBRARY_ITEMS.find((i) => i.key === libKey);
-                          if (item) {
-                            const targetIdx = blocksRef.current.findIndex((b) => b.id === block.id);
-                            insertBlock(item, pos === "before" ? targetIdx : targetIdx + 1);
-                          }
-                        } else if (dragBlockId) {
-                          reorderBlock(dragBlockId, block.id, pos);
-                        }
-                        setDropIndicator(null);
-                        setDragBlockId(null);
-                      }}
-                      className={cn(
-                        "relative group/block transition-shadow rounded-xl",
-                        selfAlignClass,
-                        isFooter ? "mt-auto pt-8 w-full px-0 py-1" : isKop ? "w-full px-0 py-1" : "p-2",
-                        isEditable && isSelected
-                          ? "ring-2 ring-blue-500 bg-blue-50/10"
-                          : isEditable
-                          ? "hover:ring-1 hover:ring-stone-300"
-                          : "",
-                        isEditable && isKop && "hover:ring-amber-300",
-                        dragging && dragging.blockId === block.id && "opacity-90 shadow-2xl ring-2 ring-amber-500 cursor-grabbing z-30"
-                      )}
+                      ref={pIdx === 0 ? blocksContainerRef : undefined}
+                      className="flex-1 flex flex-col gap-6 relative z-10 w-full"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {/* Hover Tooltip Popover */}
-                      {isEditable && hoveredBlockId === block.id && !dragging && !resizing && !isSelected && (
-                        <div className="absolute -top-8 left-2 bg-stone-900/95 backdrop-blur-md text-white border border-stone-700/80 rounded-lg px-2.5 py-1 text-[10px] font-mono shadow-xl z-40 flex items-center gap-2 pointer-events-none animate-in fade-in duration-100">
-                          <span className="font-bold text-amber-400 uppercase tracking-wide">
-                            {BLOCK_TYPE_LABELS[block.type] || block.type}
-                          </span>
-                          <span className="text-stone-500">|</span>
-                          <span className="text-stone-300">
-                            {hoveredBlockRect ? `${hoveredBlockRect.width}px × ${hoveredBlockRect.height}px` : "Auto"}
-                          </span>
-                          {block.isLocked && (
-                            <>
-                              <span className="text-stone-500">|</span>
-                              <span className="text-amber-300 font-bold flex items-center gap-1">
-                                <Lock className="w-2.5 h-2.5" /> Locked
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Drop indicator lines */}
-                      {dropIndicator?.id === block.id && dropIndicator.pos === "before" && (
-                        <div className="absolute -top-2 inset-x-0 h-1 bg-blue-500 rounded-full z-40 pointer-events-none" />
-                      )}
-                      {dropIndicator?.id === block.id && dropIndicator.pos === "after" && (
-                        <div className="absolute -bottom-2 inset-x-0 h-1 bg-blue-500 rounded-full z-40 pointer-events-none" />
-                      )}
-
-                      {/* Left handles: reorder grip + free move */}
-                      {isEditable && isSelected && !isKop && !isFooter && (
-                        <div className="absolute -top-3.5 left-2 flex items-center bg-blue-600 text-white rounded-lg shadow-md z-30 text-[10px] font-bold overflow-hidden">
-                          <span
-                            draggable
-                            onDragStart={(e) => {
-                              setDragBlockId(block.id);
-                              e.dataTransfer.effectAllowed = "move";
-                              e.dataTransfer.setData("text/plain", block.id);
-                            }}
-                            onDragEnd={() => {
-                              setDragBlockId(null);
-                              setDropIndicator(null);
-                            }}
-                            className="flex items-center gap-1 px-2 py-1 hover:bg-blue-700 cursor-grab active:cursor-grabbing"
-                            title={isId ? "Seret untuk mengubah urutan blok" : "Drag to reorder block"}
-                          >
-                            <GripVertical className="w-3 h-3 text-blue-200" />
-                            <span className="hidden sm:inline">{isId ? "Urutkan" : "Reorder"}</span>
-                          </span>
-                          <span className="w-px h-4 bg-blue-500" />
-                          <span
-                            onMouseDown={(e) => handleStartDrag(e, block.id)}
-                            className="flex items-center gap-1 px-2 py-1 hover:bg-blue-700 cursor-grab active:cursor-grabbing"
-                            title={isId ? "Tahan & geser untuk posisi bebas" : "Hold & drag for free positioning"}
-                          >
-                            <Move className="w-3 h-3 text-amber-300" />
-                            <span className="hidden sm:inline">{isId ? "Geser" : "Move"}</span>
-                            {isMoved && (
-                              <span className="font-mono text-[9px] text-blue-200 bg-blue-800/80 px-1 rounded">
-                                ({block.x || 0}, {block.y || 0})
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Pinned bottom badge for Footer */}
-                      {isEditable && isSelected && isFooter && (
-                        <div className="absolute -top-3.5 left-2 flex items-center gap-1.5 bg-stone-900 text-amber-400 rounded-lg px-2.5 py-1 shadow-md z-30 text-[10px] font-bold">
-                          <Lock className="w-3 h-3" />
-                          <span>{isId ? "Footer Otomatis di Bawah (Rata Header)" : "Auto-Pinned Bottom Footer"}</span>
-                        </div>
-                      )}
-
-                      {/* Live drag tooltip */}
-                      {dragging && dragging.blockId === block.id && (
-                        <div className="absolute -top-9 left-1/2 -translate-x-1/2 bg-blue-900 text-white text-[10px] font-mono px-2.5 py-1 rounded-md shadow-xl z-50 flex items-center gap-1.5 pointer-events-none">
-                          <Move className="w-3 h-3 text-amber-300" />
-                          <span>
-                            X: {block.x || 0}px, Y: {block.y || 0}px {showGrid ? "(snap)" : ""}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Right floating toolbar with quick text & block alignment */}
-                      {isEditable && isSelected && (
-                        <div className="absolute -top-3.5 right-2 flex items-center gap-0.5 bg-stone-900 text-white rounded-lg px-1.5 py-0.5 shadow-md z-30 text-[10px] font-bold">
-                          {isKop ? (
-                            <span className="text-amber-400 flex items-center gap-1 px-1">
-                              <Lock className="w-3 h-3" />
-                              <span>{isId ? "Kop Resmi Terkunci" : "Official Letterhead Locked"}</span>
-                            </span>
-                          ) : isFooter ? (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteBlock(block.id);
-                              }}
-                              className="p-1 hover:bg-rose-600 rounded text-rose-300 hover:text-white cursor-pointer flex items-center gap-1"
-                              title={isId ? "Hapus Footer" : "Delete Footer"}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              <span>{isId ? "Hapus" : "Remove"}</span>
-                            </button>
-                          ) : (
-                            <>
-                              <span className="text-stone-400 font-mono px-1">#{idx + 1}</span>
-                              {(
-                                [
-                                  { v: "LEFT", icon: AlignLeft, label: isId ? "Rata Kiri" : "Align Left" },
-                                  { v: "CENTER", icon: AlignCenter, label: isId ? "Rata Tengah" : "Align Center" },
-                                  { v: "RIGHT", icon: AlignRight, label: isId ? "Rata Kanan" : "Align Right" },
-                                  { v: "JUSTIFY", icon: AlignJustify, label: isId ? "Rata Kiri-Kanan" : "Justify" },
-                                ] as const
-                              ).map(({ v, icon: AIcon, label }) => {
-                                const curA = normalizeHorizontalAlign(
-                                  block.alignment || block.align,
-                                  block.type === "HEADER"
-                                    ? "CENTER"
-                                    : block.type === "SIGNATURE_COLUMN" || block.type === "SIGNATURE_STAMP"
-                                    ? "RIGHT"
-                                    : "LEFT"
-                                );
-                                return (
-                                  <button
-                                    key={v}
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      updateBlock(block.id, { alignment: v });
-                                    }}
-                                    className={cn(
-                                      "p-1 rounded cursor-pointer transition-colors",
-                                      curA === v
-                                        ? "bg-white text-stone-900"
-                                        : "text-stone-300 hover:bg-stone-800 hover:text-white"
-                                    )}
-                                    title={label}
-                                  >
-                                    <AIcon className="w-3 h-3" />
-                                  </button>
-                                );
-                              })}
-                              <span className="w-px h-3.5 bg-stone-700 mx-0.5" />
-                              {isMoved && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    resetBlockPosition(block.id);
-                                  }}
-                                  className="p-1 hover:bg-stone-800 text-amber-300 hover:text-white rounded cursor-pointer"
-                                  title={isId ? "Reset posisi ke alur dokumen (0, 0)" : "Reset position to flow (0, 0)"}
-                                >
-                                  <RotateCcw className="w-3 h-3" />
-                                </button>
-                              )}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  moveBlock(block.id, "UP");
-                                }}
-                                disabled={idx <= 1}
-                                className="p-1 hover:bg-stone-800 disabled:opacity-30 rounded cursor-pointer"
-                                title={isId ? "Pindah ke atas" : "Move up"}
-                              >
-                                <ChevronUp className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  moveBlock(block.id, "DOWN");
-                                }}
-                                disabled={idx === blocks.length - 1}
-                                className="p-1 hover:bg-stone-800 disabled:opacity-30 rounded cursor-pointer"
-                                title={isId ? "Pindah ke bawah" : "Move down"}
-                              >
-                                <ChevronDown className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  duplicateBlock(block.id);
-                                }}
-                                className="p-1 hover:bg-stone-800 rounded cursor-pointer"
-                                title={isId ? "Duplikat (Ctrl+D)" : "Duplicate (Ctrl+D)"}
-                              >
-                                <Copy className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteBlock(block.id);
-                                }}
-                                className="p-1 hover:bg-rose-600 rounded text-rose-300 hover:text-white cursor-pointer"
-                                title={isId ? "Hapus (Delete)" : "Delete (Del)"}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Resize handles */}
-                      {isEditable && isSelected && !isKop && !isFooter && (
-                        <>
-                          <div
-                            onMouseDown={(e) => handleStartResize(e, block.id, "se")}
-                            className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-blue-600 border-2 border-white rounded-xs shadow-md cursor-nwse-resize z-40 hover:scale-125 transition-transform"
-                            title={isId ? "Tahan & geser untuk ubah ukuran" : "Hold & drag to resize"}
-                          />
-                          <div
-                            onMouseDown={(e) => handleStartResize(e, block.id, "s")}
-                            className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-2 bg-blue-500/80 border border-white rounded-full shadow-2xs cursor-ns-resize z-40 hover:bg-blue-600 transition-colors"
-                          />
-                          <div
-                            onMouseDown={(e) => handleStartResize(e, block.id, "e")}
-                            className="absolute top-1/2 -right-1 -translate-y-1/2 w-2 h-8 bg-blue-500/80 border border-white rounded-full shadow-2xs cursor-ew-resize z-40 hover:bg-blue-600 transition-colors"
-                          />
-                          {resizing && resizing.blockId === block.id && liveDimensions && (
-                            <div className="absolute -bottom-8 right-0 bg-stone-900/90 text-white text-[10px] font-mono px-2 py-0.5 rounded shadow-lg z-50 pointer-events-none">
-                              {liveDimensions.width}px × {liveDimensions.height}px
-                            </div>
-                          )}
-                        </>
-                      )}
-
-                      {/* Block body */}
-                      <BlockContent
-                        block={block}
-                        editable={isEditable && !isKop}
-                        isId={isId}
-                        documentId={documentId}
-                        documentCode={effectiveDocCode}
-                        docType={docType}
-                        isApproved={isApproved}
-                        department={department}
-                        isSelected={isSelected}
-                        onUpdate={(updates) => updateBlock(block.id, updates)}
-                        onSelectBlock={() => setSelectedBlockId(block.id)}
-                        onTableColResizeStart={handleTableColResizeStart}
-                        onTableRowResizeStart={handleTableRowResizeStart}
-                      />
+                      {pIdx === 0 && renderAlignGuides()}
+                      {pageBodyBlocks.map((block) => {
+                        const globalIdx = displayBlocks.findIndex((b) => b.id === block.id);
+                        return renderBlockCard(block, globalIdx >= 0 ? globalIdx : 0, true);
+                      })}
+                      {isLastPage && renderAutoFooterBlock()}
                     </div>
-                  </React.Fragment>
+
+                    {pageFooterBlocks.length > 0 && (
+                      <div
+                        className={cn(
+                          "mt-auto pt-4 flex flex-col gap-3 relative z-10 w-full shrink-0",
+                          activeSetup.showPageNumbers ? "pb-1" : "pb-0"
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {pageFooterBlocks.map((block) => {
+                          const globalIdx = displayBlocks.findIndex((b) => b.id === block.id);
+                          return renderBlockCard(block, globalIdx >= 0 ? globalIdx : 0, false);
+                        })}
+                      </div>
+                    )}
+
+                    {activeSetup.showPageNumbers && (
+                      <div
+                        className={cn(
+                          "flex items-center justify-end text-[9.5px] font-mono text-stone-500 tabular-nums relative z-10 select-none shrink-0",
+                          pageFooterBlocks.length > 0 ? "mt-2" : "mt-3"
+                        )}
+                      >
+                        <span>
+                          Page {page.pageNumber} of {paginatedPages.length}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
+            </div>
+          ) : (
+            (() => {
+              const continuousBodyBlocks = displayBlocks.filter((b) => !isFooterBlock(b));
+              const continuousFooterBlocks = displayBlocks.filter(isFooterBlock);
+              return (
+                <div
+                  ref={sheetRef}
+                  style={{
+                    width: `${paperDims.widthPx}px`,
+                    minHeight: `${paperDims.heightPx}px`,
+                    ...sheetPaddingStyle,
+                  }}
+                  className="studio-sheet bg-white shadow-xl rounded-xl border border-stone-300 relative print:shadow-none print:border-none z-0 shrink-0 flex flex-col box-border"
+                >
+                  {renderSheetOverlays(1)}
+                  <div
+                    ref={blocksContainerRef}
+                    className="flex-1 flex flex-col gap-6 relative z-10 w-full"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {renderAlignGuides()}
+                    {continuousBodyBlocks.map((block) => {
+                      const globalIdx = displayBlocks.findIndex((b) => b.id === block.id);
+                      return renderBlockCard(block, globalIdx >= 0 ? globalIdx : 0, true);
+                    })}
+                    {renderAutoFooterBlock()}
+                  </div>
 
-              {/* Trailing quick-insert + Automatic ERP Standard Footer when no explicit FOOTER block is present */}
-              {!hasFooterBlock && (
-                <>
-                  {isEditable && blocks.length > 0 && (
-                    <div className="relative h-4 -my-3 group/gap z-20 flex items-center justify-center">
-                      <div className="absolute inset-x-8 top-1/2 h-px bg-blue-300 opacity-0 group-hover/gap:opacity-100 transition-opacity" />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setQuickInsertIndex(blocks.length);
-                        }}
-                        className="relative opacity-0 group-hover/gap:opacity-100 transition-opacity w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md hover:scale-110 cursor-pointer"
-                        title={isId ? "Sisipkan blok di akhir" : "Insert block at end"}
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
+                  {continuousFooterBlocks.length > 0 && (
+                    <div
+                      className={cn(
+                        "mt-auto pt-4 flex flex-col gap-3 relative z-10 w-full shrink-0",
+                        activeSetup.showPageNumbers ? "pb-1" : "pb-0"
+                      )}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {continuousFooterBlocks.map((block) => {
+                        const globalIdx = displayBlocks.findIndex((b) => b.id === block.id);
+                        return renderBlockCard(block, globalIdx >= 0 ? globalIdx : 0, false);
+                      })}
                     </div>
                   )}
-                  <div className="mt-auto pt-8 w-full px-0 py-1 relative">
-                    <BlockContent
-                      block={{
-                        id: "auto-erp-footer",
-                        type: "FOOTER",
-                        category: "FOOTER_TEMPLATE",
-                        footerVariant: "ERP_STANDARD",
-                        footerLeftText: isApproved
-                          ? "This document has been digitally authorized and computationally verified. Legally valid with system verification."
-                          : "This document is computationally issued and validated. Valid without physical signature.",
-                        footerRightText: docType ? docType.replace(/_/g, " ") : "OFFICIAL ERP DOCUMENT",
-                        subtitle: "OFFICIAL WORKSPACE DOCUMENT",
-                      }}
-                      editable={false}
-                      isId={isId}
-                      documentId={documentId}
-                      documentCode={effectiveDocCode}
-                      docType={docType}
-                      isApproved={isApproved}
-                      department={department}
-                      isSelected={false}
-                      onUpdate={() => {}}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </main>
+
+                  {activeSetup.showPageNumbers && (
+                    <div
+                      className={cn(
+                        "flex items-center justify-end text-[9.5px] font-mono text-stone-500 tabular-nums relative z-10 select-none shrink-0",
+                        continuousFooterBlocks.length > 0 ? "mt-2" : "mt-3"
+                      )}
+                    >
+                      <span>
+                        Page 1 of {paginatedPages.length}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()
+          )}
+        </div>
+      </div>
+    </main>
   );
 }

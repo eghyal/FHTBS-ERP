@@ -698,6 +698,18 @@ export const LIBRARY_ITEMS: LibraryItem[] = [
     accent: "bg-stone-100 text-stone-700",
     keywords: "garis pemisah divider line hr",
   },
+  {
+    key: "PAGE_BREAK",
+    type: "PAGE_BREAK",
+    category: "BODY_TEXT",
+    icon: SeparatorHorizontal,
+    labelId: "Pindah Halaman (Page Break)",
+    labelEn: "Explicit Page Break",
+    descId: "Memulai halaman cetak baru secara eksplisit mulai dari titik ini.",
+    descEn: "Forces subsequent blocks to start on a new printed page.",
+    accent: "bg-stone-900 text-white",
+    keywords: "page break halaman baru pindah halaman",
+  },
 
   // 2. Kop & Alamat (ADDRESS_TEMPLATE)
   {
@@ -1123,6 +1135,15 @@ export function buildBlock(
     };
   }
 
+  if (type === "PAGE_BREAK") {
+    return {
+      id,
+      type: "PAGE_BREAK",
+      category: "BODY_TEXT",
+      alignment: "CENTER",
+    };
+  }
+
   if (type === "IMAGE") {
     return {
       id,
@@ -1328,6 +1349,8 @@ export const BLOCK_TYPE_LABELS: Partial<Record<DocBlockType, string>> & Record<s
   TABLE: "Table",
   IMAGE: "Photo / Image",
   DIVIDER: "Divider",
+  PAGE_BREAK: "Page Break",
+  DOCUMENT_META: "Document Settings",
   FOOTER: "ERP Footer",
   FOOTER_BLOCK: "ERP Footer",
   METADATA_GRID: "Metadata",

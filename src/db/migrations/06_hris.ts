@@ -272,4 +272,7 @@ export function runHrisAndHcmMigrations(db: any) {
       );
     `,
     ).run();
+    safeExec(db, "ALTER TABLE payroll_requisitions ADD COLUMN period_key TEXT;");
+    safeExec(db, "ALTER TABLE finance_payroll ADD COLUMN period_key TEXT;");
+    safeExec(db, "ALTER TABLE hr_payslips ADD COLUMN period_key TEXT;");
 }

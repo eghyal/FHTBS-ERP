@@ -1,4 +1,4 @@
-import React, { forwardRef } from "react";
+import React, { forwardRef, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   CheckCircle2,
   CheckSquare,
@@ -7,7 +7,6 @@ import {
   Lock,
   Landmark,
   Clock,
-  ShieldCheck,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { cn } from "@/lib/utils";
@@ -30,6 +29,12 @@ import {
   extractTierFromRole,
   cleanBoldMarkdown,
 } from "./studio/config.ts";
+import {
+  extractDocumentMeta,
+  isMetaBlock,
+  mmToPx,
+  paginateDocumentBlocks,
+} from "../../../services/workspaceDocumentUtils.ts";
 
 /** Normalize metadata items from both Studio `{ key, value }[]` and legacy `{ label, value }[]` */
 export function normalizeMetadataRows(
@@ -93,6 +98,10 @@ export const SharedBlockRenderer: React.FC<SharedBlockRendererProps> = ({
   createdByName,
 }) => {
   const type = block.type;
+  if (isMetaBlock(block)) return null;
+  if (type === "PAGE_BREAK") {
+    return <div className="h-0 break-after-page print:break-after-page" aria-hidden="true" />;
+  }
   const isApproved = documentStatus === "APPROVED";
   const effectiveDocRef =
     documentCode || documentId || `DOC/ERP/${new Date().getFullYear()}`;
@@ -527,15 +536,17 @@ export const SharedBlockRenderer: React.FC<SharedBlockRendererProps> = ({
     );
   }
 
-  /* --- 7. TABLE (Exact 1:1 match to Studio Canvas with colWidths, rowHeights & Formulas) --- */
+  /* --- 7. TABLE (Exact 1:1 match to Studio Canvas with colWidths, rowHeights, Merged Cells & Formulas) --- */
   if (type === "table" || type === "TABLE") {
     const td = tableDataOverride || block.tableData || { headers: [], rows: [] };
     const headers = td.headers || block.tableHeaders || [];
     const rows = td.rows || block.tableRows || [];
-    const colWidths = td.colWidths || [];
+    const colWidths = td.colWidths || td.columnWidths || [];
     const rowHeights = td.rowHeights || [];
     const colAligns = td.columnAlignments || block.columnAlignments || [];
     const cellFormats = td.cellFormats || block.cellFormats || {};
+    const cellMetaMap = td.cellMeta || {};
+    const zebraStriping = Boolean(td.zebraStriping);
 
     const vAlignClass =
       normVAlign === "TOP"
@@ -544,8 +555,8 @@ export const SharedBlockRenderer: React.FC<SharedBlockRendererProps> = ({
         ? "align-bottom"
         : "align-middle";
 
-    const getColumnAlignClass = (cIdx: number) => {
-      const ca = colAligns[cIdx];
+    const getColumnAlignClass = (cIdx: number, cellAlign?: "left" | "center" | "right") => {
+      const ca = cellAlign || colAligns[cIdx];
       if (ca === "center") return "text-center";
       if (ca === "right") return "text-right";
       if (ca === "left") return "text-left";
@@ -559,6 +570,8 @@ export const SharedBlockRenderer: React.FC<SharedBlockRendererProps> = ({
       rowHeights,
       columnAlignments: colAligns,
       cellFormats,
+      cellMeta: cellMetaMap,
+      zebraStriping,
     };
 
     return (
@@ -602,48 +615,58 @@ export const SharedBlockRenderer: React.FC<SharedBlockRendererProps> = ({
                   <tr
                     key={rIdx}
                     style={{ height: `${rowH}px` }}
-                    className="border-b border-stone-100 last:border-b-0"
+                    className={cn(
+                      "border-b border-stone-100 last:border-b-0",
+                      zebraStriping && rIdx % 2 === 1 && "bg-stone-50/60"
+                    )}
                   >
                     {row.map((cell, cIdx) => {
+                      const cellKey = `${rIdx}-${cIdx}`;
+                      const meta = cellMetaMap[cellKey];
+                      if (meta?.hidden) return null;
+
                       const colW = colWidths[cIdx];
                       const rawStr = cell?.toString() || "";
                       const isFormula = rawStr.trim().startsWith("=");
-                      const cellFormat = cellFormats[`${rIdx}-${cIdx}`];
+                      const cellFormat = cellFormats[cellKey];
                       const evaluatedVal = isFormula
                         ? evaluateTableFormula(rawStr, rIdx, cIdx, effectiveTableData)
                         : formatCellValue(rawStr, cellFormat);
-                      const colAlignCls = getColumnAlignClass(cIdx);
+                      const colAlignCls = getColumnAlignClass(cIdx, meta?.textAlign);
+                      const isNumericCell =
+                        isFormula ||
+                        cellFormat === "NUMBER" ||
+                        cellFormat === "CURRENCY_IDR" ||
+                        cellFormat === "CURRENCY_USD" ||
+                        cellFormat === "PERCENT";
 
                       return (
                         <td
                           key={cIdx}
-                          style={colW ? { width: `${colW}px` } : undefined}
+                          rowSpan={meta?.rowSpan && meta.rowSpan > 1 ? meta.rowSpan : undefined}
+                          colSpan={meta?.colSpan && meta.colSpan > 1 ? meta.colSpan : undefined}
+                          style={{
+                            width: colW && (!meta?.colSpan || meta.colSpan <= 1) ? `${colW}px` : undefined,
+                            backgroundColor: meta?.backgroundColor || undefined,
+                          }}
                           className={cn(
                             "p-1 relative border-r border-stone-100 last:border-r-0",
-                            isFormula && "bg-stone-50/90",
+                            !meta?.backgroundColor && isFormula && "bg-stone-50/70",
                             vAlignClass,
                             colAlignCls
                           )}
                         >
-                          <div className="flex items-center gap-1">
-                            {isFormula && (
-                              <span
-                                className="px-1 py-0.2 rounded bg-stone-200/80 text-stone-700 font-mono text-[9px] font-black shrink-0"
-                                title={rawStr}
-                              >
-                                fx
-                              </span>
+                          <span
+                            className={cn(
+                              "block w-full text-stone-800 px-1.5 py-1",
+                              colAlignCls,
+                              (isFormula || meta?.bold) && "font-bold text-stone-950",
+                              meta?.italic && "italic",
+                              isNumericCell && "font-mono tabular-nums"
                             )}
-                            <span
-                              className={cn(
-                                "block w-full text-stone-800 px-1.5 py-1",
-                                colAlignCls,
-                                isFormula && "font-bold text-stone-950 font-mono"
-                              )}
-                            >
-                              {cleanBoldMarkdown(evaluatedVal)}
-                            </span>
-                          </div>
+                          >
+                            {cleanBoldMarkdown(evaluatedVal)}
+                          </span>
                         </td>
                       );
                     })}
@@ -1050,6 +1073,35 @@ export interface DocumentSheetRendererProps {
   className?: string;
 }
 
+function SheetBlockHeightTracker({
+  blockId,
+  onHeight,
+  children,
+}: {
+  blockId: string;
+  onHeight: (blockId: string, heightPx: number) => void;
+  children: React.ReactNode;
+}) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const h0 = Math.round(el.getBoundingClientRect().height);
+    if (h0 > 0) onHeight(blockId, h0);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = Math.round(entry.contentRect.height);
+        if (h > 0) onHeight(blockId, h);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [blockId, onHeight]);
+
+  return <div ref={hostRef}>{children}</div>;
+}
+
 export const DocumentSheetRenderer = forwardRef<HTMLDivElement, DocumentSheetRendererProps>(
   (
     {
@@ -1065,70 +1117,69 @@ export const DocumentSheetRenderer = forwardRef<HTMLDivElement, DocumentSheetRen
       createdByName,
       approvedByName,
       approvedAt,
-      signerChain,
       className,
     },
     ref
   ) => {
     const isApproved = documentStatus === "APPROVED";
     const paperDims = getPaperDimensions(layoutPreset, customWidthMm, customHeightMm);
-    const headerBlock = blocks.find((b) => b.type === "HEADER" || b.type === "heading");
+    const metaEnvelope = extractDocumentMeta(blocks);
+    const pageSetup = metaEnvelope.pageSetup;
+    const visibleBlocks = useMemo(() => (blocks || []).filter((b) => !isMetaBlock(b)), [blocks]);
+
+    const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>({});
+    const registerBlockHeight = useCallback((blockId: string, heightPx: number) => {
+      if (!Number.isFinite(heightPx) || heightPx <= 0) return;
+      const rounded = Math.round(heightPx);
+      setMeasuredHeights((prev) => {
+        if (prev[blockId] !== undefined && Math.abs(prev[blockId] - rounded) <= 5) {
+          return prev;
+        }
+        return { ...prev, [blockId]: rounded };
+      });
+    }, []);
+
+    const paginatedPages = useMemo(
+      () => paginateDocumentBlocks(visibleBlocks, paperDims, pageSetup, measuredHeights),
+      [visibleBlocks, paperDims, pageSetup, measuredHeights]
+    );
+
+    const headerBlock = visibleBlocks.find((b) => b.type === "HEADER" || b.type === "heading");
     const headerRef = headerBlock?.content
       ? headerBlock.content.replace(/^(NO\.?|REF\.?|NOMOR)\s*[:.]?\s*/i, "").trim()
       : "";
     const effectiveDocCode =
       documentCode || headerRef || documentId || `DOC/ERP/${new Date().getFullYear()}`;
-    const hasFooterBlock = blocks.some(
-      (b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK"
-    );
 
-    const defaultFooterBlock: DocBlock = {
-      id: "auto-erp-footer",
-      type: "FOOTER",
-      category: "FOOTER_TEMPLATE",
-      footerVariant: "ERP_STANDARD",
-      footerLeftText: isApproved
-        ? "This document has been digitally authorized and computationally verified. Legally valid with system verification."
-        : "This document is computationally issued and validated. Valid without physical signature.",
-      footerRightText: docType ? docType.replace(/_/g, " ") : "OFFICIAL ERP DOCUMENT",
-      subtitle: "OFFICIAL WORKSPACE DOCUMENT",
+    const watermarkLabel = !isApproved ? "DRAFT" : pageSetup.watermarkText || "";
+    const sheetPaddingStyle = {
+      paddingTop: `${mmToPx(pageSetup.marginTopMm)}px`,
+      paddingRight: `${mmToPx(pageSetup.marginRightMm)}px`,
+      paddingBottom: `${mmToPx(pageSetup.marginBottomMm)}px`,
+      paddingLeft: `${mmToPx(pageSetup.marginLeftMm)}px`,
     };
 
     return (
-      <div
-        ref={ref}
-        style={{
-          width: `${paperDims.widthPx}px`,
-          minHeight: `${paperDims.heightPx}px`,
-        }}
-        className={cn(
-          "studio-sheet bg-white shadow-xl rounded-xl border border-stone-300 relative print:shadow-none print:border-none z-0 shrink-0 flex flex-col box-border text-stone-900 font-sans",
-          paperDims.paddingClass,
-          className
-        )}
-      >
-        {/* ERP Standard Diagonal DRAFT Watermark (Exact 1:1 match with Studio & PrintTemplate.tsx) */}
-        {!isApproved && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden rounded-xl">
-            <div className="text-[150px] font-black text-stone-900 opacity-[0.03] select-none rotate-[-45deg] tracking-widest uppercase">
-              DRAFT
-            </div>
-          </div>
-        )}
+      <div ref={ref} className="flex flex-col gap-6 items-center">
+        {paginatedPages.map((page) => {
+          const isFooterBlk = (b: DocBlock) =>
+            b.type === "FOOTER" || b.type === "FOOTER_BLOCK";
+          const pageBodyBlocks = page.blocks.filter((b) => !isFooterBlk(b));
+          const pageFooterBlocks = page.blocks.filter(isFooterBlk);
 
-        {/* Blocks flow (Exact 1:1 coordinate space, gap-6, width, height & x/y offsets as Studio) */}
-        <div className="flex-1 flex flex-col gap-6 relative z-10 w-full">
-          {blocks.map((block, idx) => {
+          const renderSheetBlock = (block: DocBlock, idx: number) => {
+            const blockIdKey = block.id || `p${page.pageNumber}-idx${idx}`;
             const isKop =
               block.type === "OFFICIAL_LETTERHEAD" ||
               block.type === "letterhead" ||
               Boolean(block.isLocked);
-            const isFooter = block.type === "FOOTER" || block.type === "FOOTER_BLOCK";
+            const isFooter = isFooterBlk(block);
+            const isPositionLocked = isKop || isFooter;
             const isImage =
               block.type === "IMAGE" ||
               block.type === "image" ||
               block.type === "IMAGE_STAMP";
-            const isMoved = !isKop && !isFooter && Boolean(block.x || block.y);
+            const isMoved = !isPositionLocked && Boolean(block.x || block.y);
             const blockAlign = normalizeHorizontalAlign(
               block.alignment || block.align,
               isImage
@@ -1140,8 +1191,7 @@ export const DocumentSheetRenderer = forwardRef<HTMLDivElement, DocumentSheetRen
                 : "LEFT"
             );
             const hasCustomWidth =
-              !isKop &&
-              !isFooter &&
+              !isPositionLocked &&
               Boolean(block.width || (isImage && block.mediaData?.widthPx));
             const selfAlignClass =
               hasCustomWidth && !isMoved
@@ -1155,102 +1205,114 @@ export const DocumentSheetRenderer = forwardRef<HTMLDivElement, DocumentSheetRen
                 : "";
 
             return (
-              <div
-                key={block.id || idx}
-                style={{
-                  width:
-                    isKop || isFooter
-                      ? "100%"
-                      : block.width
-                      ? typeof block.width === "number"
-                        ? `${block.width}px`
-                        : block.width
-                      : isImage && block.mediaData?.widthPx
-                      ? `${block.mediaData.widthPx}px`
-                      : "100%",
-                  minHeight: block.height
-                    ? typeof block.height === "number"
-                      ? `${block.height}px`
-                      : block.height
-                    : undefined,
-                  maxWidth: "100%",
-                  transform:
-                    !isKop && !isFooter && (block.x || block.y)
-                      ? `translate(${block.x || 0}px, ${block.y || 0}px)`
-                      : undefined,
-                }}
-                className={cn(
-                  "relative rounded-xl",
-                  selfAlignClass,
-                  isFooter ? "mt-auto pt-8 w-full px-0 py-1" : isKop ? "w-full px-0 py-1" : "p-2"
-                )}
+              <SheetBlockHeightTracker
+                key={blockIdKey}
+                blockId={blockIdKey}
+                onHeight={registerBlockHeight}
               >
-                <SharedBlockRenderer
-                  block={block}
-                  isApprovalPreview={true}
-                  documentStatus={documentStatus}
-                  approvedByName={approvedByName}
-                  approvedAt={approvedAt}
-                  documentCode={effectiveDocCode}
-                  documentId={documentId}
-                  docType={docType}
-                  department={department}
-                  createdByName={createdByName}
-                />
-              </div>
+                <div
+                  style={{
+                    width:
+                      isPositionLocked
+                        ? "100%"
+                        : block.width
+                        ? typeof block.width === "number"
+                          ? `${block.width}px`
+                          : block.width
+                        : isImage && block.mediaData?.widthPx
+                        ? `${block.mediaData.widthPx}px`
+                        : "100%",
+                    minHeight:
+                      !isFooter && block.height
+                        ? typeof block.height === "number"
+                          ? `${block.height}px`
+                          : block.height
+                        : undefined,
+                    maxWidth: "100%",
+                    transform:
+                      !isPositionLocked && (block.x || block.y)
+                        ? `translate(${block.x || 0}px, ${block.y || 0}px)`
+                        : undefined,
+                  }}
+                  className={cn(
+                    "relative rounded-xl",
+                    selfAlignClass,
+                    isKop ? "w-full px-0 py-1" : "p-2"
+                  )}
+                >
+                  <SharedBlockRenderer
+                    block={block}
+                    isApprovalPreview={true}
+                    documentStatus={documentStatus}
+                    approvedByName={approvedByName}
+                    approvedAt={approvedAt}
+                    documentCode={effectiveDocCode}
+                    documentId={documentId}
+                    docType={docType}
+                    department={department}
+                    createdByName={createdByName}
+                  />
+                </div>
+              </SheetBlockHeightTracker>
             );
-          })}
+          };
 
-          {/* Sequential Multi-Signer Approval Progress Tracker */}
-          {signerChain && signerChain.length > 0 && (
-            <div className="w-full px-3 py-2.5 rounded-xl border border-stone-200 bg-stone-50/70 flex flex-wrap items-center justify-between gap-2 text-[10px]">
-              <div className="flex items-center gap-1.5 font-black uppercase tracking-wider text-stone-700">
-                <ShieldCheck className="w-3.5 h-3.5 text-stone-700" />
-                <span>Approval Chain ({signerChain.filter((s) => s.status === "APPROVED").length}/{signerChain.length})</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {signerChain.map((step, sIdx) => (
-                  <React.Fragment key={step.step}>
-                    <div
-                      className={cn(
-                        "px-2 py-0.5 rounded-md border font-bold flex items-center gap-1",
-                        step.status === "APPROVED"
-                          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                          : "bg-white border-stone-200 text-stone-600"
-                      )}
-                    >
-                      <span>#{step.step}</span>
-                      <span>{step.department}</span>
-                      <span className="text-stone-400">•</span>
-                      <span>{extractTierFromRole(step.role, step.department)}</span>
-                    </div>
-                    {sIdx < signerChain.length - 1 && (
-                      <span className="text-stone-400 font-bold">→</span>
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-          )}
+          return (
+            <div
+              key={page.pageNumber}
+              data-studio-page={page.pageNumber}
+              style={{
+                width: `${paperDims.widthPx}px`,
+                minHeight: `${paperDims.heightPx}px`,
+                ...sheetPaddingStyle,
+              }}
+              className={cn(
+                "studio-sheet bg-white shadow-xl rounded-xl border border-stone-300 relative print:shadow-none print:border-none print:rounded-none z-0 shrink-0 flex flex-col box-border text-stone-900 font-sans",
+                className
+              )}
+            >
+              {/* ERP Standard Diagonal Watermark */}
+              {watermarkLabel && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden rounded-xl print:rounded-none">
+                  <div className="text-[140px] font-black text-stone-900 opacity-[0.03] select-none rotate-[-45deg] tracking-widest uppercase">
+                    {watermarkLabel}
+                  </div>
+                </div>
+              )}
 
-          {/* Automatic ERP Standard Footer when document does not have an explicit FOOTER block */}
-          {!hasFooterBlock && (
-            <div className="mt-auto pt-8 w-full px-0 py-1 relative">
-              <SharedBlockRenderer
-                block={defaultFooterBlock}
-                isApprovalPreview={true}
-                documentStatus={documentStatus}
-                approvedByName={approvedByName}
-                approvedAt={approvedAt}
-                documentCode={effectiveDocCode}
-                documentId={documentId}
-                docType={docType}
-                department={department}
-                createdByName={createdByName}
-              />
+              {/* Blocks flow (Exact 1:1 coordinate space, gap-6, width, height & x/y offsets as Studio) */}
+              <div className="flex-1 flex flex-col gap-6 relative z-10 w-full">
+                {pageBodyBlocks.map((block, idx) => renderSheetBlock(block, idx))}
+              </div>
+
+              {/* Pinned Bottom Footer Area (Always at bottom, raised slightly above Page Number when present) */}
+              {pageFooterBlocks.length > 0 && (
+                <div
+                  className={cn(
+                    "mt-auto pt-4 flex flex-col gap-3 relative z-10 w-full shrink-0",
+                    pageSetup.showPageNumbers ? "pb-1" : "pb-0"
+                  )}
+                >
+                  {pageFooterBlocks.map((block, idx) => renderSheetBlock(block, idx))}
+                </div>
+              )}
+
+              {/* Clean bottom-right Page X of Y indicator (no running text or border) */}
+              {pageSetup.showPageNumbers && (
+                <div
+                  className={cn(
+                    "flex items-center justify-end text-[9.5px] font-mono text-stone-500 tabular-nums relative z-10 select-none shrink-0",
+                    pageFooterBlocks.length > 0 ? "mt-2" : "mt-3"
+                  )}
+                >
+                  <span>
+                    Page {page.pageNumber} of {paginatedPages.length}
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })}
       </div>
     );
   }

@@ -148,9 +148,14 @@ export function MachineBopModal({
       onClose={onClose}
       title="Warehouse Machine — BOP Integration"
       description={`Manage process routing & project bill-of-process linkages for ${machine.name}`}
-      maxWidth="3xl"
+      maxWidth="4xl"
+      footer={
+        <Button variant="secondary" onClick={onClose} className="rounded-xl text-xs font-bold">
+          Close
+        </Button>
+      }
     >
-      <div className="p-6 space-y-6">
+      <div className="space-y-5">
         {/* Machine Identity Header Banner */}
         <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 text-stone-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
           <div className="flex items-center gap-3">
@@ -391,7 +396,7 @@ export function MachineBopModal({
             <Button
               onClick={handleLinkMachine}
               disabled={isSubmitting || !selectedBopId}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-2 self-end sm:self-auto px-5 rounded-xl shadow-2xs"
+              className="bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold gap-2 self-end sm:self-auto px-5 rounded-xl shadow-2xs"
             >
               <Link2 className="w-4 h-4 text-white" />
               {isSubmitting ? "Linking..." : "Link Machine to BOP Process"}
@@ -399,12 +404,6 @@ export function MachineBopModal({
           </div>
         </div>
 
-        {/* Action Footer */}
-        <div className="flex justify-end pt-2 border-t border-stone-200 dark:border-stone-800">
-          <Button variant="secondary" onClick={onClose} className="rounded-xl text-xs font-bold">
-            Close
-          </Button>
-        </div>
       </div>
     </Modal>
   );

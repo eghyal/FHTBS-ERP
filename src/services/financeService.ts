@@ -13,9 +13,16 @@ export class FinanceService {
   /**
    * Post new Journal Entry with balance validation and accounting period check
    */
-  async postJournalEntry(entry: JournalEntryDto, userEmail: string) {
-    // 1. Check accounting period lock
-    assertAccountingPeriodOpen(db, entry.entry_date);
+  async postJournalEntry(entry: JournalEntryDto & { allow_soft_lock_adjustment?: boolean }, userEmail: string) {
+    // 1. Check accounting period lock (allow explicit MANUAL_ADJUSTMENT during SOFT_LOCKED reconciliation)
+    const refType =
+      entry.category && entry.category !== "GENERAL"
+        ? entry.category
+        : "MANUAL_ADJUSTMENT";
+    assertAccountingPeriodOpen(db, entry.entry_date, {
+      allowSoftLockAdjustment: Boolean(entry.allow_soft_lock_adjustment),
+      referenceType: refType,
+    });
 
     // 2. Validate Debit / Credit Balance
     const totalDebit = entry.lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);

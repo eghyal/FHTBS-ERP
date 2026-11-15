@@ -286,12 +286,28 @@ export const EcoHistoryModal: React.FC<EcoHistoryModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="6xl"
+      maxWidth="7xl"
       title="Engineering Change Order (ECO) History"
-      contentClassName="p-0 flex flex-col h-[88vh] bg-stone-100"
+      contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+      footer={
+        <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            variant="dark"
+            size="sm"
+            onClick={handleExportPdf}
+            disabled={isExporting}
+            leftIcon={<Download className="w-4 h-4" />}
+          >
+            {isExporting ? "Exporting PDF..." : "Export PDF (A4)"}
+          </Button>
+        </div>
+      }
     >
       {/* Horizontal Revision Navigation Bar (Clean & Elegant Horizontal View) */}
-      <div className="bg-white border-b border-stone-200 px-6 py-2.5 flex items-center justify-between gap-4 overflow-visible shrink-0 z-30">
+      <div className="bg-white border-b border-stone-200 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 overflow-visible shrink-0 z-30">
         {/* Left: Minimalist Revision Switcher Dropdown Button */}
         <div className="relative" ref={dropdownRef}>
           <button
@@ -392,7 +408,7 @@ export const EcoHistoryModal: React.FC<EcoHistoryModalProps> = ({
       </div>
 
       {/* Document Preview View Area (Dual Language ERP Standard) */}
-      <div className="flex-1 bg-stone-100 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+      <div className="flex-1 min-h-0 bg-stone-100 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
         <PdfPreviewWrapper>
           <PrintTemplate
             ref={printDocRef}
@@ -570,26 +586,6 @@ export const EcoHistoryModal: React.FC<EcoHistoryModalProps> = ({
             </div>
           </PrintTemplate>
         </PdfPreviewWrapper>
-      </div>
-
-      {/* Centered Modal Footer with Black Export PDF Button and Standard Secondary Close */}
-      <div className="p-4 sm:px-6 sm:py-4 border-t border-stone-200 bg-white flex justify-center items-center gap-4 shrink-0">
-        <Button
-          variant="secondary"
-          onClick={onClose}
-          className="px-6 py-2.5 rounded-xl text-xs font-bold border border-stone-200 bg-stone-100 hover:bg-stone-200 text-stone-700 cursor-pointer"
-        >
-          Close
-        </Button>
-        <Button
-          variant="dark"
-          onClick={handleExportPdf}
-          disabled={isExporting}
-          className="px-7 py-2.5 text-xs font-bold shadow-xs flex items-center gap-2 cursor-pointer"
-        >
-          <Download className="w-4 h-4" />
-          {isExporting ? "Exporting PDF..." : "Export PDF (A4)"}
-        </Button>
       </div>
     </Modal>
   );

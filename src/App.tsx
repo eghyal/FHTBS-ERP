@@ -109,6 +109,7 @@ const Finance = lazyRetry(() => import("./pages/erp/finance/Finance"));
 const GeneralLedger = lazyRetry(() => import("./pages/erp/finance/GeneralLedger"));
 const ReceivablesAging = lazyRetry(() => import("./pages/erp/finance/Receivables"));
 const CashflowForecasting = lazyRetry(() => import("./pages/erp/finance/Cashflow"));
+const BookClosing = lazyRetry(() => import("./pages/erp/finance/BookClosing"));
 const ImportData = lazyRetry(() => import("./pages/erp/admin/ImportData"));
 const HumanResource = lazyRetry(() => import("./pages/hris/HrPortal"));
 const EmployeeSelfService = lazyRetry(
@@ -825,6 +826,18 @@ function AnimatedRoutes() {
                           >
                             <PageWrapper>
                               <GeneralLedger />
+                            </PageWrapper>
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/book-closing"
+                        element={
+                          <ProtectedRoute
+                            allowedRoles={["FINANCE", "HR", "WAREHOUSE", "FC", "BOD", "DIRECTOR"]}
+                          >
+                            <PageWrapper>
+                              <BookClosing />
                             </PageWrapper>
                           </ProtectedRoute>
                         }

@@ -2071,7 +2071,8 @@ cuttingRouter.post("/api/production/projects/:id/scm-issue-to-floor", (req, res)
             item_summary: issuedItemsSummary.join(", ").slice(0, 120),
             user: actor,
           });
-        } catch (jeErr) {
+        } catch (jeErr: any) {
+          if (String(jeErr?.message || "").includes("PERIOD")) throw jeErr;
           console.warn("Automated WIP Material Issue GL journal warning:", jeErr);
         }
       }

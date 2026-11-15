@@ -509,17 +509,6 @@ export const emitProductionUpdate = (action: string, payload: any = {}) => {
   }
 };
 
-export const getHeijunkaThreshold = (): number => {
-  try {
-    const row = db.prepare("SELECT value FROM system_settings WHERE key = 'heijunka_threshold'").get() as { value: string } | undefined;
-    if (row && row.value) {
-      const num = parseFloat(row.value);
-      if (!isNaN(num) && num >= 0) return num;
-    }
-  } catch (e) {}
-  return 5000000;
-};
-
 export function getBomProcurementPipelineStatus(projectId: string, bomAllocations: any): {
       status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'REJECTED';
       progress: number;

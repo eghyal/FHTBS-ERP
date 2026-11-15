@@ -162,8 +162,8 @@ export function StationManagementModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Station Management" maxWidth="3xl">
-      <div className="p-6 space-y-6">
+    <Modal isOpen={isOpen} onClose={onClose} title="Station Management" maxWidth="4xl">
+      <div className="space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -190,7 +190,7 @@ export function StationManagementModal({
             <Button
               onClick={handleStartAdd}
               size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold gap-2"
+              className="bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold gap-2"
             >
               <Plus className="w-4 h-4" /> Add Station
             </Button>

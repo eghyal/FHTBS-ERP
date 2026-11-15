@@ -123,10 +123,10 @@ export function EditItemModal({
         </div>
       }
       description={`Update specifications and master record for ${editItem.item_code || "item"}`}
-      maxWidth="2xl"
+      maxWidth="4xl"
       contentClassName="p-0 border-t border-stone-100"
     >
-      <form onSubmit={handleFormSubmit} className="p-6 space-y-4">
+      <form onSubmit={handleFormSubmit} className="p-5 sm:p-6 space-y-5">
         {isSalesRestricted && (
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
             <ShieldCheck className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
@@ -136,7 +136,7 @@ export function EditItemModal({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Select
             label="Asset Class / Type"
             required
@@ -174,7 +174,7 @@ export function EditItemModal({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-stone-700 mb-1.5">
               Item Code (SKU) · System Locked
@@ -237,7 +237,7 @@ export function EditItemModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Dimension"
             value={editItem.dimension || ""}
@@ -312,7 +312,7 @@ export function EditItemModal({
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Machine Category"
                 value={editItem.machine_category || ""}
@@ -342,7 +342,7 @@ export function EditItemModal({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Serial Number"
                 type="text"
@@ -384,7 +384,7 @@ export function EditItemModal({
           </div>
         )}
 
-        <div className="flex justify-end gap-3 pt-6 border-t border-stone-100">
+        <div className="flex flex-wrap justify-end gap-3 pt-6 border-t border-stone-100">
           <Button
             type="button"
             variant="secondary"

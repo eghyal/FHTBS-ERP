@@ -4,12 +4,15 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
+import db from "../db/database.ts";
+import { hybridDb } from "../db/firestoreAdapter.ts";
+import { scheduleImmediateWriteThrough } from "../services/outboxService.ts";
 
 export const uploadRouter = Router();
 
 const uploadRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 30, // 30 files per minute
+  max: 45, // 45 files per minute
   message: { success: false, error: "Too many upload requests. Please wait a minute before retrying." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -20,7 +23,7 @@ const uploadRateLimiter = rateLimit({
   },
 });
 
-// Ensure uploads folder exists
+// Ensure uploads folder exists (used as secondary local disk cache)
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -30,7 +33,8 @@ const ALLOWED_MIMETYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
-  "application/pdf"
+  "image/avif",
+  "application/pdf",
 ]);
 
 const ALLOWED_EXTENSIONS = new Set([
@@ -38,8 +42,70 @@ const ALLOWED_EXTENSIONS = new Set([
   ".jpeg",
   ".png",
   ".webp",
-  ".pdf"
+  ".avif",
+  ".pdf",
 ]);
+
+// Ensure media_assets table exists even if upload route runs before migration
+function ensureMediaAssetsTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS media_assets (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size_bytes INTEGER DEFAULT 0,
+      data_base64 TEXT NOT NULL,
+      prefix TEXT DEFAULT 'uploads',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_media_assets_filename ON media_assets(filename);
+  `);
+}
+
+async function persistMediaAsset(params: {
+  buffer: Buffer;
+  filename: string;
+  mimeType: string;
+  prefix?: string;
+}) {
+  ensureMediaAssetsTable();
+
+  const id = `MED-${Date.now()}-${crypto.randomBytes(6).toString("hex").toUpperCase()}`;
+  const cleanFilename = params.filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || `${id}.webp`;
+  const cleanMime = params.mimeType || "image/webp";
+  const prefix = (params.prefix || "uploads").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const dataBase64 = params.buffer.toString("base64");
+  const createdAt = new Date().toISOString();
+
+  db.prepare(`
+    INSERT INTO media_assets (id, filename, mime_type, size_bytes, data_base64, prefix, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(id, cleanFilename, cleanMime, params.buffer.length, dataBase64, prefix, createdAt);
+
+  // Trigger fast outbox flush & direct Cloud SSOT write-through
+  scheduleImmediateWriteThrough();
+  void hybridDb
+    .write("media_assets", id, {
+      id,
+      filename: cleanFilename,
+      mime_type: cleanMime,
+      size_bytes: params.buffer.length,
+      data_base64: dataBase64,
+      prefix,
+      created_at: createdAt,
+    })
+    .catch((err) => {
+      console.warn("[MediaAssets] Non-fatal direct Cloud SSOT sync note:", err?.message || err);
+    });
+
+  return {
+    id,
+    url: `/api/media/${id}`,
+    filename: cleanFilename,
+    size: params.buffer.length,
+    mimetype: cleanMime,
+  };
+}
 
 // Multer Disk Storage Configuration
 const storage = multer.diskStorage({
@@ -54,7 +120,7 @@ const storage = multer.diskStorage({
     const randomHex = crypto.randomBytes(8).toString("hex");
     let ext = path.extname(file.originalname).toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(ext)) {
-      ext = file.mimetype === "application/pdf" ? ".pdf" : ".jpg";
+      ext = file.mimetype === "application/pdf" ? ".pdf" : file.mimetype === "image/webp" ? ".webp" : ".jpg";
     }
     const safeBaseName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 20) || "doc";
     cb(null, `${safeBaseName}_${timestamp}_${randomHex}${ext}`);
@@ -71,11 +137,10 @@ const upload = multer({
     if (ALLOWED_EXTENSIONS.has(ext) && ALLOWED_MIMETYPES.has(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error("File type rejected. Only JPG, PNG, WEBP, and PDF documents are permitted."));
+      cb(new Error("File type rejected. Only JPG, PNG, WEBP, AVIF, and PDF documents are permitted."));
     }
   },
 });
-
 
 // Preset catalogue photos for standard concrete products
 export const PRESET_CATALOG_IMAGES = [
@@ -141,65 +206,132 @@ uploadRouter.get("/api/upload/presets", (_req, res) => {
 });
 
 /**
- * POST /api/upload
- * Standard Multipart File Upload endpoint
+ * GET /api/media/:id
+ * Serves permanently stored media assets from SQLite / Cloud SSOT
  */
-uploadRouter.post(
-  "/api/upload",
-  uploadRateLimiter,
-  (req, res, next) => {
-    // Accepts any single file field: 'file', 'image', 'manifest', 'attachment'
-    upload.any()(req, res, (err) => {
-      if (err) {
-        console.error("[Upload API] Multer error:", err);
-        return res.status(400).json({
-          success: false,
-          error: err.message || "Failed to process file upload",
-        });
+uploadRouter.get("/api/media/:id", async (req, res) => {
+  try {
+    ensureMediaAssetsTable();
+    const lookupKey = String(req.params.id || "").trim();
+    if (!lookupKey) {
+      return res.status(400).json({ success: false, error: "Media ID is required" });
+    }
+
+    let row = db
+      .prepare("SELECT id, filename, mime_type, data_base64 FROM media_assets WHERE id = ? OR filename = ? LIMIT 1")
+      .get(lookupKey, lookupKey) as any;
+
+    if (!row) {
+      // Cloud SSOT fallback lookup if local cache was wiped
+      const cloudRow = await hybridDb.readDoc<any>("media_assets", lookupKey).catch(() => null);
+      if (cloudRow && cloudRow.data_base64) {
+        row = cloudRow;
+        try {
+          db.prepare(`
+            INSERT OR IGNORE INTO media_assets (id, filename, mime_type, size_bytes, data_base64, prefix, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            cloudRow.id || lookupKey,
+            cloudRow.filename || lookupKey,
+            cloudRow.mime_type || "image/webp",
+            Number(cloudRow.size_bytes || 0),
+            cloudRow.data_base64,
+            cloudRow.prefix || "uploads",
+            cloudRow.created_at || new Date().toISOString(),
+          );
+        } catch {}
       }
-      next();
-    });
-  },
-  (req, res) => {
-    try {
-      const files = req.files as Express.Multer.File[];
-      const singleFile = req.file || (files && files.length > 0 ? files[0] : null);
+    }
 
-      if (!singleFile) {
-        return res.status(400).json({
-          success: false,
-          error: "No file was uploaded in request payload",
-        });
-      }
+    if (!row || !row.data_base64) {
+      return res.status(404).json({ success: false, error: "Media asset not found" });
+    }
 
-      const relativeUrl = `/uploads/${singleFile.filename}`;
-      const fullUrl = `${req.protocol}://${req.get("host")}${relativeUrl}`;
+    const buffer = Buffer.from(row.data_base64, "base64");
+    const mimeType = row.mime_type || "image/webp";
 
-      return res.json({
-        success: true,
-        url: relativeUrl,
-        fileUrl: relativeUrl,
-        fullUrl: fullUrl,
-        filename: singleFile.filename,
-        originalName: singleFile.originalname,
-        size: singleFile.size,
-        mimetype: singleFile.mimetype,
-      });
-    } catch (err: any) {
-      console.error("[Upload API] Unexpected error:", err);
-      return res.status(500).json({
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    if (mimeType === "application/pdf") {
+      res.setHeader("Content-Disposition", `inline; filename="${row.filename || "document.pdf"}"`);
+    }
+    return res.send(buffer);
+  } catch (err: any) {
+    console.error("[Media API] Serve error:", err);
+    return res.status(500).json({ success: false, error: "Failed to load media asset" });
+  }
+});
+
+/**
+ * Shared multipart handler for /api/upload and /api/media/upload
+ */
+const handleMultipartUpload = async (req: any, res: any) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+    const singleFile = req.file || (files && files.length > 0 ? files[0] : null);
+
+    if (!singleFile) {
+      return res.status(400).json({
         success: false,
-        error: err?.message || "Internal server error during upload handling",
+        error: "No file was uploaded in request payload",
       });
     }
+
+    const buffer = fs.readFileSync(singleFile.path);
+    const prefix = typeof req.body?.prefix === "string" ? req.body.prefix : "uploads";
+    const persisted = await persistMediaAsset({
+      buffer,
+      filename: singleFile.filename,
+      mimeType: singleFile.mimetype,
+      prefix,
+    });
+
+    const fullUrl = `${req.protocol}://${req.get("host")}${persisted.url}`;
+
+    return res.json({
+      success: true,
+      id: persisted.id,
+      url: persisted.url,
+      fileUrl: persisted.url,
+      legacyUrl: `/uploads/${singleFile.filename}`,
+      fullUrl,
+      filename: persisted.filename,
+      originalName: singleFile.originalname,
+      size: persisted.size,
+      mimetype: persisted.mimetype,
+    });
+  } catch (err: any) {
+    console.error("[Upload API] Unexpected error:", err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || "Internal server error during upload handling",
+    });
   }
-);
+};
+
+const multerMiddleware = (req: any, res: any, next: any) => {
+  upload.any()(req, res, (err) => {
+    if (err) {
+      console.error("[Upload API] Multer error:", err);
+      return res.status(400).json({
+        success: false,
+        error: err.message || "Failed to process file upload",
+      });
+    }
+    next();
+  });
+};
+
+uploadRouter.post("/api/upload", uploadRateLimiter, multerMiddleware, handleMultipartUpload);
+uploadRouter.post("/api/media/upload", uploadRateLimiter, multerMiddleware, handleMultipartUpload);
 
 /**
  * POST /api/upload/base64
- * Uploads client-optimized base64 Data URLs and persists them to disk
+ * Uploads client-optimized base64 Data URLs and persists them permanently in DB + Cloud SSOT
  */
-uploadRouter.post("/api/upload/base64", uploadRateLimiter, (req, res) => {
+uploadRouter.post("/api/upload/base64", uploadRateLimiter, async (req, res) => {
   try {
     const { dataUrl, filename, prefix = "img" } = req.body;
 
@@ -211,7 +343,7 @@ uploadRouter.post("/api/upload/base64", uploadRateLimiter, (req, res) => {
     }
 
     // Parse Data URL e.g. "data:image/webp;base64,AAAA..."
-    const matches = dataUrl.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+    const matches = dataUrl.match(/^data:([A-Za-z0-9.+/-]+);base64,(.+)$/);
     if (!matches || matches.length !== 3) {
       return res.status(400).json({
         success: false,
@@ -223,7 +355,7 @@ uploadRouter.post("/api/upload/base64", uploadRateLimiter, (req, res) => {
     if (!ALLOWED_MIMETYPES.has(mimeType)) {
       return res.status(400).json({
         success: false,
-        error: "File type rejected. Only JPG, PNG, WEBP, and PDF documents are permitted.",
+        error: "File type rejected. Only JPG, PNG, WEBP, AVIF, and PDF documents are permitted.",
       });
     }
 
@@ -240,6 +372,8 @@ uploadRouter.post("/api/upload/base64", uploadRateLimiter, (req, res) => {
       ? ".webp"
       : mimeType.includes("png")
       ? ".png"
+      : mimeType.includes("avif")
+      ? ".avif"
       : mimeType.includes("pdf")
       ? ".pdf"
       : ".jpg";
@@ -248,19 +382,31 @@ uploadRouter.post("/api/upload/base64", uploadRateLimiter, (req, res) => {
     const randomHex = crypto.randomBytes(6).toString("hex");
     const safeName = (filename ? filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_") : prefix) || "upload";
     const finalFilename = `${safeName}_${timestamp}_${randomHex}${ext}`;
-    const filePath = path.join(uploadsDir, finalFilename);
 
-    fs.writeFileSync(filePath, buffer);
+    // Best-effort secondary disk cache write
+    try {
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(uploadsDir, finalFilename), buffer);
+    } catch {}
 
-    const relativeUrl = `/uploads/${finalFilename}`;
+    const persisted = await persistMediaAsset({
+      buffer,
+      filename: finalFilename,
+      mimeType,
+      prefix,
+    });
 
     return res.json({
       success: true,
-      url: relativeUrl,
-      fileUrl: relativeUrl,
-      filename: finalFilename,
-      size: buffer.length,
-      mimetype: mimeType,
+      id: persisted.id,
+      url: persisted.url,
+      fileUrl: persisted.url,
+      legacyUrl: `/uploads/${finalFilename}`,
+      filename: persisted.filename,
+      size: persisted.size,
+      mimetype: persisted.mimetype,
     });
   } catch (err: any) {
     console.error("[Upload API] Base64 upload error:", err);

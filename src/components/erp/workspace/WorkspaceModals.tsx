@@ -1,14 +1,19 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertOctagon,
   Archive,
+  CheckCircle2,
   Copy,
   Download,
+  FileCode,
   FileText,
+  GitCompare,
   History,
   PenTool,
   Printer,
   RotateCcw,
+  ShieldAlert,
+  ShieldCheck,
   Undo2,
 } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
@@ -17,7 +22,16 @@ import { AuthorizeDocModal } from "@/components/erp/AuthorizeDocModal";
 import { ReviseDocModal } from "@/components/erp/ReviseDocModal";
 import { PdfPreviewWrapper } from "@/components/shared/PdfPreviewWrapper";
 import { DocumentSheetRenderer } from "@/components/erp/workspace/BlockRenderer";
+import { extractTierFromRole } from "@/components/erp/workspace/studio/config";
 import { getDailyAuthKey } from "@/utils/auth";
+import {
+  compareDocumentVersions,
+  exportBlocksToHtml,
+  exportBlocksToMarkdown,
+  exportBlocksToPlainText,
+  extractDocumentMeta,
+  runDocumentPreflight,
+} from "@/services/workspaceDocumentUtils";
 import {
   WorkspaceDocument,
   WorkspaceDocumentVersion,
@@ -111,6 +125,77 @@ export const WorkspaceModals = React.memo(function WorkspaceModals({
   restoringVersion,
   handleRestoreVersion,
 }: WorkspaceModalsProps) {
+  const [compareBaseVer, setCompareBaseVer] = useState<number>(0);
+  const [compareTargetVer, setCompareTargetVer] = useState<number>(0);
+
+  useEffect(() => {
+    if (versionsList.length >= 2) {
+      setCompareTargetVer(versionsList[0].version);
+      setCompareBaseVer(versionsList[1].version);
+    } else if (versionsList.length === 1) {
+      setCompareTargetVer(versionsList[0].version);
+      setCompareBaseVer(versionsList[0].version);
+    }
+  }, [versionsList, historyDoc?.id]);
+
+  const previewPreflight = useMemo(() => {
+    if (!previewDoc) return null;
+    const blocks = previewDoc.content || [];
+    return runDocumentPreflight(blocks, extractDocumentMeta(blocks), {
+      title: previewDoc.title,
+    });
+  }, [previewDoc]);
+
+  const versionDiffItems = useMemo(() => {
+    const baseObj = versionsList.find((v) => v.version === compareBaseVer);
+    const targetObj = versionsList.find((v) => v.version === compareTargetVer);
+    if (!baseObj || !targetObj) return [];
+    const baseBlocks = Array.isArray((baseObj as any).content_json)
+      ? (baseObj as any).content_json
+      : [];
+    const targetBlocks = Array.isArray((targetObj as any).content_json)
+      ? (targetObj as any).content_json
+      : [];
+    return compareDocumentVersions(baseBlocks, targetBlocks).filter(
+      (d) => d.status !== "UNCHANGED"
+    );
+  }, [versionsList, compareBaseVer, compareTargetVer]);
+
+  const triggerModalTextExport = (fmt: "html" | "md" | "txt") => {
+    if (!previewDoc) return;
+    const safeCode = (previewDoc.document_code || previewDoc.title || previewDoc.id)
+      .trim()
+      .replace(/[^a-zA-Z0-9-_]/g, "_");
+    const blocks = previewDoc.content || [];
+    const meta = extractDocumentMeta(blocks);
+    const content =
+      fmt === "html"
+        ? exportBlocksToHtml(blocks, meta, {
+            title: previewDoc.title,
+            documentCode: previewDoc.document_code,
+            department: previewDoc.department,
+            status: previewDoc.status,
+          })
+        : fmt === "md"
+        ? exportBlocksToMarkdown(blocks, meta, previewDoc.title || safeCode)
+        : exportBlocksToPlainText(blocks, meta, previewDoc.title || safeCode);
+    const mime =
+      fmt === "html"
+        ? "text/html;charset=utf-8"
+        : fmt === "md"
+        ? "text/markdown;charset=utf-8"
+        : "text/plain;charset=utf-8";
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement("a");
+    a.href = url;
+    a.download = `${safeCode}.${fmt}`;
+    window.document.body.appendChild(a);
+    a.click();
+    window.document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       {/* ======================================================== */}
@@ -119,22 +204,22 @@ export const WorkspaceModals = React.memo(function WorkspaceModals({
       <Modal
         isOpen={!!previewDoc}
         onClose={() => setPreviewDoc(null)}
-        maxWidth="5xl"
-        contentClassName="p-0 flex flex-col h-[85vh] bg-stone-100 border-t border-stone-100"
+        maxWidth="6xl"
+        contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
         title={
           previewDoc && (
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-stone-900 text-white rounded-xl">
+              <div className="p-2 bg-stone-900 text-white rounded-xl shrink-0">
                 <FileText className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-stone-900 truncate max-w-md">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base sm:text-lg font-bold text-stone-900 leading-snug">
                     {previewDoc.title}
                   </h3>
                   {renderStatusBadge(previewDoc.status)}
                 </div>
-                <p className="text-xs text-stone-500 font-mono">
+                <p className="text-xs text-stone-500 font-mono truncate">
                   {previewDoc.document_code} • {previewDoc.document_type} •{" "}
                   {isId ? "Tujuan Otorisasi:" : "Target Route:"}{" "}
                   <b className="text-stone-800">
@@ -149,7 +234,7 @@ export const WorkspaceModals = React.memo(function WorkspaceModals({
         {previewDoc && (
           <>
             {/* Scrollable Preview Body (Standard ERP Gray Backdrop + A4 Print Sheet) */}
-            <div className="flex-1 overflow-y-auto p-2 sm:p-6 bg-stone-50 space-y-4 custom-scrollbar">
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 bg-stone-100/80 space-y-4 custom-scrollbar">
               {/* Revision Note Alert (For Staff & Approvers when revision note exists) */}
               {previewDoc.revision_note && (
                 <div className="max-w-[794px] mx-auto p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs flex items-start justify-between gap-4 shadow-2xs">
@@ -184,6 +269,40 @@ export const WorkspaceModals = React.memo(function WorkspaceModals({
                 </div>
               )}
 
+              {/* Sequential Multi-Signer Approval Progress Tracker (Modal Chrome — outside printable sheet) */}
+              {previewDoc.signer_chain && previewDoc.signer_chain.length > 0 && (
+                <div className="max-w-[794px] mx-auto px-3.5 py-2.5 rounded-xl border border-stone-200 bg-white flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                  <div className="flex items-center gap-1.5 font-black uppercase tracking-wider text-stone-700">
+                    <ShieldCheck className="w-3.5 h-3.5 text-stone-700" />
+                    <span>
+                      Approval Chain ({previewDoc.signer_chain.filter((s) => s.status === "APPROVED").length}/
+                      {previewDoc.signer_chain.length})
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {previewDoc.signer_chain.map((step, sIdx) => (
+                      <React.Fragment key={step.step}>
+                        <div
+                          className={
+                            step.status === "APPROVED"
+                              ? "px-2 py-0.5 rounded-md border font-bold flex items-center gap-1 bg-emerald-50 border-emerald-200 text-emerald-800"
+                              : "px-2 py-0.5 rounded-md border font-bold flex items-center gap-1 bg-stone-50 border-stone-200 text-stone-600"
+                          }
+                        >
+                          <span>#{step.step}</span>
+                          <span>{step.department}</span>
+                          <span className="text-stone-400">·</span>
+                          <span>{extractTierFromRole(step.role, step.department)}</span>
+                        </div>
+                        {sIdx < previewDoc.signer_chain!.length - 1 && (
+                          <span className="text-stone-400 font-bold">→</span>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Crisp 1:1 ERP Print Sheet Preview (Captured by generatePDF at 300 DPI) */}
               <PdfPreviewWrapper>
                 <DocumentSheetRenderer
@@ -204,7 +323,6 @@ export const WorkspaceModals = React.memo(function WorkspaceModals({
                   approvedAt={
                     previewDoc.approved_at || previewDoc.approvedAt || undefined
                   }
-                  signerChain={previewDoc.signer_chain}
                 />
               </PdfPreviewWrapper>
             </div>
@@ -230,9 +348,31 @@ export const WorkspaceModals = React.memo(function WorkspaceModals({
                 >
                   {isId ? "Riwayat Versi" : "Version History"}
                 </Button>
+                {previewPreflight && (
+                  <span
+                    className={
+                      previewPreflight.errorCount > 0
+                        ? "inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-800 text-[10px] font-mono font-bold"
+                        : previewPreflight.warningCount > 0
+                        ? "inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-mono font-bold"
+                        : "inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-mono font-bold"
+                    }
+                  >
+                    {previewPreflight.errorCount > 0 ? (
+                      <ShieldAlert className="w-3 h-3" />
+                    ) : (
+                      <CheckCircle2 className="w-3 h-3" />
+                    )}
+                    {previewPreflight.errorCount > 0
+                      ? `${previewPreflight.errorCount} Preflight Error`
+                      : previewPreflight.warningCount > 0
+                      ? `${previewPreflight.warningCount} Preflight Warn`
+                      : "Preflight OK"}
+                  </span>
+                )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 {/* Pending Approval Actions for Manager / Approver */}
                 {previewDoc.status === "PENDING_APPROVAL" &&
                   canApproveDoc(previewDoc) && (
@@ -319,7 +459,29 @@ export const WorkspaceModals = React.memo(function WorkspaceModals({
                     </Button>
                   )}
 
-                {/* Export DOCX & Export PDF (A4) */}
+                {/* Export Multi-Format (.HTML, .MD, .TXT, .DOCX, .PDF) */}
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => triggerModalTextExport("html")}
+                  leftIcon={<FileCode className="w-3.5 h-3.5" />}
+                >
+                  .HTML
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => triggerModalTextExport("md")}
+                >
+                  .MD
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => triggerModalTextExport("txt")}
+                >
+                  .TXT
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => handleDownloadDocx(previewDoc)}
@@ -476,7 +638,7 @@ export const WorkspaceModals = React.memo(function WorkspaceModals({
       <Modal
         isOpen={!!historyDoc}
         onClose={() => setHistoryDoc(null)}
-        maxWidth="3xl"
+        maxWidth="4xl"
         title={
           historyDoc && (
             <div className="flex items-center gap-2">
@@ -500,6 +662,7 @@ export const WorkspaceModals = React.memo(function WorkspaceModals({
                   : "Loading version snapshots & audit logs..."}
               </div>
             ) : (
+              <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Snapshot Versions Column */}
                 <div className="space-y-2.5">
@@ -615,6 +778,109 @@ export const WorkspaceModals = React.memo(function WorkspaceModals({
                   </div>
                 </div>
               </div>
+
+              {/* Interactive Snapshot Version Diff Comparator */}
+              {versionsList.length >= 2 && (
+                <div className="border-t border-stone-200 pt-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 font-black text-stone-900 uppercase tracking-wider text-[11px]">
+                      <GitCompare className="w-3.5 h-3.5 text-stone-700" />
+                      <span>Snapshot Version Diff</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <select
+                        value={compareBaseVer}
+                        onChange={(e) => setCompareBaseVer(Number(e.target.value))}
+                        className="px-2 py-1 rounded-lg border border-stone-200 bg-white font-mono text-[11px] font-bold"
+                      >
+                        {versionsList.map((v) => (
+                          <option key={`b-${v.version}`} value={v.version}>
+                            Base: v{v.version}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-stone-400">→</span>
+                      <select
+                        value={compareTargetVer}
+                        onChange={(e) => setCompareTargetVer(Number(e.target.value))}
+                        className="px-2 py-1 rounded-lg border border-stone-200 bg-white font-mono text-[11px] font-bold"
+                      >
+                        {versionsList.map((v) => (
+                          <option key={`t-${v.version}`} value={v.version}>
+                            Target: v{v.version}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-[11px] font-mono">
+                    <span className="text-emerald-700 font-bold">
+                      +{versionDiffItems.filter((d) => d.status === "ADDED").length} Added
+                    </span>
+                    <span className="text-amber-700 font-bold">
+                      ~{versionDiffItems.filter((d) => d.status === "MODIFIED").length} Modified
+                    </span>
+                    <span className="text-rose-700 font-bold">
+                      -{versionDiffItems.filter((d) => d.status === "REMOVED").length} Removed
+                    </span>
+                  </div>
+
+                  {versionDiffItems.length === 0 ? (
+                    <div className="p-3 rounded-xl border border-stone-200 bg-stone-50 text-stone-500 text-[11px]">
+                      No textual or structural differences between v{compareBaseVer} and v{compareTargetVer}.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {versionDiffItems.map((item) => (
+                        <div
+                          key={item.blockId}
+                          className="p-2.5 rounded-xl border border-stone-200 bg-stone-50/70 space-y-1"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[10px] font-bold text-stone-700">
+                              {item.label}
+                            </span>
+                            <span
+                              className={
+                                item.status === "ADDED"
+                                  ? "text-[10px] font-mono font-bold text-emerald-700"
+                                  : item.status === "REMOVED"
+                                  ? "text-[10px] font-mono font-bold text-rose-700"
+                                  : "text-[10px] font-mono font-bold text-amber-700"
+                              }
+                            >
+                              {item.status}
+                            </span>
+                          </div>
+                          <div className="text-[11px] leading-relaxed font-sans text-stone-800 whitespace-pre-wrap">
+                            {item.wordDiff.map((seg, sIdx) =>
+                              seg.kind === "added" ? (
+                                <ins
+                                  key={sIdx}
+                                  className="bg-emerald-100 text-emerald-900 no-underline px-0.5 rounded"
+                                >
+                                  {seg.text}
+                                </ins>
+                              ) : seg.kind === "removed" ? (
+                                <del
+                                  key={sIdx}
+                                  className="bg-rose-100 text-rose-900 px-0.5 rounded"
+                                >
+                                  {seg.text}
+                                </del>
+                              ) : (
+                                <span key={sIdx}>{seg.text}</span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              </>
             )}
           </div>
         )}

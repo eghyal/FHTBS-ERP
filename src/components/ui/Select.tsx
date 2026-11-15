@@ -42,11 +42,11 @@ export const Select = React.memo(
       const effectiveIcon = leftIcon ?? icon;
 
       return (
-        <div className={cn("w-full space-y-1.5 text-left", wrapperClassName)}>
+        <div className={cn("w-full flex flex-col justify-end space-y-1.5 text-left", wrapperClassName)}>
           {label && (
             <label
               htmlFor={selectId}
-              className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider select-none"
+              className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider leading-snug select-none"
             >
               {label}
             </label>

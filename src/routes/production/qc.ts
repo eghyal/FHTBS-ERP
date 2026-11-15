@@ -757,7 +757,8 @@ qcRouter.post(
                 });
               }
             }
-          } catch (jeErr) {
+          } catch (jeErr: any) {
+            if (String(jeErr?.message || "").includes("PERIOD")) throw jeErr;
             console.warn("Automated Production Finish GL journal warning:", jeErr);
           }
         });

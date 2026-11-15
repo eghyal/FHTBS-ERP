@@ -789,12 +789,12 @@ export default function Pricing() {
             </div>
           </div>
         }
-        maxWidth="3xl"
-        contentClassName="p-0 border-t border-stone-100"
+        maxWidth="4xl"
+        contentClassName="p-0 border-t border-stone-100 flex flex-col min-h-0"
       >
-        <div className="flex flex-col md:flex-row h-full md:max-h-[70vh]">
+        <div className="flex flex-col md:flex-row flex-1 min-h-0">
           {/* Add Quote Form */}
-          <div className="w-full md:w-2/5 p-6 bg-stone-50 border-r border-stone-100">
+          <div className="w-full md:w-2/5 p-5 sm:p-6 bg-stone-50 border-b md:border-b-0 md:border-r border-stone-100 shrink-0">
             <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-6 flex items-center gap-2">
               <Plus className="w-3.5 h-3.5" /> Add New Quote
             </h4>
@@ -839,7 +839,7 @@ export default function Pricing() {
           </div>
 
           {/* Active Quotes List */}
-          <div className="w-full md:w-3/5 p-6 bg-white overflow-y-auto custom-scrollbar flex flex-col">
+          <div className="w-full md:w-3/5 p-5 sm:p-6 bg-white overflow-y-auto custom-scrollbar flex flex-col min-h-0">
             <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-6 flex items-center gap-2">
               <TrendingUp className="w-3.5 h-3.5" /> Active Quotes (
               {currentItemQuotes.length})
@@ -958,22 +958,23 @@ export default function Pricing() {
           });
           setIsHistoryFullscreen(false);
         }}
-        maxWidth={isHistoryFullscreen ? "full" : "4xl"}
+        maxWidth={isHistoryFullscreen ? "full" : "5xl"}
         className={isHistoryFullscreen ? "max-h-[calc(100vh-2rem)] h-full" : ""}
         contentClassName="p-0 flex flex-col min-h-0"
         title={
-          <div className="flex justify-between items-start w-full pr-4">
+          <div className="flex flex-wrap justify-between items-start gap-3 w-full pr-2">
             <div>
               <h3 className="text-xl font-bold text-stone-900 tracking-tight">
                 Market Price Fluctuation
               </h3>
               <p className="text-stone-500 font-medium text-sm mt-1 flex items-center gap-2">
-                <Package className="w-4 h-4" /> {historyModal.itemName}
+                <Package className="w-4 h-4 shrink-0" /> {historyModal.itemName}
               </p>
             </div>
             <button
+              type="button"
               onClick={() => setIsHistoryFullscreen(!isHistoryFullscreen)}
-              className="mt-1 text-stone-500 hover:text-stone-900 bg-white shadow-sm p-2 rounded-xl transition-all hover:scale-105 active:scale-95 border border-stone-200"
+              className="mt-1 text-stone-500 hover:text-stone-900 bg-white shadow-sm p-2 rounded-xl transition-all hover:scale-105 active:scale-95 border border-stone-200 shrink-0"
               title={
                 isHistoryFullscreen ? "Exit Fullscreen" : "Fullscreen History"
               }
@@ -987,7 +988,7 @@ export default function Pricing() {
           </div>
         }
       >
-        <div className="p-8 overflow-y-auto bg-stone-50/30 flex-1 min-h-0 custom-scrollbar">
+        <div className="p-5 sm:p-6 overflow-y-auto bg-stone-50/30 flex-1 min-h-0 custom-scrollbar">
           {historyModal.history.length === 0 ? (
             <div className="text-center text-stone-400 py-20 font-medium flex flex-col items-center">
               <BarChart2 className="w-12 h-12 text-stone-400 mb-4" />

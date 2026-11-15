@@ -1026,8 +1026,8 @@ export default function Invoices() {
         isOpen={showInvoiceModal}
         onClose={() => setShowInvoiceModal(false)}
         title="Issue Commercial Invoice (Automated)"
-        maxWidth="lg"
-        contentClassName="p-0 border-t border-stone-100"
+        maxWidth="5xl"
+        contentClassName="p-0"
       >
         <form
           onSubmit={handleCreateInvoice}
@@ -1123,7 +1123,8 @@ export default function Invoices() {
                           {selectedDnItems.length} line items
                         </span>
                       </div>
-                      <Table compact>
+                      <div className="border border-stone-200 rounded-xl overflow-x-auto bg-white">
+                        <Table compact className="min-w-[600px]">
                         <TableHeader>
                           <TableRow hoverable={false}>
                             <TableHead>Item / Description</TableHead>
@@ -1159,7 +1160,8 @@ export default function Invoices() {
                             </TableRow>
                           ))}
                         </TableBody>
-                      </Table>
+                        </Table>
+                      </div>
                     </div>
                   )}
 
@@ -1255,7 +1257,7 @@ export default function Invoices() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest block">
                           Payment Terms
@@ -1324,7 +1326,7 @@ export default function Invoices() {
         isOpen={showDpInvoiceModal}
         onClose={() => setShowDpInvoiceModal(false)}
         title="Issue B2B Down Payment Invoice · COA 2106"
-        maxWidth="md"
+        maxWidth="2xl"
       >
         <form onSubmit={handleCreateDpInvoice} className="space-y-4 text-xs text-stone-700">
           <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl text-[11px] text-stone-600">
@@ -1351,7 +1353,7 @@ export default function Invoices() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Input
                 label="Down Payment (%)"
@@ -1405,10 +1407,10 @@ export default function Invoices() {
         isOpen={showRegisterBankModal}
         onClose={() => setShowRegisterBankModal(false)}
         title={t("Bank Accounts")}
-        maxWidth="md"
-        contentClassName="p-0 border-t border-stone-100"
+        maxWidth="2xl"
+        contentClassName="p-0"
       >
-        <div className="p-6 space-y-6 bg-white font-sans text-stone-900">
+        <div className="p-5 sm:p-6 space-y-6 bg-white font-sans text-stone-900">
           {bankAccounts.length > 0 && (
             <div className="space-y-3 mb-6 border-b border-stone-100 pb-6">
               <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">
@@ -1501,15 +1503,34 @@ export default function Invoices() {
           isOpen={showPreviewModal && !!previewInvoice}
           onClose={() => setShowPreviewModal(false)}
           title={`Commercial Invoice Document: ${previewInvoice.ci_number}`}
-          maxWidth="5xl"
-          contentClassName="p-0 flex flex-col h-[85vh] border-t border-stone-100"
+          maxWidth="6xl"
+          contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+          footer={
+            <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowPreviewModal(false)}
+              >
+                Close
+              </Button>
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={exportInvoicePdf}
+                isLoading={isSubmittingPdf}
+                leftIcon={!isSubmittingPdf ? <Download className="w-4 h-4" /> : undefined}
+              >
+                {isSubmittingPdf ? "Generating..." : "Export PDF (A4)"}
+              </Button>
+            </div>
+          }
         >
           {(() => {
             const pDetails = getInvoiceDetails(previewInvoice);
             const bankAcc = bankAccounts.find((b) => b.id === previewInvoice.bank_account_id) || bankAccounts[0];
             return (
-              <>
-                <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+              <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
                   <PdfPreviewWrapper>
                     <PrintTemplate
                       ref={printDocRef}
@@ -1797,27 +1818,6 @@ export default function Invoices() {
                     </PrintTemplate>
                   </PdfPreviewWrapper>
                 </div>
-
-                {/* Modal Footer Bar */}
-                <div className="p-6 border-t border-stone-100 bg-white flex justify-center gap-4">
-                  <Button
-                    variant="secondary"
-                    onClick={() => setShowPreviewModal(false)}
-                    className="px-6 py-2.5 rounded-xl text-sm"
-                  >
-                    Close
-                  </Button>
-                  <Button
-                    variant="dark"
-                    onClick={exportInvoicePdf}
-                    isLoading={isSubmittingPdf}
-                    className="px-6 py-2.5 rounded-xl text-sm shadow-md"
-                  >
-                    {!isSubmittingPdf && <Download className="w-4 h-4" />}
-                    {isSubmittingPdf ? "Generating..." : "Export PDF (A4)"}
-                  </Button>
-                </div>
-              </>
             );
           })()}
         </Modal>

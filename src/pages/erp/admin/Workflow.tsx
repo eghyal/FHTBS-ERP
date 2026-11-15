@@ -11,7 +11,6 @@ import {
   Plus,
   Trash2,
   SplitSquareHorizontal,
-  Zap,
   SlidersHorizontal,
   Play,
   RefreshCw,
@@ -61,7 +60,7 @@ const DOCUMENT_TYPES = [
 
 export default function WorkflowSettings() {
   const [activeTab, setActiveTab] = useState<
-    "QUEUE" | "MATRIX" | "SLA" | "HEIJUNKA" | "AUDIT" | "VISUAL"
+    "QUEUE" | "MATRIX" | "SLA" | "AUDIT" | "VISUAL"
   >("QUEUE");
   const { showToast } = useToast();
   const { user } = useAuth();
@@ -72,7 +71,6 @@ export default function WorkflowSettings() {
   const [matrices, setMatrices] = useState<any[]>([]);
   const [slas, setSlas] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [heijunkaThreshold, setHeijunkaThreshold] = useState<string>("5000000");
   const [docTypeFilter, setDocTypeFilter] = useState<string>("ALL");
 
   // Direct Step Approval Modal state
@@ -139,17 +137,13 @@ export default function WorkflowSettings() {
   const fetchRules = useCallback(async () => {
     try {
       setLoading(true);
-      const [mRes, sRes, hRes] = await Promise.all([
+      const [mRes, sRes] = await Promise.all([
         apiFetch("/api/workflow/matrices", {}, user?.username),
         apiFetch("/api/workflow/slas", {}, user?.username),
-        apiFetch("/api/lean/heijunka/threshold", {}, user?.username),
       ]);
 
       if (mRes.ok) setMatrices(mRes.data || []);
       if (sRes.ok) setSlas(sRes.data || []);
-      if (hRes.ok && hRes.data?.threshold !== undefined) {
-        setHeijunkaThreshold(hRes.data.threshold.toString());
-      }
     } catch (e) {
       console.error(e);
       showToast("Failed to load workflow configuration", "error");
@@ -361,21 +355,6 @@ export default function WorkflowSettings() {
       }
     }
 
-    try {
-      const parsedThreshold = parseInt(heijunkaThreshold.replace(/\D/g, ""), 10) || 0;
-      await apiFetch(
-        "/api/lean/heijunka/threshold",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ threshold: parsedThreshold }),
-        },
-        user?.username,
-      );
-    } catch (e) {
-      console.error("Failed to save heijunka threshold", e);
-    }
-
     showToast(
       "Dynamic Approval Matrix & SLA Auto-Escalation configuration updated successfully.",
       "success",
@@ -443,11 +422,6 @@ export default function WorkflowSettings() {
             label: "SLA & Escalation Rules",
             icon: <Clock className="w-3.5 h-3.5" />,
             badge: slas.length,
-          },
-          {
-            id: "HEIJUNKA",
-            label: "Heijunka Fast-Track",
-            icon: <Zap className="w-3.5 h-3.5" />,
           },
           {
             id: "VISUAL",
@@ -886,41 +860,6 @@ export default function WorkflowSettings() {
               </div>
             </Card>
           </div>
-        ) : activeTab === "HEIJUNKA" ? (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader
-                title="Threshold Configuration"
-                subtitle="Fast-Track nominal value threshold (IDR)"
-                icon={<Zap className="w-4 h-4" />}
-              />
-              <div className="max-w-md space-y-4">
-                <div>
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block mb-1.5">
-                    Fast-Track Approval Limit (IDR)
-                  </label>
-                  <Input
-                    type="text"
-                    disabled={!isExecutiveOrAdmin}
-                    value={parseInt(heijunkaThreshold.replace(/\D/g, "") || "0", 10).toLocaleString("en-US")}
-                    onChange={(e) => setHeijunkaThreshold(e.target.value)}
-                    icon={<span className="text-xs font-bold text-stone-500">Rp</span>}
-                    className="font-mono text-base font-bold tabular-nums"
-                  />
-                </div>
-
-                <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/70 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-stone-900">Current Active Limit</p>
-                    <p className="text-[11px] text-stone-500">Automated fast-track approval below this value</p>
-                  </div>
-                  <Badge variant="warning" className="tabular-nums font-mono">
-                    ≤ Rp {parseInt(heijunkaThreshold.replace(/\D/g, "") || "0", 10).toLocaleString("en-US")}
-                  </Badge>
-                </div>
-              </div>
-            </Card>
-          </div>
         ) : activeTab === "SLA" ? (
           <div className="space-y-6">
             <Card padding="none">
@@ -1145,10 +1084,41 @@ export default function WorkflowSettings() {
             ? `${approvalModal.item.document_number} · ${approvalModal.item.document_type}`
             : undefined
         }
-        maxWidth="md"
+        maxWidth="lg"
+        footer={
+          approvalModal.item ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  setApprovalModal((prev) => ({ ...prev, isOpen: false }))
+                }
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="workflow-step-approval-form"
+                variant="primary"
+                size="sm"
+                isLoading={approvalModal.submitting}
+                disabled={approvalModal.submitting}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>
+                  {approvalModal.submitting
+                    ? "Processing..."
+                    : "Confirm Authorization"}
+                </span>
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {approvalModal.item && (
-          <form onSubmit={handleConfirmStepApproval} className="space-y-4">
+          <form id="workflow-step-approval-form" onSubmit={handleConfirmStepApproval} className="space-y-4">
             <div className="p-3.5 rounded-xl bg-stone-50 border border-stone-200/80 space-y-1.5 text-xs">
               <div className="flex justify-between">
                 <span className="text-stone-500">Current Stage:</span>
@@ -1218,32 +1188,6 @@ export default function WorkflowSettings() {
                 </label>
               )}
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() =>
-                  setApprovalModal((prev) => ({ ...prev, isOpen: false }))
-                }
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                size="sm"
-                isLoading={approvalModal.submitting}
-                disabled={approvalModal.submitting}
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>
-                  {approvalModal.submitting
-                    ? "Processing..."
-                    : "Confirm Authorization"}
-                </span>
-              </Button>
-            </div>
           </form>
         )}
       </Modal>

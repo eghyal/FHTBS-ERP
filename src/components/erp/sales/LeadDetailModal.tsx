@@ -77,7 +77,7 @@ export function LeadScoutDetailModal({
     <Modal
       isOpen={!!customer}
       onClose={onClose}
-      maxWidth="4xl"
+      maxWidth="5xl"
       title={
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-stone-100 border border-stone-200 flex items-center justify-center font-bold text-stone-700 text-sm shrink-0">
@@ -371,7 +371,7 @@ export function LeadScoutDetailModal({
             )}
 
             {/* Feedback Loop */}
-            <div className="pt-1 flex items-center justify-between text-xs text-stone-500">
+            <div className="pt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-500">
               <span>Was this intelligence assessment accurate?</span>
               <div className="flex items-center gap-2">
                 <Button

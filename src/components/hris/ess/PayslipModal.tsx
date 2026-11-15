@@ -22,8 +22,30 @@ export const PayslipModal: React.FC<PayslipModalProps> = ({
       isOpen={Boolean(selectedPayslip)}
       onClose={onClose}
       uiTheme="hris"
-      maxWidth="2xl"
-      contentClassName="p-0 overflow-hidden"
+      maxWidth="3xl"
+      contentClassName="p-0 flex flex-col min-h-0"
+      footer={
+        selectedPayslip ? (
+          <div className="flex flex-wrap justify-end gap-2.5 font-bold">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => printOfficialPayslip(selectedPayslip, user)}
+              className="px-3.5 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5"
+            >
+              <Printer className="w-4 h-4" /> Print PDF
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={onClose}
+              className="px-5 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-xs"
+            >
+              Close
+            </Button>
+          </div>
+        ) : undefined
+      }
       title={
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-stone-200/80 border border-stone-300/60 flex items-center justify-center text-stone-800">
@@ -118,25 +140,6 @@ export const PayslipModal: React.FC<PayslipModalProps> = ({
                 </span>
               </div>
             </div>
-          </div>
-
-          <div className="bg-stone-50 px-4 sm:px-6 py-4 border-t border-stone-100 flex justify-end gap-2.5 font-bold">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => printOfficialPayslip(selectedPayslip, user)}
-              className="px-3.5 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-black uppercase tracking-wider rounded-xl flex items-center gap-1.5"
-            >
-              <Printer className="w-4 h-4" /> Print PDF
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              onClick={onClose}
-              className="px-5 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-xs"
-            >
-              Close
-            </Button>
           </div>
         </div>
       )}

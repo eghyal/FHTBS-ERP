@@ -152,4 +152,63 @@ export function runFinanceAndAccountingMigrations(db: any) {
     safeExec(db, "ALTER TABLE finance_monthly_summaries ADD COLUMN material_cogs REAL DEFAULT 0;");
     safeExec(db, "ALTER TABLE finance_monthly_summaries ADD COLUMN labor_cogs REAL DEFAULT 0;");
 
+    // Accounting Period Reopen Governance metadata
+    safeExec(db, "ALTER TABLE accounting_periods ADD COLUMN reopened_by TEXT;");
+    safeExec(db, "ALTER TABLE accounting_periods ADD COLUMN reopened_at DATETIME;");
+    safeExec(db, "ALTER TABLE accounting_periods ADD COLUMN reopen_reason TEXT;");
+    safeExec(db, "ALTER TABLE accounting_periods ADD COLUMN reopen_count INTEGER DEFAULT 0;");
+
+    // Required Items Checklist & Evidence Upload Platform per Accounting Period
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS closing_required_items (
+        id TEXT PRIMARY KEY,
+        period_key TEXT NOT NULL,
+        item_code TEXT NOT NULL,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        assigned_role TEXT DEFAULT 'FINANCE',
+        requirement_type TEXT CHECK(requirement_type IN ('AUTO_GATE', 'UPLOAD_AND_FORM', 'FORM_ONLY')) DEFAULT 'UPLOAD_AND_FORM',
+        is_required INTEGER DEFAULT 1,
+        due_day INTEGER DEFAULT 24,
+        status TEXT CHECK(status IN ('PENDING', 'SUBMITTED', 'VERIFIED', 'REJECTED')) DEFAULT 'PENDING',
+        form_schema_json TEXT DEFAULT '[]',
+        payload_json TEXT DEFAULT '{}',
+        attachment_urls_json TEXT DEFAULT '[]',
+        system_diagnostic_json TEXT DEFAULT '{}',
+        submitted_by TEXT,
+        submitted_at DATETIME,
+        verified_by TEXT,
+        verified_at DATETIME,
+        rejection_reason TEXT,
+        sort_order INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(period_key, item_code)
+      );
+    `).run();
+
+    safeExec(db, "CREATE INDEX IF NOT EXISTS idx_closing_req_period ON closing_required_items(period_key);");
+
+    // Immutable Sealed Closing Snapshots for HARD_CLOSED periods
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS closing_snapshots (
+        id TEXT PRIMARY KEY,
+        period_key TEXT NOT NULL,
+        version INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'SEALED',
+        summary_json TEXT NOT NULL,
+        pnl_json TEXT NOT NULL,
+        trial_balance_json TEXT NOT NULL,
+        prq_summary_json TEXT NOT NULL,
+        checklist_manifest_json TEXT NOT NULL,
+        tax_bank_summary_json TEXT NOT NULL,
+        sealed_by TEXT NOT NULL,
+        sealed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        notes TEXT
+      );
+    `).run();
+
+    safeExec(db, "CREATE INDEX IF NOT EXISTS idx_closing_snap_period ON closing_snapshots(period_key);");
+
 }

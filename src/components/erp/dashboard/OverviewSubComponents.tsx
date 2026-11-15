@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Library,
   X,
   RefreshCw,
   FolderKanban,
   ChevronRight,
+  ChevronLeft,
   AlertCircle,
   ArrowRight,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn, getInitials } from "@/lib/utils";
@@ -29,130 +28,138 @@ export const OverviewTeamStatusStrip = React.memo(function OverviewTeamStatusStr
   isRefreshingStatus,
   onRefresh,
 }: OverviewTeamStatusStripProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [maxFitCount, setMaxFitCount] = useState(6);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const listContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const SCROLL_STEP_PX = 240;
+
+  const updateScrollBounds = useCallback(() => {
     const el = listContainerRef.current;
     if (!el) return;
-
-    const calculateFit = () => {
-      const width = el.clientWidth;
-      if (width <= 0) return;
-      // Reserve ~88px for the "+N more" pill when overflow exists; each user item is ~148px including gap-5
-      const fit = Math.max(1, Math.floor((width - 88) / 148));
-      setMaxFitCount(fit);
-    };
-
-    calculateFit();
-    const observer = new ResizeObserver(calculateFit);
-    observer.observe(el);
-    return () => observer.disconnect();
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
   }, []);
 
-  const hasOverflow = sortedUsers.length > maxFitCount;
-  const visibleUsers =
-    isExpanded || !hasOverflow
-      ? sortedUsers
-      : sortedUsers.slice(0, maxFitCount);
-  const hiddenCount = Math.max(0, sortedUsers.length - visibleUsers.length);
+  useEffect(() => {
+    updateScrollBounds();
+    const el = listContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(updateScrollBounds);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [updateScrollBounds, sortedUsers.length]);
+
+  const onlineCount = sortedUsers.filter((u) => Boolean(u._isOnline)).length;
+  const hasHorizontalOverflow = canScrollLeft || canScrollRight;
+
+  const handleScrollStep = (direction: -1 | 1) => {
+    const el = listContainerRef.current;
+    if (!el) return;
+    el.scrollBy({
+      left: direction * SCROLL_STEP_PX,
+      behavior: "smooth",
+    });
+  };
 
   return (
-    <div
-      className={cn(
-        "team-status-strip bg-transparent py-1.5 px-1 flex gap-4 -mt-1 mb-2",
-        isExpanded ? "items-start" : "items-center",
-      )}
-    >
-      <div className={cn("flex items-center gap-2 shrink-0", isExpanded && "mt-1")}>
-        <span className="text-[11px] text-stone-400 font-bold uppercase tracking-widest">
+    <div className="team-status-strip bg-transparent py-1.5 px-1 flex items-center gap-3 -mt-1 mb-2 min-w-0">
+      {/* Left Anchor: Team Status + Refresh + Vertical Hairline Divider */}
+      <div className="flex items-center gap-2 pr-3 border-r border-stone-200/80 shrink-0">
+        <span
+          className="text-[11px] text-stone-500 font-bold uppercase tracking-widest whitespace-nowrap"
+          title={sortedUsers.length > 0 ? `${onlineCount}/${sortedUsers.length} online` : undefined}
+        >
           Team Status
         </span>
         <button
+          type="button"
           onClick={onRefresh}
           disabled={isRefreshingStatus}
-          className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-200/50 rounded-md transition-all disabled:opacity-50 cursor-pointer"
+          className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-200/40 rounded-md transition-colors disabled:opacity-50 cursor-pointer shrink-0"
           title="Refresh Status"
+          aria-label="Refresh Team Status"
         >
           <RefreshCw
             className={cn("w-3 h-3", isRefreshingStatus && "animate-spin")}
           />
         </button>
       </div>
-      <div className={cn("h-4 w-px bg-stone-200/70 shrink-0", isExpanded && "mt-1.5")} />
+
+      {/* Inline Horizontal Member Rail Extending to the Right (Always 1 Line, 8px Gap, Transparent) */}
       <div
         ref={listContainerRef}
-        className={cn(
-          "flex items-center gap-x-5 gap-y-2.5 flex-1 min-w-0",
-          isExpanded ? "flex-wrap" : "flex-nowrap overflow-hidden",
-        )}
+        onScroll={updateScrollBounds}
+        className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto scrollbar-hide scroll-smooth"
       >
         {sortedUsers.length === 0 ? (
-          <span className="text-[11px] text-stone-300 tracking-wider uppercase font-semibold">
+          <span className="text-[11px] text-stone-400 tracking-wider uppercase font-semibold py-1 whitespace-nowrap">
             No team data
           </span>
         ) : (
-          <>
-            {visibleUsers.map((u) => {
-              const isOnline = Boolean(u._isOnline);
-              return (
-                <div
-                  key={u.username}
-                  className="flex items-center gap-2 shrink-0"
-                  title={`${u.name || u.username} — ${isOnline ? `On ${u.device_type || "Device"}` : "Offline"}`}
-                >
-                  <div className="relative">
-                    <div className="w-7 h-7 rounded-full bg-stone-100/80 border border-stone-200/60 flex items-center justify-center text-[10px] font-bold text-stone-700">
-                      {getInitials(u.name || u.username)}
-                    </div>
-                    <span className="flex h-2.5 w-2.5 absolute -bottom-0.5 -right-0.5">
-                      {isOnline && (
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      )}
-                      <span
-                        className={cn(
-                          "relative inline-flex rounded-full h-2.5 w-2.5 border-2 border-white",
-                          isOnline ? "bg-emerald-500" : "bg-stone-400",
-                        )}
-                      ></span>
-                    </span>
-                  </div>
-                  <div className="flex flex-col justify-center">
-                    <span className="text-[11px] font-bold text-stone-800 leading-tight max-w-[115px] truncate">
-                      {u.name || u.username}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-[9px] uppercase tracking-wider leading-none font-semibold mt-0.5",
-                        isOnline ? "text-emerald-600" : "text-stone-400",
-                      )}
-                    >
-                      {isOnline ? `On ${u.device_type || "Device"}` : "Offline"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-
-            {hasOverflow && (
-              <button
-                type="button"
-                onClick={() => setIsExpanded((prev) => !prev)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-200/50 hover:bg-stone-200/80 border border-stone-200/60 text-[10px] font-bold text-stone-600 hover:text-stone-900 transition-colors shrink-0 cursor-pointer ml-auto"
-                title={isExpanded ? "Collapse team status" : `Show ${hiddenCount} more team members`}
+          sortedUsers.map((u) => {
+            const isOnline = Boolean(u._isOnline);
+            return (
+              <div
+                key={u.username}
+                className="w-auto max-w-[168px] shrink-0 flex items-center gap-2 py-0.5 pr-1 select-none"
+                title={`${u.name || u.username} — ${isOnline ? `On ${u.device_type || "Device"}` : "Offline"}`}
               >
-                <span>{isExpanded ? "Show less" : `+${hiddenCount} more`}</span>
-                {isExpanded ? (
-                  <ChevronUp className="w-3 h-3" />
-                ) : (
-                  <ChevronDown className="w-3 h-3" />
-                )}
-              </button>
-            )}
-          </>
+                <div className="relative shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-stone-200/45 border border-stone-300/60 flex items-center justify-center text-[10px] font-bold text-stone-700">
+                    {getInitials(u.name || u.username)}
+                  </div>
+                  <span
+                    className={cn(
+                      "absolute -bottom-0.5 -right-0.5 inline-flex rounded-full h-2.5 w-2.5 border-2 border-white",
+                      isOnline ? "bg-emerald-500" : "bg-stone-400",
+                    )}
+                  />
+                </div>
+                <div className="flex flex-col justify-center min-w-0">
+                  <span className="text-[11.5px] font-semibold text-stone-800 leading-tight truncate">
+                    {u.name || u.username}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[9.5px] uppercase tracking-wider leading-tight font-semibold mt-0.5 whitespace-nowrap",
+                      isOnline ? "text-emerald-600" : "text-stone-400",
+                    )}
+                  >
+                    {isOnline ? `On ${u.device_type || "Device"}` : "Offline"}
+                  </span>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
+
+      {/* Inline Right Scroll Steppers (Shown Only When Horizontal Overflow Exists) */}
+      {hasHorizontalOverflow && (
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => handleScrollStep(-1)}
+            disabled={!canScrollLeft}
+            className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-stone-200/80 bg-transparent text-stone-600 hover:text-stone-900 hover:bg-stone-200/40 disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer shrink-0"
+            title="Geser ke kiri"
+            aria-label="Geser Team Status ke kiri"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleScrollStep(1)}
+            disabled={!canScrollRight}
+            className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-stone-200/80 bg-transparent text-stone-600 hover:text-stone-900 hover:bg-stone-200/40 disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer shrink-0"
+            title="Geser ke kanan"
+            aria-label="Geser Team Status ke kanan"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 });
@@ -251,7 +258,7 @@ export const OverviewProjectMonitorGrid = React.memo(function OverviewProjectMon
                     to={`/project/${mon.id}`}
                     state={{ from: "overview" }}
                     title="View Project Progress"
-                    className="w-8 h-8 flex items-center justify-center bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg transition-all shadow-sm"
+                    className="w-8 h-8 flex items-center justify-center bg-stone-900 text-white hover:bg-stone-800 rounded-lg transition-all shadow-sm"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </Link>
@@ -655,11 +662,9 @@ export const WorkCenterConfigModal = React.memo(function WorkCenterConfigModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="2xl"
+      maxWidth="5xl"
       title="Work Center Capacity Configuration"
-      contentClassName="p-0 border border-stone-100"
-    >
-      <div className="absolute top-4 right-14">
+      headerActions={
         <Button
           size="sm"
           onClick={() =>
@@ -678,9 +683,21 @@ export const WorkCenterConfigModal = React.memo(function WorkCenterConfigModal({
         >
           + Add Center
         </Button>
-      </div>
-      <div className="p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      }
+      contentClassName="p-0 flex flex-col min-h-0"
+      footer={
+        <div className="flex flex-wrap justify-end gap-3 w-full">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={onSaveConfig} disabled={isSubmittingConfig}>
+            {isSubmittingConfig ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
+      }
+    >
+      <div className="p-5 sm:p-6 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {configForm.map((wc, idx) => (
             <div
               key={wc.id}
@@ -716,7 +733,7 @@ export const WorkCenterConfigModal = React.memo(function WorkCenterConfigModal({
                   Hrs/Week
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Input
                   label="Manpower"
                   type="number"
@@ -765,14 +782,6 @@ export const WorkCenterConfigModal = React.memo(function WorkCenterConfigModal({
             </div>
           ))}
         </div>
-      </div>
-      <div className="p-6 border-t border-stone-100 flex justify-end gap-3 bg-stone-50/20">
-        <Button variant="secondary" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button onClick={onSaveConfig} disabled={isSubmittingConfig}>
-          {isSubmittingConfig ? "Saving..." : "Save Changes"}
-        </Button>
       </div>
     </Modal>
   );

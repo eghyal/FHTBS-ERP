@@ -406,6 +406,7 @@ export function getDesktopRequiredRouteMeta(pathname: string): DesktopRouteMeta 
   }
   if (
     pathname === "/general-ledger" ||
+    pathname === "/book-closing" ||
     pathname === "/ar-aging" ||
     pathname === "/cashflow-forecast" ||
     pathname === "/payroll" ||
@@ -856,3 +857,94 @@ export function getRoleMonitoringProfile(role: Role): RoleMonitoringProfile {
 
   return profiles[role] || profiles.SALES;
 }
+
+/**
+ * Centralized Route-Level PBAC + RBAC Guard for Shortcut Buttons & Cross-Module Links.
+ * Mirrors the exact ProtectedRoute matrix in App.tsx so users never see shortcut buttons
+ * to routes where their role or permission level would be rejected.
+ */
+export function canAccessErpRoute(
+  user: User | null | undefined,
+  routePath: string
+): boolean {
+  if (!user) return false;
+  if (hasGodMode(user)) return true;
+
+  const cleanPath = routePath.split("?")[0].replace(/\/+$/, "") || "/";
+  const userRole = String(user.role || "").toUpperCase();
+
+  const checkRoleAndAction = (
+    allowedRoles?: string[],
+    requiredAction?: Action
+  ): boolean => {
+    if (allowedRoles && allowedRoles.length > 0) {
+      if (!allowedRoles.includes(userRole)) return false;
+    }
+    if (requiredAction) {
+      if (!hasPermission(user, requiredAction)) return false;
+    }
+    return true;
+  };
+
+  if (cleanPath === "/hr" || cleanPath.startsWith("/hr/")) {
+    return userRole === "HR";
+  }
+  if (cleanPath === "/ppic" || cleanPath.startsWith("/ppic/projects") || cleanPath.startsWith("/ppic/setup-master") || cleanPath === "/ppic/material-allocations" || cleanPath === "/procurement-plan") {
+    return checkRoleAndAction(["PPIC"], Action.PLAN_PRODUCTION_MRP);
+  }
+  if (cleanPath === "/production" || cleanPath === "/production/manpower" || cleanPath === "/shopfloor" || cleanPath.startsWith("/production/project")) {
+    return checkRoleAndAction(["PRODUCTION"], Action.VIEW_PRODUCTION);
+  }
+  if (cleanPath === "/production/machines") {
+    return checkRoleAndAction(["PRODUCTION", "ENGINEERING"], Action.VIEW_PRODUCTION);
+  }
+  if (cleanPath === "/qc/incoming-material" || cleanPath === "/qc/process-inspection") {
+    return checkRoleAndAction(["QA_QC"], Action.INSPECT_QC);
+  }
+  if (cleanPath === "/engineering" || cleanPath.startsWith("/engineering/bop")) {
+    return checkRoleAndAction(["ENGINEERING"], Action.VIEW_BOM);
+  }
+  if (cleanPath === "/procurement") {
+    return checkRoleAndAction(["PURCHASING"], Action.VIEW_PROCUREMENT);
+  }
+  if (cleanPath === "/pricing") {
+    return checkRoleAndAction(["PURCHASING"], Action.VIEW_PRICING);
+  }
+  if (cleanPath === "/vendors") {
+    return checkRoleAndAction(["PURCHASING"], Action.VIEW_VENDORS);
+  }
+  if (cleanPath === "/warehouse") {
+    return checkRoleAndAction(undefined, Action.VIEW_WAREHOUSE);
+  }
+  if (cleanPath === "/data-center" || cleanPath === "/import") {
+    return checkRoleAndAction(undefined, Action.VIEW_MASTER_DATA);
+  }
+  if (cleanPath === "/quotations" || cleanPath === "/shop-management" || cleanPath === "/potential-customers") {
+    return checkRoleAndAction(["SALES"], Action.VIEW_QUOTATIONS);
+  }
+  if (cleanPath === "/customers") {
+    return checkRoleAndAction(["SALES"], Action.VIEW_CUSTOMERS);
+  }
+  if (cleanPath === "/deliveries") {
+    return checkRoleAndAction(["SALES"], Action.VIEW_DELIVERIES);
+  }
+  if (cleanPath === "/invoices") {
+    return checkRoleAndAction(["FINANCE"], Action.VIEW_INVOICES);
+  }
+  if (
+    cleanPath === "/finance" ||
+    cleanPath === "/general-ledger" ||
+    cleanPath === "/payables" ||
+    cleanPath === "/payroll" ||
+    cleanPath === "/ar-aging" ||
+    cleanPath === "/cashflow-forecast"
+  ) {
+    return checkRoleAndAction(["FINANCE"], Action.VIEW_FINANCE);
+  }
+  if (cleanPath === "/book-closing") {
+    return checkRoleAndAction(["FINANCE", "HR", "WAREHOUSE", "FC", "BOD", "DIRECTOR"]);
+  }
+
+  return true;
+}
+

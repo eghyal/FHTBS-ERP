@@ -92,7 +92,7 @@ export const GrnModal = memo(function GrnModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="5xl"
+      maxWidth="6xl"
       title={
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-stone-100 border border-stone-200/80 rounded-lg flex items-center justify-center shrink-0">
@@ -227,7 +227,8 @@ export const GrnModal = memo(function GrnModal({
             </span>
           </div>
 
-          <Table compact>
+          <div className="overflow-x-auto border border-stone-200 rounded-xl">
+            <Table compact className="min-w-[820px]">
             <TableHeader>
               <TableRow hoverable={false}>
                 <TableHead>Material &amp; Engineering BOM Spec</TableHead>
@@ -403,6 +404,7 @@ export const GrnModal = memo(function GrnModal({
               })}
             </TableBody>
           </Table>
+          </div>
         </div>
 
         <div className="p-4 bg-emerald-50/50 border border-emerald-200/80 rounded-xl flex items-start gap-3.5">

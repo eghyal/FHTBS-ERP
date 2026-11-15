@@ -36,6 +36,7 @@ import {
   recordServerCmsSnapshot,
   subscribeToCmsUpdates,
 } from "@/utils/cmsLiveSync";
+import { subscribeToCatalogUpdates } from "@/utils/shopLiveSync";
 
 export default function PublicHome() {
   const [products, setProducts] = useState<CatalogProductItem[]>([]);
@@ -56,6 +57,33 @@ export default function PublicHome() {
         setCms(mergePublicCms(data));
       },
     );
+
+    const refreshShowcase = async () => {
+      try {
+        const showcaseRes = await apiFetch("/api/public/showcase");
+        if (showcaseRes.ok && showcaseRes.data) {
+          setProducts(
+            Array.isArray(showcaseRes.data.gallery_items)
+              ? showcaseRes.data.gallery_items
+              : [],
+          );
+          setAvailableCategories(
+            Array.isArray(showcaseRes.data.categories)
+              ? showcaseRes.data.categories
+              : [],
+          );
+          setSyncedPortfolio(
+            Array.isArray(showcaseRes.data.portfolio_projects)
+              ? showcaseRes.data.portfolio_projects
+              : [],
+          );
+        }
+      } catch {}
+    };
+
+    const unsubscribeCatalog = subscribeToCatalogUpdates(() => {
+      void refreshShowcase();
+    });
 
     const fetchPageData = async () => {
       setIsLoadingShowcase(true);
@@ -115,6 +143,7 @@ export default function PublicHome() {
 
     return () => {
       unsubscribeLive();
+      unsubscribeCatalog();
     };
   }, []);
 
@@ -842,13 +871,32 @@ export default function PublicHome() {
       <Modal
         isOpen={isCatalogModalOpen}
         onClose={() => setIsCatalogModalOpen(false)}
-        maxWidth="5xl"
+        maxWidth="6xl"
         title="Katalog Produk & Profil Perusahaan"
         className="overflow-hidden rounded-[2rem]"
-        contentClassName="p-0 flex flex-col h-[85vh] bg-stone-50 border-t border-stone-100"
+        contentClassName="p-0 flex flex-col min-h-0 bg-stone-50 border-t border-stone-100"
+        footer={
+          <div className="flex flex-wrap justify-center gap-3 w-full">
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => setIsCatalogModalOpen(false)}
+            >
+              Tutup
+            </Button>
+            <a
+              href="/compro.pdf"
+              download="profil-perusahaan-batu-emas.pdf"
+              className="px-6 py-2.5 rounded-xl text-sm font-bold bg-[#b02524] text-white hover:bg-red-800 shadow-md flex items-center gap-2 transition-all"
+            >
+              <Download className="w-4 h-4" />
+              Unduh PDF Resmi (A4)
+            </a>
+          </div>
+        }
       >
-        <div className="flex-1 w-full overflow-y-auto bg-stone-100/50 flex flex-col p-6 items-center custom-scrollbar shadow-inner relative">
-          <div className="w-full max-w-3xl bg-white rounded-[2rem] shadow-xl border border-stone-200 overflow-hidden relative flex flex-col mb-8 shrink-0">
+        <div className="flex-1 min-h-0 w-full overflow-y-auto bg-stone-100/50 flex flex-col p-4 sm:p-6 items-center custom-scrollbar shadow-inner relative">
+          <div className="w-full max-w-4xl bg-white rounded-[2rem] shadow-xl border border-stone-200 overflow-hidden relative flex flex-col mb-4 shrink-0">
             <div className="px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center justify-between z-10 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-[#ff5f56]"></div>
@@ -882,7 +930,7 @@ export default function PublicHome() {
                 {cms.about_description}
               </p>
 
-              <div className="grid grid-cols-2 gap-4 w-full mb-12">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mb-12">
                 <div className="aspect-[4/3] bg-stone-50 rounded-xl border border-stone-100 flex items-center justify-center p-4">
                   <div className="w-full h-full border-2 border-dashed border-stone-200 rounded-lg flex items-center justify-center flex-col gap-2">
                     <div className="w-10 h-10 bg-stone-100 rounded-full"></div>
@@ -905,23 +953,6 @@ export default function PublicHome() {
               </div>
             </div>
           </div>
-        </div>
-        <div className="p-6 border-t border-stone-200 bg-white flex justify-center gap-4 shrink-0 rounded-b-[2rem]">
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={() => setIsCatalogModalOpen(false)}
-          >
-            Tutup
-          </Button>
-          <a
-            href="/compro.pdf"
-            download="profil-perusahaan-batu-emas.pdf"
-            className="px-6 py-2.5 rounded-xl text-sm font-bold bg-[#b02524] text-white hover:bg-red-800 shadow-md flex items-center gap-2 transition-all"
-          >
-            <Download className="w-4 h-4" />
-            Unduh PDF Resmi (A4)
-          </a>
         </div>
       </Modal>
 

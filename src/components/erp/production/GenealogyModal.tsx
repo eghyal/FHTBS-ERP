@@ -100,14 +100,22 @@ export function WotGenealogyModal({ isOpen, onClose, wot }: WotGenealogyModalPro
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="2xl"
+      maxWidth="4xl"
       title={modalTitle}
       description="Immutable chronological event trail from raw issuance to root finish"
-      contentClassName="p-0"
+      contentClassName="p-0 flex flex-col min-h-0"
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-stone-500">
+          <span className="font-mono text-[11px]">Audit records: {logs.length} entries</span>
+          <Button variant="secondary" size="sm" onClick={onClose} className="text-xs font-bold">
+            Close
+          </Button>
+        </div>
+      }
     >
-      <div className="flex flex-col">
+      <div className="flex flex-col min-h-0 flex-1">
         {/* WOT Quick Summary */}
-        <div className="p-4 bg-stone-50 border-b border-stone-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div className="p-4 sm:px-6 bg-stone-50 border-b border-stone-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs shrink-0">
           <div>
             <span className="text-[10px] text-stone-400 block uppercase font-bold">Total Qty</span>
             <span className="font-mono font-bold text-stone-800">{wot.qty} units</span>
@@ -131,7 +139,7 @@ export function WotGenealogyModal({ isOpen, onClose, wot }: WotGenealogyModalPro
         </div>
 
         {/* Timeline Event List */}
-        <div className="max-h-[50vh] overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-4">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-16 text-stone-400">
               <RefreshCw className="w-6 h-6 animate-spin text-stone-700 mb-2" />
@@ -201,14 +209,6 @@ export function WotGenealogyModal({ isOpen, onClose, wot }: WotGenealogyModalPro
               })}
             </div>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-stone-200 bg-stone-50 flex items-center justify-between text-xs text-stone-500">
-          <span className="font-mono text-[11px]">Audit records: {logs.length} entries</span>
-          <Button variant="secondary" size="sm" onClick={onClose} className="text-xs font-bold">
-            Close
-          </Button>
         </div>
       </div>
     </Modal>

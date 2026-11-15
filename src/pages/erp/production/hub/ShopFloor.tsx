@@ -1251,7 +1251,7 @@ export const ProductionShopFloor: React.FC<ProductionShopFloorProps> = ({
                   )
                 }
                 disabled={isIssuingScmMaterial}
-                className="h-9 px-3.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs"
+                className="h-9 px-3.5 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold shadow-xs"
               >
                 <Package className="w-3.5 h-3.5 mr-1.5" />
                 {isIssuingScmMaterial
@@ -1343,7 +1343,7 @@ export const ProductionShopFloor: React.FC<ProductionShopFloorProps> = ({
             <Button
               onClick={() => handleStartOrAdvanceWotStep(upcomingProcesses[0], wots[0])}
               disabled={isTransitioningWot}
-              className="h-9 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs whitespace-nowrap shrink-0 flex items-center gap-1.5 shadow-sm"
+              className="h-9 px-4 bg-stone-900 hover:bg-stone-800 text-white rounded-xl font-bold text-xs whitespace-nowrap shrink-0 flex items-center gap-1.5 shadow-sm"
             >
               <Play className="w-3.5 h-3.5" />
               <span>{isTransitioningWot ? "Starting..." : "Start Active WOT Lot"}</span>
@@ -1356,36 +1356,38 @@ export const ProductionShopFloor: React.FC<ProductionShopFloorProps> = ({
       {/* TAB 1: VIEW — ORCHESTRA CARDS, INTERACTIVE GANTT & WOT EXECUTION TABLE     */}
       {/* ========================================================================== */}
       {activeSection === "VIEW" && (
-        <ShopFloorViewSection
-          project={project}
-          nowMs={nowMs}
-          totalTargetQty={totalTargetQty}
-          defaultLotSize={defaultLotSize}
-          enrichedProcesses={enrichedProcesses}
-          runningProcesses={runningProcesses}
-          upcomingProcesses={upcomingProcesses}
-          completedProcesses={completedProcesses}
-          activeCardProcesses={activeCardProcesses}
-          nextCardProcesses={nextCardProcesses}
-          filteredGanttProcesses={filteredGanttProcesses}
-          wots={wots}
-          scmReadiness={scmReadiness}
-          busyProcessId={busyProcessId}
-          isTransitioningWot={isTransitioningWot}
-          ganttStatusFilter={ganttStatusFilter}
-          setGanttStatusFilter={setGanttStatusFilter}
-          ganttStationFilter={ganttStationFilter}
-          setGanttStationFilter={setGanttStationFilter}
-          formatCountdown={formatCountdown}
-          setShowScmStudioModal={setShowScmStudioModal}
-          handleStartOrAdvanceWotStep={handleStartOrAdvanceWotStep}
-          handleQuickProcessControl={handleQuickProcessControl}
-          handleQuickUnitAdvance={handleQuickUnitAdvance}
-          setNdpBopId={setNdpBopId}
-          setControlTab={setControlTab}
-          setActiveSection={setActiveSection}
-          setSelectedWotForGenealogy={setSelectedWotForGenealogy}
-        />
+        <div className="space-y-5">
+          <ShopFloorViewSection
+            project={project}
+            nowMs={nowMs}
+            totalTargetQty={totalTargetQty}
+            defaultLotSize={defaultLotSize}
+            enrichedProcesses={enrichedProcesses}
+            runningProcesses={runningProcesses}
+            upcomingProcesses={upcomingProcesses}
+            completedProcesses={completedProcesses}
+            activeCardProcesses={activeCardProcesses}
+            nextCardProcesses={nextCardProcesses}
+            filteredGanttProcesses={filteredGanttProcesses}
+            wots={wots}
+            scmReadiness={scmReadiness}
+            busyProcessId={busyProcessId}
+            isTransitioningWot={isTransitioningWot}
+            ganttStatusFilter={ganttStatusFilter}
+            setGanttStatusFilter={setGanttStatusFilter}
+            ganttStationFilter={ganttStationFilter}
+            setGanttStationFilter={setGanttStationFilter}
+            formatCountdown={formatCountdown}
+            setShowScmStudioModal={setShowScmStudioModal}
+            handleStartOrAdvanceWotStep={handleStartOrAdvanceWotStep}
+            handleQuickProcessControl={handleQuickProcessControl}
+            handleQuickUnitAdvance={handleQuickUnitAdvance}
+            setNdpBopId={setNdpBopId}
+            setControlTab={setControlTab}
+            setActiveSection={setActiveSection}
+            setSelectedWotForGenealogy={setSelectedWotForGenealogy}
+          />
+        </div>
       )}
 
       {/* ========================================================================== */}

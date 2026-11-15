@@ -1303,12 +1303,33 @@ export default function Requests() {
         isOpen={showPreviewModal && !!previewPrData}
         onClose={() => setShowPreviewModal(false)}
         title="Purchase Request Document"
-        maxWidth="5xl"
-        contentClassName="p-0 flex flex-col h-[85vh] border-t border-stone-100"
+        maxWidth="6xl"
+        contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+        footer={
+          previewPrData ? (
+            <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowPreviewModal(false)}
+              >
+                Close
+              </Button>
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={() => handleExportPDF()}
+                isLoading={isSubmitting}
+                leftIcon={!isSubmitting ? <Download className="w-4 h-4" /> : undefined}
+              >
+                {isSubmitting ? "Generating..." : "Export PDF (A4)"}
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {previewPrData && (
-          <>
-            <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+          <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
               <PdfPreviewWrapper>
 <PrintTemplate
                 ref={printRef}
@@ -1516,25 +1537,6 @@ export default function Requests() {
               </PrintTemplate>
 </PdfPreviewWrapper>
             </div>
-            <div className="p-6 border-t border-stone-100 bg-white flex justify-center gap-4">
-              <Button
-                variant="secondary"
-                onClick={() => setShowPreviewModal(false)}
-                className="px-6 py-2.5 rounded-xl text-sm"
-              >
-                Close
-              </Button>
-              <Button
-                variant="dark"
-                onClick={() => handleExportPDF()}
-                isLoading={isSubmitting}
-                className="px-6 py-2.5 rounded-xl text-sm shadow-md"
-              >
-                {!isSubmitting && <Download className="w-4 h-4" />}
-                {isSubmitting ? "Generating..." : "Export PDF (A4)"}
-              </Button>
-            </div>
-          </>
         )}
       </Modal>
 

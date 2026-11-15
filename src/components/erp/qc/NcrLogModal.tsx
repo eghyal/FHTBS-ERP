@@ -30,10 +30,10 @@ export const NcrLogModal = memo(function NcrLogModal({
       isOpen={isOpen}
       onClose={onClose}
       title="Log Non-Conformance Report (NCR) & Rework / Scrap Instruction"
-      size="lg"
+      size="4xl"
     >
       <form onSubmit={onSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-end">
           <Select
             label="Manufacturing Project"
             value={ncrForm.project_id}
@@ -66,7 +66,7 @@ export const NcrLogModal = memo(function NcrLogModal({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-end">
           <Select
             label="Defect Category"
             value={ncrForm.defect_category}
@@ -161,7 +161,7 @@ export const NcrLogModal = memo(function NcrLogModal({
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-end">
           <Input
             label="Affected Defective Quantity (PCS)"
             type="number"
@@ -210,7 +210,7 @@ export const NcrLogModal = memo(function NcrLogModal({
           required
         />
 
-        <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
+        <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-stone-200">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>

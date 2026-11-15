@@ -563,17 +563,17 @@ export default function Payables() {
         description={t(
           "Log payment expense and centrally record it in the Finance Hub.",
         )}
-        maxWidth="md"
-        contentClassName="p-0 border-t border-stone-100"
+        maxWidth="4xl"
+        contentClassName="p-0"
       >
         {selectedPO && (
           <form
             onSubmit={handlePayPO}
             className="font-sans text-stone-900 bg-white"
           >
-            <div className="p-6 md:p-8 space-y-6 text-sm">
-              <div className="border border-stone-200 rounded-xl overflow-hidden mb-6">
-                <div className="bg-stone-50 px-4 py-3 border-b border-stone-200 flex items-center justify-between">
+            <div className="p-5 sm:p-6 space-y-5 text-sm">
+              <div className="border border-stone-200 rounded-xl overflow-hidden mb-5">
+                <div className="bg-stone-50 px-4 py-3 border-b border-stone-200 flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs font-bold text-stone-800 uppercase tracking-widest flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
                     3-Way Matching Validation
@@ -588,7 +588,7 @@ export default function Payables() {
                     </span>
                   )}
                 </div>
-                <div className="grid grid-cols-3 divide-x divide-stone-200 text-center">
+                <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-stone-200 text-center">
                   <div className="p-4 flex flex-col items-center justify-center bg-white relative">
                     <span className="text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-1">PO Amount</span>
                     <span className="text-sm font-black font-mono tabular-nums text-stone-900">{formatIDR(selectedPO.total_amount)}</span>
@@ -616,7 +616,7 @@ export default function Payables() {
               </div>
 
               <div className="space-y-4 pt-4 border-t border-stone-100">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Input
                     label="Vendor Invoice No. (Optional)"
                     type="text"
@@ -669,7 +669,7 @@ export default function Payables() {
                   )}`}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select
                     label={t("Payment Method")}
                     value={paymentMethod}
@@ -715,7 +715,7 @@ export default function Payables() {
               </div>
             </div>
 
-            <div className="p-4 md:px-8 md:py-5 border-t border-stone-100 bg-stone-50 flex items-center justify-between rounded-b-2xl">
+            <div className="px-5 py-3.5 sm:px-6 border-t border-stone-200 bg-stone-50 flex flex-wrap items-center justify-between gap-2.5">
               <Button
                 type="button"
                 variant="ghost"
@@ -728,7 +728,7 @@ export default function Payables() {
                 {t("Cancel")}
               </Button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -760,10 +760,30 @@ export default function Payables() {
           isOpen={showDocModal}
           onClose={() => setShowDocModal(false)}
           title={`Disbursement Voucher (Payable): ${selectedPayableForDoc.po_number}`}
-          maxWidth="5xl"
-          contentClassName="p-0 flex flex-col h-[85vh] border-t border-stone-100"
+          maxWidth="6xl"
+          contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+          footer={
+            <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowDocModal(false)}
+              >
+                Close
+              </Button>
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={exportPayablePdf}
+                isLoading={isExportingPdf}
+                leftIcon={!isExportingPdf ? <Download className="w-4 h-4" /> : undefined}
+              >
+                {isExportingPdf ? "Generating..." : "Export PDF (A4)"}
+              </Button>
+            </div>
+          }
         >
-          <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+          <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
             <PdfPreviewWrapper>
               <PrintTemplate
                 ref={docRef}
@@ -881,25 +901,6 @@ export default function Payables() {
                 </div>
               </PrintTemplate>
             </PdfPreviewWrapper>
-          </div>
-
-          <div className="p-6 border-t border-stone-100 bg-white flex justify-center gap-4">
-            <Button
-              variant="secondary"
-              onClick={() => setShowDocModal(false)}
-              className="px-6 py-2.5 rounded-xl text-sm"
-            >
-              Close
-            </Button>
-            <Button
-              variant="dark"
-              onClick={exportPayablePdf}
-              isLoading={isExportingPdf}
-              className="px-6 py-2.5 rounded-xl text-sm shadow-md"
-            >
-              {!isExportingPdf && <Download className="w-4 h-4" />}
-              {isExportingPdf ? "Generating..." : "Export PDF (A4)"}
-            </Button>
           </div>
         </Modal>
       )}

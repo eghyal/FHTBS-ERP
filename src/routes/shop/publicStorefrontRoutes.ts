@@ -20,6 +20,41 @@ const generateOrderNumber = () => {
   return `SO-${yr}${mo}-${rand}`;
 };
 
+function normalizeStorefrontMedia(coverInput: unknown, galleryInput: unknown): {
+  primaryUrl: string;
+  gallery: string[];
+} {
+  let rawList: unknown[] = [];
+  if (Array.isArray(galleryInput)) {
+    rawList = galleryInput;
+  } else if (typeof galleryInput === "string" && galleryInput.trim()) {
+    try {
+      const parsed = JSON.parse(galleryInput);
+      if (Array.isArray(parsed)) rawList = parsed;
+    } catch {
+      rawList = [];
+    }
+  }
+  const seen = new Set<string>();
+  let gallery: string[] = [];
+  for (const entry of rawList) {
+    if (typeof entry !== "string") continue;
+    const clean = entry.trim();
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+    gallery.push(clean);
+  }
+  const cleanCover = typeof coverInput === "string" ? coverInput.trim() : "";
+  if (cleanCover) {
+    gallery = [cleanCover, ...gallery.filter((u) => u !== cleanCover)];
+    return { primaryUrl: cleanCover, gallery };
+  }
+  return {
+    primaryUrl: gallery[0] || "",
+    gallery,
+  };
+}
+
 /**
  * Helper to build real synchronized gallery items and completed project portfolio
  * from active Shop Products, completed ERP Projects, and completed Shop Orders.
@@ -38,7 +73,7 @@ function buildPublicShowcaseData() {
       i.uom,
       COALESCE(i.unit_price, 0) as unit_price,
       COALESCE(CASE WHEN i.shop_availability_type = 'MAKE_TO_ORDER' OR i.unit_price <= 0 THEN 0 ELSE i.shop_promo_price END, 0) as promo_price,
-      COALESCE(i.shop_image_url, '') as image_url,
+      COALESCE(NULLIF(TRIM(i.shop_image_url), ''), '') as image_url,
       COALESCE(i.shop_gallery_urls, '[]') as shop_gallery_urls,
       COALESCE(i.shop_badge, '') as badge,
       COALESCE(i.shop_featured, 0) as is_featured,
@@ -48,24 +83,14 @@ function buildPublicShowcaseData() {
     FROM items i
     LEFT JOIN inventory inv ON i.id = inv.item_id
     WHERE i.deleted_at IS NULL
-      AND (i.type = 'FINISHED' OR i.type = 'FINISH_GOOD')
+      AND ((i.type IN ('FINISHED', 'FINISH_GOOD', 'FINISH_GOODS')) OR (i.item_code LIKE 'FG - %' OR i.item_code LIKE 'FG-%'))
+      AND (i.type != 'MACHINE' OR i.type IS NULL) AND (i.item_code NOT LIKE 'MC - %' AND i.item_code NOT LIKE 'MC-%')
       AND COALESCE(i.is_published_shop, 1) = 1
     ORDER BY i.shop_featured DESC, i.name ASC
   `).all() as any[];
 
   const galleryItems: any[] = rawShopItems.map((item) => {
-    let gallery: string[] = [];
-    try {
-      gallery = JSON.parse(item.shop_gallery_urls || "[]");
-    } catch {
-      gallery = [];
-    }
-    if (!Array.isArray(gallery)) gallery = [];
-    gallery = gallery.filter((u) => typeof u === "string" && u.trim() !== "");
-    const primaryUrl = typeof item.image_url === "string" ? item.image_url.trim() : "";
-    if (primaryUrl && !gallery.includes(primaryUrl)) {
-      gallery = [primaryUrl, ...gallery];
-    }
+    const media = normalizeStorefrontMedia(item.image_url, item.shop_gallery_urls);
     return {
       id: String(item.id),
       item_code: item.item_code || "",
@@ -74,8 +99,8 @@ function buildPublicShowcaseData() {
       spec: item.spec || item.description || "",
       category: item.category && String(item.category).trim() !== "" ? String(item.category).trim() : "Katalog Pabrik",
       badge: item.badge || (Number(item.available_qty) > 0 ? "READY STOCK" : "MADE TO ORDER"),
-      image_url: primaryUrl || (gallery[0] || ""),
-      gallery_urls: gallery,
+      image_url: media.primaryUrl,
+      gallery_urls: media.gallery,
       uom: item.uom || "PCS",
       available_qty: Number(item.available_qty || 0),
       unit_price: Number(item.unit_price || 0),
@@ -268,6 +293,13 @@ function buildPublicShowcaseData() {
 export function registerPublicStorefrontRoutes(shopRouter: Router) {
   shopRouter.get("/api/shop/products", (req, res) => {
     try {
+      res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate",
+      );
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+
       const category = (req.query.category as string || "").trim();
       const q = (req.query.q as string || "").trim();
       const sort = (req.query.sort as string || "popular").trim();
@@ -286,7 +318,7 @@ export function registerPublicStorefrontRoutes(shopRouter: Router) {
           COALESCE(i.unit_price, 0) as unit_price,
           COALESCE(CASE WHEN i.shop_availability_type = 'MAKE_TO_ORDER' OR i.unit_price <= 0 THEN 0 ELSE i.shop_promo_price END, 0) as promo_price,
           COALESCE(i.shop_weight_kg, 2.5) as weight_kg,
-          COALESCE(i.shop_image_url, 'https://images.unsplash.com/photo-1584463623578-3062b88137f4?w=800&auto=format&fit=crop&q=80') as image_url,
+          COALESCE(NULLIF(TRIM(i.shop_image_url), ''), '') as image_url,
           COALESCE(i.shop_gallery_urls, '[]') as shop_gallery_urls,
           COALESCE(i.shop_badge, '') as badge,
           COALESCE(i.shop_featured, 0) as is_featured,
@@ -299,7 +331,8 @@ export function registerPublicStorefrontRoutes(shopRouter: Router) {
         FROM items i
         LEFT JOIN inventory inv ON i.id = inv.item_id
         WHERE i.deleted_at IS NULL
-          AND (i.type = 'FINISHED' OR i.type = 'FINISH_GOOD')
+          AND ((i.type IN ('FINISHED', 'FINISH_GOOD', 'FINISH_GOODS')) OR (i.item_code LIKE 'FG - %' OR i.item_code LIKE 'FG-%'))
+          AND (i.type != 'MACHINE' OR i.type IS NULL) AND (i.item_code NOT LIKE 'MC - %' AND i.item_code NOT LIKE 'MC-%')
           AND COALESCE(i.is_published_shop, 1) = 1
       `;
 
@@ -332,26 +365,20 @@ export function registerPublicStorefrontRoutes(shopRouter: Router) {
 
       const rawItems = db.prepare(sql).all(...params) as any[];
       const items = rawItems.map((item) => {
-        let gallery: string[] = [];
-        try {
-          gallery = JSON.parse(item.shop_gallery_urls || "[]");
-        } catch {
-          gallery = [];
-        }
-        if (!Array.isArray(gallery)) gallery = [];
-        if (item.image_url && !gallery.includes(item.image_url)) {
-          gallery = [item.image_url, ...gallery];
-        }
+        const media = normalizeStorefrontMedia(item.image_url, item.shop_gallery_urls);
         return {
           ...item,
-          gallery_urls: gallery,
+          image_url: media.primaryUrl,
+          gallery_urls: media.gallery,
+          shop_gallery_urls: JSON.stringify(media.gallery),
         };
       });
 
       const categoriesRows = db.prepare(`
         SELECT DISTINCT category 
         FROM items 
-        WHERE (type = 'FINISHED' OR type = 'FINISH_GOOD')
+        WHERE ((type IN ('FINISHED', 'FINISH_GOOD', 'FINISH_GOODS')) OR (item_code LIKE 'FG - %' OR item_code LIKE 'FG-%'))
+          AND (type != 'MACHINE' OR type IS NULL) AND (item_code NOT LIKE 'MC - %' AND item_code NOT LIKE 'MC-%')
           AND deleted_at IS NULL 
           AND category IS NOT NULL 
           AND category != ''
@@ -374,6 +401,10 @@ export function registerPublicStorefrontRoutes(shopRouter: Router) {
 
   shopRouter.get("/api/public/showcase", (_req, res) => {
     try {
+      res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate",
+      );
       const { galleryItems, categories, portfolioProjects } = buildPublicShowcaseData();
       res.json({
         success: true,
@@ -394,6 +425,10 @@ export function registerPublicStorefrontRoutes(shopRouter: Router) {
 
   shopRouter.get("/api/public/products", (_req, res) => {
     try {
+      res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate",
+      );
       const { galleryItems, categories } = buildPublicShowcaseData();
       res.json({
         success: true,
@@ -411,6 +446,10 @@ export function registerPublicStorefrontRoutes(shopRouter: Router) {
 
   shopRouter.get("/api/shop/products/:id", (req, res) => {
     try {
+      res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate",
+      );
       const { id } = req.params;
       const item = db.prepare(`
         SELECT 
@@ -425,7 +464,7 @@ export function registerPublicStorefrontRoutes(shopRouter: Router) {
           COALESCE(i.unit_price, 0) as unit_price,
           COALESCE(CASE WHEN i.shop_availability_type = 'MAKE_TO_ORDER' OR i.unit_price <= 0 THEN 0 ELSE i.shop_promo_price END, 0) as promo_price,
           COALESCE(i.shop_weight_kg, 2.5) as weight_kg,
-          COALESCE(i.shop_image_url, 'https://images.unsplash.com/photo-1584463623578-3062b88137f4?w=800&auto=format&fit=crop&q=80') as image_url,
+          COALESCE(NULLIF(TRIM(i.shop_image_url), ''), '') as image_url,
           COALESCE(i.shop_gallery_urls, '[]') as shop_gallery_urls,
           COALESCE(i.shop_badge, '') as badge,
           COALESCE(i.shop_featured, 0) as is_featured,
@@ -444,22 +483,15 @@ export function registerPublicStorefrontRoutes(shopRouter: Router) {
         return res.status(404).json({ success: false, error: "Product not found" });
       }
 
-      let gallery: string[] = [];
-      try {
-        gallery = JSON.parse(item.shop_gallery_urls || "[]");
-      } catch {
-        gallery = [];
-      }
-      if (!Array.isArray(gallery)) gallery = [];
-      if (item.image_url && !gallery.includes(item.image_url)) {
-        gallery = [item.image_url, ...gallery];
-      }
+      const media = normalizeStorefrontMedia(item.image_url, item.shop_gallery_urls);
 
       res.json({
         success: true,
         data: {
           ...item,
-          gallery_urls: gallery,
+          image_url: media.primaryUrl,
+          gallery_urls: media.gallery,
+          shop_gallery_urls: JSON.stringify(media.gallery),
         },
       });
     } catch (err: any) {

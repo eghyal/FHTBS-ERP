@@ -93,7 +93,7 @@ export function SendEmailModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="md"
+      maxWidth="lg"
       title={
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center shrink-0">
@@ -109,7 +109,20 @@ export function SendEmailModal({
           </div>
         </div>
       }
-      contentClassName="p-0 border-t border-stone-100"
+      contentClassName="p-0 flex flex-col min-h-0"
+      footer={
+        <div className="flex flex-wrap items-center justify-end w-full">
+          <Button
+            variant="secondary"
+            type="button"
+            onClick={onClose}
+            disabled={isSubmittingEmail || isSubmittingWa}
+            className="hover:bg-stone-200"
+          >
+            Close
+          </Button>
+        </div>
+      }
     >
       <div className="p-6 space-y-6">
         
@@ -169,19 +182,6 @@ export function SendEmailModal({
             )}
           </Button>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="px-6 py-4 border-t border-stone-100 flex items-center justify-end bg-stone-50">
-        <Button
-          variant="secondary"
-          type="button"
-          onClick={onClose}
-          disabled={isSubmittingEmail || isSubmittingWa}
-          className="hover:bg-stone-200"
-        >
-          Close
-        </Button>
       </div>
     </Modal>
   );

@@ -638,10 +638,30 @@ export const HrVacanciesTab: React.FC<HrVacanciesTabProps> = React.memo(
           onClose={() => setIsModalOpen(false)}
           title={editingJob ? "Edit Job Vacancy & Quota" : "Post New Job Vacancy & Budget"}
           description="Published OPEN positions with available headcount quota appear directly on the public /careers portal."
-          maxWidth="xl"
+          maxWidth="4xl"
           uiTheme="hris"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2.5">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setIsModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="hris-vacancy-form"
+                variant="primary"
+                isLoading={isSaving}
+              >
+                Save Vacancy
+              </Button>
+            </div>
+          }
         >
           <form
+            id="hris-vacancy-form"
             onSubmit={handleSaveJob}
             className="space-y-4 text-left font-bold"
           >
@@ -668,7 +688,7 @@ export const HrVacanciesTab: React.FC<HrVacanciesTabProps> = React.memo(
               </Select>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <Input
                 type="number"
                 label="Headcount Quota"
@@ -813,22 +833,6 @@ export const HrVacanciesTab: React.FC<HrVacanciesTabProps> = React.memo(
               />
             </div>
 
-            <div className="pt-4 border-t border-stone-200 flex justify-end gap-2.5">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setIsModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={isSaving}
-              >
-                Save Vacancy
-              </Button>
-            </div>
           </form>
         </Modal>
       </div>

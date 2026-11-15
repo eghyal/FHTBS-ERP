@@ -61,8 +61,8 @@ export const WarehouseIntakeLabelsModal: React.FC<WarehouseIntakeLabelsModalProp
     <Modal
       isOpen={isOpen && intakeLabels.length > 0}
       onClose={onClose}
-      maxWidth="2xl"
-      contentClassName="p-0 flex flex-col h-[85vh]"
+      maxWidth="4xl"
+      contentClassName="p-0 flex flex-col min-h-0"
       title={
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-amber-600 text-white rounded-lg flex items-center justify-center">
@@ -78,8 +78,31 @@ export const WarehouseIntakeLabelsModal: React.FC<WarehouseIntakeLabelsModalProp
           </div>
         </div>
       }
+      footer={
+        <div className="flex flex-wrap justify-between items-center gap-3">
+          <div className="text-[10px] text-stone-400 font-medium tracking-wide">
+            Total: <span className="font-bold text-stone-900">{intakeLabels.length} PO Label(s)</span> ready to print
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={onClose}
+              className="px-6 py-2.5 text-stone-500 hover:text-stone-900 text-[10px] font-bold tracking-widest transition-colors uppercase border border-stone-200 hover:bg-stone-50 rounded-xl"
+            >
+              Close
+            </button>
+            <button
+              onClick={exportLabelsPng}
+              disabled={isSubmitting}
+              className="px-8 py-3 bg-stone-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-stone-800 transition-all active:scale-[0.98] shadow-2xs disabled:opacity-50 flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              {isSubmitting ? "Exporting..." : "Download PO Label PNG"}
+            </button>
+          </div>
+        </div>
+      }
     >
-      <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-stone-100/70 flex flex-col items-center">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-8 bg-stone-100/70 flex flex-col items-center">
 
         {/* Container Sheets for Print / Export */}
         <div
@@ -121,7 +144,7 @@ export const WarehouseIntakeLabelsModal: React.FC<WarehouseIntakeLabelsModalProp
                 </div>
 
                 {/* Section 1: PO & Supplier Info */}
-                <div className="grid grid-cols-2 gap-3 pb-3 border-b border-stone-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-3 border-b border-stone-200">
                   <div>
                     <div className="text-[8px] font-bold text-stone-400 uppercase tracking-wider mb-0.5">
                       PO REFERENCE (PURCHASE ORDER)
@@ -175,7 +198,7 @@ export const WarehouseIntakeLabelsModal: React.FC<WarehouseIntakeLabelsModalProp
                 </div>
 
                 {/* Section 3: Traceability & Logistics Meta */}
-                <div className="pt-3 grid grid-cols-3 gap-2 text-[9px]">
+                <div className="pt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[9px]">
                   <div>
                     <span className="text-[7px] font-bold text-stone-400 uppercase block">GRN DOCUMENT NO.</span>
                     <span className="font-mono font-bold text-stone-800 break-all">{grnDocId}</span>
@@ -205,29 +228,6 @@ export const WarehouseIntakeLabelsModal: React.FC<WarehouseIntakeLabelsModalProp
               </div>
             );
           })}
-        </div>
-      </div>
-
-      {/* Modal Actions */}
-      <div className="p-6 border-t border-stone-100 bg-white flex justify-between items-center sticky bottom-0 shadow-sm">
-        <div className="text-[10px] text-stone-400 font-medium tracking-wide">
-          Total: <span className="font-bold text-stone-900">{intakeLabels.length} PO Label(s)</span> ready to print
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onClose}
-            className="px-6 py-2.5 text-stone-500 hover:text-stone-900 text-[10px] font-bold tracking-widest transition-colors uppercase border border-stone-200 hover:bg-stone-50 rounded-xl"
-          >
-            Close
-          </button>
-          <button
-            onClick={exportLabelsPng}
-            disabled={isSubmitting}
-            className="px-8 py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all active:scale-[0.98] shadow-2xs disabled:opacity-50 flex items-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            {isSubmitting ? "Exporting..." : "Download PO Label PNG"}
-          </button>
         </div>
       </div>
     </Modal>

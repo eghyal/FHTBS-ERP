@@ -113,19 +113,19 @@ export const TravelTagModal: React.FC<TravelTagModalProps> = ({
   const lotNum = tag.lot_number || payloadObj.lot_number;
 
   const modalTitle = (
-    <div className="flex items-center justify-between w-full pr-2">
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
+    <div className="flex flex-wrap items-center justify-between gap-3 w-full pr-2">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
           <QrCode className="w-5 h-5" />
         </div>
-        <div>
+        <div className="min-w-0">
           <h2 className="text-base font-bold tracking-tight text-stone-900">
             {lotNum ? `WOT Digital Travel Tag (${lotNum})` : "Digital Travel Tag & QR Code"}
           </h2>
-          <p className="text-xs text-stone-500 font-mono">{tag.tag_number}</p>
+          <p className="text-xs text-stone-500 font-mono truncate">{tag.tag_number}</p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 shrink-0">
         <Button
           variant="secondary"
           size="sm"
@@ -150,14 +150,21 @@ export const TravelTagModal: React.FC<TravelTagModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="xl"
+      maxWidth="2xl"
       title={modalTitle}
-      contentClassName="p-0"
+      contentClassName="p-0 flex flex-col min-h-0"
+      footer={
+        <div className="flex justify-end w-full">
+          <Button variant="secondary" onClick={onClose} size="sm" className="font-bold">
+            Close
+          </Button>
+        </div>
+      }
     >
       <div className="flex flex-col">
 
         {/* Tag Body */}
-        <div className="flex-1 overflow-y-auto p-6 bg-stone-50 flex justify-center">
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 bg-stone-50 flex justify-center">
           <div className="bg-white border-2 border-dashed border-stone-300 rounded-2xl p-6 w-full max-w-md shadow-sm print:border-solid print:shadow-none">
             {/* Tag Header */}
             <div className="flex items-center justify-between border-b pb-3 mb-4">
@@ -224,13 +231,6 @@ export const TravelTagModal: React.FC<TravelTagModalProps> = ({
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 px-6 bg-white border-t border-stone-200 flex justify-end">
-          <Button variant="secondary" onClick={onClose} size="sm" className="font-bold">
-            Close
-          </Button>
         </div>
       </div>
     </Modal>

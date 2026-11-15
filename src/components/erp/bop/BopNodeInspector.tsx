@@ -636,7 +636,7 @@ export const BopNodeInspector: React.FC<BopNodeInspectorProps> = React.memo(({
                           className={cn(
                             "flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition-all",
                             isConnected
-                              ? "bg-emerald-600 text-white border-emerald-700 shadow-2xs"
+                              ? "bg-stone-900 text-white border-stone-900 shadow-2xs"
                               : "bg-stone-50 dark:bg-stone-800/70 hover:bg-stone-100 dark:hover:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-200"
                           )}
                         >

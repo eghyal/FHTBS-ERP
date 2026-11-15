@@ -234,14 +234,14 @@ Last Calculated: ${data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="5xl"
+      maxWidth="6xl"
       title={
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-stone-100 text-stone-800 border border-stone-200">
+          <div className="p-2.5 rounded-xl bg-stone-100 text-stone-800 border border-stone-200 shrink-0">
             <Calculator className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-base font-bold text-stone-900">
                 Project COGS &amp; Cost Analysis
               </h3>
@@ -259,7 +259,20 @@ Last Calculated: ${data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString
           </div>
         </div>
       }
-      contentClassName="p-0 flex flex-col max-h-[85vh]"
+      contentClassName="p-0 flex flex-col min-h-0"
+      footer={
+        <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="text-[11px] text-stone-500">
+            Last calculated:{" "}
+            <span className="font-mono font-medium text-stone-700">
+              {data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString("en-US") : "-"}
+            </span>
+          </div>
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      }
     >
       {/* Top Action & Mode Bar */}
       <div className="px-6 py-3.5 bg-stone-50 border-b border-stone-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3 shrink-0">
@@ -327,7 +340,7 @@ Last Calculated: ${data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString
       </div>
 
       {/* Modal Body */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-5">
         {loading ? (
           <div className="py-16 text-center text-stone-500">
             <RefreshCw className="w-8 h-8 animate-spin mx-auto text-stone-600 mb-3" />
@@ -563,10 +576,10 @@ Last Calculated: ${data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString
 
             {/* TABS FOR DEEP-DIVE BREAKDOWN */}
             <div className="space-y-3">
-              <div className="flex border-b border-stone-200 gap-2">
+              <div className="flex border-b border-stone-200 gap-2 overflow-x-auto no-scrollbar">
                 <button
                   onClick={() => setActiveTab("materials")}
-                  className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
                     activeTab === "materials"
                       ? "border-stone-900 text-stone-900"
                       : "border-transparent text-stone-500 hover:text-stone-800"
@@ -578,7 +591,7 @@ Last Calculated: ${data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString
 
                 <button
                   onClick={() => setActiveTab("labor")}
-                  className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
                     activeTab === "labor"
                       ? "border-stone-900 text-stone-900"
                       : "border-transparent text-stone-500 hover:text-stone-800"
@@ -590,7 +603,7 @@ Last Calculated: ${data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString
 
                 <button
                   onClick={() => setActiveTab("overhead")}
-                  className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
                     activeTab === "overhead"
                       ? "border-stone-900 text-stone-900"
                       : "border-transparent text-stone-500 hover:text-stone-800"
@@ -625,8 +638,8 @@ Last Calculated: ${data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString
                     </span>
                   </div>
 
-                  <div className="max-h-60 overflow-y-auto rounded-xl border border-stone-200">
-                    <Table className="text-xs">
+                  <div className="max-h-72 overflow-auto rounded-xl border border-stone-200">
+                    <Table className="text-xs min-w-[680px]">
                       <TableHeader className="sticky top-0 bg-stone-50 z-10">
                         <TableRow className="border-b border-stone-200">
                           <TableHead className="py-2 px-3">Code / Item</TableHead>
@@ -682,7 +695,7 @@ Last Calculated: ${data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString
               {/* TAB CONTENT: LABOR ENTRIES */}
               {activeTab === "labor" && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
                       <span className="text-stone-600">Regular Work Hours</span>
                       <div className="text-base font-bold font-mono tabular-nums text-stone-900 mt-0.5">
@@ -714,8 +727,8 @@ Last Calculated: ${data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString
                     </div>
                   </div>
 
-                  <div className="max-h-60 overflow-y-auto rounded-xl border border-stone-200">
-                    <Table className="text-xs">
+                  <div className="max-h-72 overflow-auto rounded-xl border border-stone-200">
+                    <Table className="text-xs min-w-[680px]">
                       <TableHeader className="sticky top-0 bg-stone-50 z-10">
                         <TableRow className="border-b border-stone-200">
                           <TableHead className="py-2 px-3">Worker / Operator Name</TableHead>
@@ -801,20 +814,6 @@ Last Calculated: ${data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString
             </div>
           </>
         )}
-      </div>
-
-      {/* Modal Footer */}
-      <div className="flex items-center justify-between px-6 py-3.5 border-t border-stone-200 bg-stone-50 shrink-0">
-        <div className="text-[11px] text-stone-500">
-          Last calculated:{" "}
-          <span className="font-mono font-medium text-stone-700">
-            {data?.lastUpdated ? new Date(data.lastUpdated).toLocaleString("en-US") : "-"}
-          </span>
-        </div>
-
-        <Button variant="secondary" size="sm" onClick={onClose}>
-          Close
-        </Button>
       </div>
     </Modal>
   );

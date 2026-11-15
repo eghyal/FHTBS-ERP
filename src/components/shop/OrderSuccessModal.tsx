@@ -443,7 +443,7 @@ export function OrderSuccessModal({ orderData, onClose, onTrackOrder }: OrderSuc
 
       {/* Main Window Container */}
       <div
-        className="relative bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-stone-200 flex flex-col p-5 sm:p-6 z-10 animate-in zoom-in-95 duration-150"
+        className="relative bg-white rounded-2xl max-w-xl w-full max-h-[92dvh] overflow-y-auto shadow-2xl border border-stone-200 flex flex-col p-5 sm:p-6 z-10 animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Red elegant top line indicator */}
@@ -699,7 +699,7 @@ export function OrderSuccessModal({ orderData, onClose, onTrackOrder }: OrderSuc
                 <span>WhatsApp Sales (Konfirmasi Cepat)</span>
               </a>
 
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {/* PDF EXPORT BUTTON (DISABLED FOR COD) */}
                 <button
                   onClick={handleExportPDF}

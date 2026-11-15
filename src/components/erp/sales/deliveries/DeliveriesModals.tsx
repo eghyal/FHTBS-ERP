@@ -189,11 +189,11 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
             ? `Revise Outbound Note: ${revisingDn.dn_number}`
             : "Initiate Outbound Note"
         }
-        maxWidth="4xl"
-        contentClassName="p-0 flex flex-col h-[85vh] border-t border-stone-100"
+        maxWidth="5xl"
+        contentClassName="p-0 flex flex-col min-h-0"
       >
-        <form onSubmit={handleCreateDelivery} className="flex flex-col h-full">
-          <div className="p-8 overflow-y-auto space-y-8 bg-stone-50 flex-1">
+        <form onSubmit={handleCreateDelivery} className="flex flex-col flex-1 min-h-0">
+          <div className="p-5 sm:p-6 overflow-y-auto space-y-6 bg-stone-50 flex-1 min-h-0">
             <div className="flex flex-col mb-6">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-2">
                 Destination / Customer <span className="text-red-500">*</span>
@@ -436,7 +436,7 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-stone-600">
                     Shipment Type
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() =>
@@ -645,7 +645,7 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
             />
           </div>
 
-          <div className="p-6 border-t border-stone-100 flex justify-end gap-3 bg-white shrink-0">
+          <div className="px-5 py-3.5 sm:px-6 border-t border-stone-200 flex flex-wrap justify-end gap-2.5 bg-white shrink-0">
             <Button
               type="button"
               variant="secondary"
@@ -665,29 +665,29 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
         isOpen={showItemSelectModal}
         onClose={() => setShowItemSelectModal(false)}
         title="Select Available SKUs (FG)"
-        maxWidth="xl"
+        maxWidth="2xl"
       >
-        <div className="max-h-[60vh] overflow-y-auto space-y-3">
+        <div className="space-y-3">
           {fgItems.map((item) => {
             return (
               <div
                 key={item.id}
                 onClick={() => addItemToDelivery(item)}
                 className={cn(
-                  "p-4 border bg-white rounded-2xl hover:border-stone-400 cursor-pointer transition-all flex justify-between items-center group shadow-sm hover:shadow-md border-stone-200",
+                  "p-4 border bg-white rounded-2xl hover:border-stone-400 cursor-pointer transition-all flex justify-between items-center gap-3 group shadow-sm hover:shadow-md border-stone-200",
                 )}
               >
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1.5">
                     <div className="text-[10px] font-bold font-mono text-stone-400">
                       {item.item_code}
                     </div>
                   </div>
-                  <div className="text-sm font-bold text-stone-900">
+                  <div className="text-sm font-bold text-stone-900 truncate">
                     {item.name}
                   </div>
                 </div>
-                <div className="text-[10px] font-bold uppercase tracking-widest bg-stone-100 text-stone-500 px-3 py-1 rounded-md group-hover:bg-stone-800 group-hover:text-white transition-colors">
+                <div className="text-[10px] font-bold uppercase tracking-widest bg-stone-100 text-stone-500 px-3 py-1 rounded-md group-hover:bg-stone-800 group-hover:text-white transition-colors shrink-0">
                   Select
                 </div>
               </div>
@@ -717,10 +717,29 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
             </p>
           </div>
         }
+        footer={
+          <div className="flex flex-wrap justify-end gap-2.5 w-full">
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => setShowReviseModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="revise-dn-form"
+              disabled={isSubmitting}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              {isSubmitting ? "Processing..." : "Submit Revision"}
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleReviseDn} className="space-y-6 pt-2">
+        <form id="revise-dn-form" onSubmit={handleReviseDn} className="space-y-5">
           {selectedDnToRevise && (
-            <div className="p-5 bg-stone-50 rounded-2xl border border-stone-100 mb-2">
+            <div className="p-4 sm:p-5 bg-stone-50 rounded-2xl border border-stone-100">
               <div className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mb-1.5">
                 Draft DN Reference
               </div>
@@ -733,11 +752,11 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
             </div>
           )}
 
-          <div className="flex gap-4 p-5 bg-rose-50/50 rounded-2xl border border-rose-100/50">
-            <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0 mt-1">
+          <div className="flex flex-col sm:flex-row gap-4 p-4 sm:p-5 bg-rose-50/50 rounded-2xl border border-rose-100/50">
+            <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
               <AlertTriangle className="w-5 h-5 text-rose-500" />
             </div>
-            <div className="w-full">
+            <div className="w-full min-w-0">
               <h4 className="text-xs font-bold text-stone-900 mb-1">
                 Revision Note
               </h4>
@@ -755,23 +774,6 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
               />
             </div>
           </div>
-
-          <div className="pt-2 flex justify-end gap-3 mt-6">
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => setShowReviseModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-rose-600 hover:bg-rose-700 text-white"
-            >
-              {isSubmitting ? "Processing..." : "Submit Revision"}
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -784,12 +786,37 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
           setAuthDocName("");
         }}
         title="Finish Delivery"
-        maxWidth="md"
-        contentClassName="p-0 border-t border-stone-100"
+        maxWidth="2xl"
+        footer={
+          selectedFinishDn ? (
+            <div className="flex flex-wrap justify-end gap-2.5 w-full">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowFinishModal(false);
+                  setFinishCloudUrl("");
+                  setFinishDnFile(null);
+                  setAuthDocName("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={isSubmitting || (!finishCloudUrl && !finishDnFile)}
+                type="submit"
+                form="finish-dn-form"
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                {isSubmitting ? "Completing..." : "Confirm Completion"}
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {selectedFinishDn && (
-          <form onSubmit={handleFinishDelivery} className="p-6 space-y-6">
-            <div className="p-5 bg-stone-50 rounded-2xl border border-stone-100 mb-2">
+          <form id="finish-dn-form" onSubmit={handleFinishDelivery} className="space-y-5">
+            <div className="p-4 sm:p-5 bg-stone-50 rounded-2xl border border-stone-100">
               <div className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mb-1.5">
                 Delivery Reference
               </div>
@@ -814,32 +841,10 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
                 }}
                 pathPrefix="delivery_receipts"
               />
-              <p className="text-[9px] text-rose-500 font-medium tracking-wide uppercase mt-1">
+              <p className="text-[10px] text-rose-500 font-medium tracking-wide uppercase mt-1">
                 * Manifest must be signed by the receiving party (Customer /
                 Client).
               </p>
-            </div>
-
-            <div className="pt-2 flex justify-end gap-3 border-t border-stone-100">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setShowFinishModal(false);
-                  setFinishCloudUrl("");
-                  setFinishDnFile(null);
-                  setAuthDocName("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                disabled={isSubmitting || (!finishCloudUrl && !finishDnFile)}
-                type="submit"
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
-              >
-                {isSubmitting ? "Completing..." : "Confirm Completion"}
-              </Button>
             </div>
           </form>
         )}
@@ -850,12 +855,33 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
         isOpen={!!previewDn}
         onClose={() => setPreviewDn(null)}
         title="Delivery Note Document"
-        maxWidth="5xl"
-        contentClassName="p-0 flex flex-col h-[85vh] border-t border-stone-100"
+        maxWidth="6xl"
+        contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+        footer={
+          previewDn ? (
+            <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPreviewDn(null)}
+              >
+                Close
+              </Button>
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={() => exportPdf()}
+                isLoading={isSubmitting}
+                leftIcon={!isSubmitting ? <Download className="w-4 h-4" /> : undefined}
+              >
+                {isSubmitting ? "Generating..." : "Export PDF (A4)"}
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {previewDn && (
-          <>
-            <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+          <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
               <PdfPreviewWrapper>
                 <PrintTemplate
                   ref={printDocRef}
@@ -1110,26 +1136,7 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
                   </div>
                 </PrintTemplate>
               </PdfPreviewWrapper>
-            </div>
-            <div className="p-6 border-t border-stone-100 bg-white flex justify-center gap-4 shrink-0">
-              <Button
-                variant="secondary"
-                onClick={() => setPreviewDn(null)}
-                className="px-6 py-2.5 rounded-xl text-sm"
-              >
-                Close
-              </Button>
-              <Button
-                variant="dark"
-                onClick={() => exportPdf()}
-                isLoading={isSubmitting}
-                className="px-6 py-2.5 rounded-xl text-sm shadow-md"
-              >
-                {!isSubmitting && <Download className="w-4 h-4" />}
-                {isSubmitting ? "Generating..." : "Export PDF (A4)"}
-              </Button>
-            </div>
-          </>
+          </div>
         )}
       </Modal>
 
@@ -1169,12 +1176,33 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
         isOpen={showReceiptModal}
         onClose={() => setShowReceiptModal(false)}
         title="Delivery Receipt Note Preview (A5 Landscape)"
-        maxWidth="4xl"
-        contentClassName="p-0 border-t border-stone-100 flex flex-col h-[85vh] overflow-hidden"
+        maxWidth="5xl"
+        contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+        footer={
+          showReceiptModal ? (
+            <div className="w-full flex flex-wrap items-center justify-end gap-2.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowReceiptModal(false)}
+              >
+                Close
+              </Button>
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={handleExportReceiptPdf}
+                isLoading={isSubmitting}
+                leftIcon={!isSubmitting ? <Download className="w-4 h-4" /> : undefined}
+              >
+                {isSubmitting ? "Generating..." : "Export PDF (A5 Landscape)"}
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {showReceiptModal && (
-          <>
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-stone-100 flex justify-center items-start">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 custom-scrollbar bg-stone-100/80 flex justify-center items-start">
               <PdfPreviewWrapper>
                 <A5LandscapePrintTemplate
                   ref={receiptDocRef}
@@ -1383,27 +1411,7 @@ export const DeliveriesModals = React.memo(function DeliveriesModals({
                   </div>
                 </A5LandscapePrintTemplate>
               </PdfPreviewWrapper>
-            </div>
-
-            <div className="p-4 sm:p-6 border-t border-stone-100 bg-white flex justify-center gap-4 shrink-0">
-              <Button
-                variant="secondary"
-                onClick={() => setShowReceiptModal(false)}
-                className="px-6 py-2.5 rounded-xl text-sm"
-              >
-                Close
-              </Button>
-              <Button
-                variant="dark"
-                onClick={handleExportReceiptPdf}
-                isLoading={isSubmitting}
-                className="px-6 py-2.5 rounded-xl text-sm shadow-md flex items-center gap-2"
-              >
-                {!isSubmitting && <Download className="w-4 h-4" />}
-                {isSubmitting ? "Generating..." : "Export PDF (A5 Landscape)"}
-              </Button>
-            </div>
-          </>
+          </div>
         )}
       </Modal>
     </>

@@ -2,7 +2,11 @@ import express from "express";
 import db from "../db/database.ts";
 import { getFirestoreSyncStatus } from "../db/firebaseSync.ts";
 import { getPostgresBridgeStats } from "../db/postgresBridge.ts";
-import { getOutboxTelemetry, replayDeadLetterQueue } from "../services/outboxService.ts";
+import {
+  getOutboxTelemetry,
+  processOutboxBatch,
+  replayDeadLetterQueue,
+} from "../services/outboxService.ts";
 
 const router = express.Router();
 
@@ -32,12 +36,21 @@ router.get(["/audit-trail", "/logs"], (req, res) => {
   }
 });
 
-// Outbox telemetry endpoints
-router.get("/sync/outbox/telemetry", (_req, res) => {
+// Outbox telemetry & recovery endpoints
+router.get(["/sync/outbox/telemetry", "/sync/outbox/status"], (_req, res) => {
   res.json(getOutboxTelemetry());
 });
 
-router.post("/sync/outbox/replay", (_req, res) => {
+router.post("/sync/outbox/process", async (_req, res) => {
+  try {
+    const result = await processOutboxBatch(50);
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Failed to process outbox batch" });
+  }
+});
+
+router.post(["/sync/outbox/replay", "/sync/outbox/replay-dlq"], (_req, res) => {
   const replayed = replayDeadLetterQueue();
   res.json({ success: true, replayed });
 });

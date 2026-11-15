@@ -201,10 +201,30 @@ export const BomMergeDuplicatesModal: React.FC<BomMergeDuplicatesModalProps> = (
           </div>
         </div>
       }
-      maxWidth="3xl"
-      contentClassName="p-0 flex flex-col max-h-[80vh]"
+      maxWidth="4xl"
+      contentClassName="p-0 flex flex-col min-h-0"
+      footer={
+        <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <p className="text-xs text-stone-500">
+            Review the consolidated lines above before applying to the BOM table.
+          </p>
+          <div className="flex items-center justify-end gap-2.5 shrink-0">
+            <Button variant="secondary" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleConfirm}
+              leftIcon={<CheckCircle2 className="w-4 h-4" />}
+            >
+              Apply Merge ({previewRows.length} lines)
+            </Button>
+          </div>
+        </div>
+      }
     >
-      <div className="p-6 overflow-y-auto space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-5">
         {/* Strategy Selection */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-stone-700 uppercase tracking-wider">
@@ -281,8 +301,8 @@ export const BomMergeDuplicatesModal: React.FC<BomMergeDuplicatesModalProps> = (
           </div>
 
           <div className="border border-stone-200 rounded-xl overflow-hidden bg-white">
-            <div className="max-h-60 overflow-y-auto">
-              <Table className="text-xs">
+            <div className="max-h-72 overflow-auto custom-scrollbar">
+              <Table className="text-xs min-w-[620px]">
                 <TableHeader className="bg-stone-50 sticky top-0 z-10">
                   <TableRow className="border-b border-stone-200">
                     <TableHead className="py-2.5 px-3">Item</TableHead>
@@ -308,7 +328,7 @@ export const BomMergeDuplicatesModal: React.FC<BomMergeDuplicatesModalProps> = (
                           <div className="font-mono font-bold text-stone-800 text-[11px]">
                             {group.code}
                           </div>
-                          <div className="text-stone-500 text-[11px] truncate max-w-[160px]">
+                          <div className="text-stone-500 text-[11px] max-w-[240px] leading-snug">
                             {group.name}
                           </div>
                         </TableCell>
@@ -347,24 +367,6 @@ export const BomMergeDuplicatesModal: React.FC<BomMergeDuplicatesModalProps> = (
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="p-4 border-t border-stone-200 bg-stone-50 flex items-center justify-between">
-        <Button
-          onClick={onClose}
-          variant="secondary"
-          className="text-xs font-semibold"
-        >
-          Cancel
-        </Button>
-        <Button
-          onClick={handleConfirm}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-xs"
-        >
-          <CheckCircle2 className="w-4 h-4" />
-          Apply Merge ({previewRows.length} lines)
-        </Button>
       </div>
     </Modal>
   );

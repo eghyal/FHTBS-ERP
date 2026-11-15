@@ -67,11 +67,20 @@ export const PrShortagePreviewModal = React.memo<PrShortagePreviewModalProps>(fu
           ? `Revise Purchase Request: ${revisingPr.pr_number}`
           : "Purchase Request Preview"
       }
-      maxWidth="2xl"
-      contentClassName="p-0 border-t border-stone-100"
+      maxWidth="5xl"
+      contentClassName="p-0 flex flex-col min-h-0 bg-[#F9F9F8]"
+      footer={
+        <div className="flex flex-wrap justify-end gap-3">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={onSubmitPr} isLoading={isSubmitting}>
+            {revisingPr ? "Submit Revision" : "Finalize & Print PR"}
+          </Button>
+        </div>
+      }
     >
-      <div className="w-full">
-        <div className="p-6 bg-[#F9F9F8]">
+      <div className="w-full p-5 sm:p-6">
           {revisingPr && revisingPr.revision_note && (
             <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3 shadow-sm mb-6 w-full">
               <AlertTriangle className="w-5 h-5 text-rose-600 mt-0.5 shrink-0" />
@@ -104,7 +113,7 @@ export const PrShortagePreviewModal = React.memo<PrShortagePreviewModalProps>(fu
                 </div>
               )}
               <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-                <div className="p-4 border-b border-stone-100 bg-stone-50 flex items-center justify-end gap-4">
+                <div className="p-4 border-b border-stone-100 bg-stone-50 flex flex-wrap items-center justify-end gap-4">
                   <div className="text-right">
                     <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-1">
                       PR Urgency Level
@@ -125,7 +134,8 @@ export const PrShortagePreviewModal = React.memo<PrShortagePreviewModalProps>(fu
                     </Select>
                   </div>
                 </div>
-                <Table>
+                <div className="overflow-x-auto">
+                <Table className="min-w-[640px]">
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
                       <TableHead>Item</TableHead>
@@ -200,18 +210,10 @@ export const PrShortagePreviewModal = React.memo<PrShortagePreviewModalProps>(fu
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             </div>
           )}
-        </div>
-        <div className="p-6 border-t border-stone-100 flex justify-end gap-3">
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={onSubmitPr} isLoading={isSubmitting}>
-            {revisingPr ? "Submit Revision" : "Finalize & Print PR"}
-          </Button>
-        </div>
       </div>
     </Modal>
   );

@@ -3,7 +3,7 @@ import db from "../../db/database.ts";
 import { requireRole, getActor } from "../../middleware/auth.ts";
 import { isValidDailyAuthKey } from "../../utils/auth.ts";
 import { logAudit } from "../../utils/audit.ts";
-import { postDeliveryDispatchJournal } from "../../utils/accountingBridge.ts";
+import { postDeliveryDispatchJournal, assertAccountingPeriodOpen } from "../../utils/accountingBridge.ts";
 import { outboxService } from "../../services/outboxService.ts";
 import { generateDNNumber, getDeliveryNoteItemsWithPrices } from "./helpers.ts";
 import crypto from "crypto";
@@ -622,6 +622,7 @@ export function registerDeliveriesRoutes(salesRouter: Router) {
           .prepare("SELECT * FROM delivery_items WHERE dn_id = ?")
           .all(req.params.id) as any[];
 
+        assertAccountingPeriodOpen(db);
         db.transaction(() => {
           const moveHist = db.prepare(
             "INSERT INTO stock_movements (id, item_id, type, qty, reference_id, recorded_by, project_id) VALUES (?, ?, 'RELEASE', ?, ?, ?, ?)",

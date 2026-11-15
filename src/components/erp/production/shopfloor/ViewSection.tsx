@@ -340,7 +340,7 @@ export const ShopFloorViewSection: React.FC<ShopFloorViewSectionProps> = React.m
                             onClick={() =>
                               handleQuickUnitAdvance(proc.id, activeWot?.id, 0, true)
                             }
-                            className="h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold inline-flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                            className="h-7 px-3 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-[11px] font-bold inline-flex items-center gap-1 disabled:opacity-50 cursor-pointer"
                             title="Complete 1-Lot WOT on this process and hand over to Next Process"
                           >
                             <Check className="w-3 h-3" />

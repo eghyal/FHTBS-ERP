@@ -145,7 +145,7 @@ export const ForumChatHeader = React.memo(function ForumChatHeader({
             className={cn(
               "p-2 rounded-xl border transition-all cursor-pointer",
               showInChatSearch
-                ? "bg-emerald-600 text-white border-emerald-600"
+                ? "bg-stone-900 text-white border-stone-900"
                 : "bg-stone-50 hover:bg-stone-100 text-stone-600 border-stone-200/70",
             )}
             title="Search messages in this conversation"

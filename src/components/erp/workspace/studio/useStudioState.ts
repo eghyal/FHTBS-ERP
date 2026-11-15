@@ -5,89 +5,44 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import { QRCodeSVG } from "qrcode.react";
-import {
-  FileText,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  AlignJustify,
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  Palette,
-  Highlighter,
-  CaseSensitive,
-  Plus,
-  Minus,
-  Trash2,
-  Copy,
-  ChevronUp,
-  ChevronDown,
-  Building2,
-  MapPin,
-  CheckCircle2,
-  PenTool,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  ShieldCheck,
-  Send,
-  Save,
-  X,
-  Sparkles,
-  Layers,
-  Eye,
-  AlertTriangle,
-  Table as TableIcon,
-  ListOrdered,
-  Type,
-  UserCheck,
-  Grid3X3,
-  GripVertical,
-  Move,
-  RotateCcw,
-  Undo2,
-  Redo2,
-  Printer,
-  Keyboard,
-  PanelLeft,
-  SlidersHorizontal,
-  Search,
-  Lock,
-  Check,
-  Info,
-  Upload,
-  Download,
-  Calculator,
-  Landmark,
-  CheckSquare,
-  SeparatorHorizontal,
-  FileCheck2,
-} from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { cn } from "@/lib/utils";
-import { generatePDF } from "@/lib/pdfGenerator";
+import { Save, X, Keyboard, Check } from "lucide-react";
 import {
   DocBlock,
-  DocBlockType,
   BlockCategory,
   LayoutPreset,
   TargetDepartment,
-  AuthorizationRole,
   WorkspaceSignerStep,
+  DocPageSetup,
+  DocCommentThread,
+  DocTrackedChange,
+  DocFootnote,
+  WorkspaceLayoutMode,
+  MailMergeSourceRecord,
+  MailMergeSourceType,
+  FindMatch,
 } from "@/types/workspace";
-import { ERP_DEPARTMENT_OPTIONS } from "@/constants/rbac";
+import { useAuth } from "@/contexts/AuthContext";
+import { apiFetch } from "@/utils/api";
 import {
-  evaluateTableFormula,
-  parseDocxPackageToBlocks,
-  generateDocxBinaryBuffer,
-  generateDeterministicPdfBuffer,
   normalizeHorizontalAlign,
   normalizeVerticalAlign,
   normalizeBlockAlignment,
 } from "@/services/docxEngine";
+import {
+  extractDocumentMeta,
+  stripMetaBlocks,
+  mergeDocumentMeta,
+  paginateDocumentBlocks,
+  buildDocumentOutline,
+  findMatchesInBlocks,
+  replaceSingleMatchInBlocks,
+  replaceAllMatchesInBlocks,
+  applyMailMergeToBlocks,
+  runDocumentPreflight,
+  computeDocumentStats,
+  summarizeBlockChange,
+  mmToPx,
+} from "@/services/workspaceDocumentUtils";
 import {
   CanvaStudioEditorProps,
   DEPARTMENT_ROUTING_CONFIG,
@@ -131,6 +86,9 @@ export function useCanvaStudioState({
   isId: _isIdProp = false,
 }: CanvaStudioEditorProps) {
   const isId = false;
+  const { user } = useAuth();
+  const actorUsername = user?.username || "staff";
+  const actorRole = user?.role || "STAFF";
   const documentCode = initialDocumentCode || documentId || null;
   const [docTitle, setDocTitle] = useState(initialTitle || "Untitled Document");
   const [docType, setDocType] = useState(initialDocType || "MEMORANDUM");
@@ -139,8 +97,16 @@ export function useCanvaStudioState({
   const [customWidthMm, setCustomWidthMm] = useState<number>(initialCustomWidthMm || 210);
   const [customHeightMm, setCustomHeightMm] = useState<number>(initialCustomHeightMm || 297);
 
+  /* ---------- WordCraft Meta Envelope (PageSetup, Comments, TrackChanges, Footnotes) ---------- */
+  const initialMeta = useMemo(() => extractDocumentMeta(initialBlocks || []), []);
+  const [pageSetup, setPageSetup] = useState<DocPageSetup>(initialMeta.pageSetup);
+  const [comments, setComments] = useState<DocCommentThread[]>(initialMeta.comments);
+  const [trackedChanges, setTrackedChanges] = useState<DocTrackedChange[]>(initialMeta.trackedChanges);
+  const [footnotes] = useState<DocFootnote[]>(initialMeta.footnotes);
+
   /* ---------- Routing (auto-triggered by signature blocks, fallback to HR when none) ---------- */
-  const initialSigBlocks = (initialBlocks || []).filter(
+  const visibleInitialBlocks = useMemo(() => stripMetaBlocks(initialBlocks || []), []);
+  const initialSigBlocks = visibleInitialBlocks.filter(
     (b) => b.type === "SIGNATURE_COLUMN" || b.type === "SIGNATURE_STAMP" || b.type === "DUAL_SIGNATURE"
   );
   const initialHasSig = initialSigBlocks.length > 0;
@@ -164,7 +130,7 @@ export function useCanvaStudioState({
 
   /* ---------- Canvas blocks + undo/redo history ---------- */
   const normalizeBlocksStructure = useCallback((rawList: DocBlock[]): DocBlock[] => {
-    let list = rawList && rawList.length > 0 ? [...rawList] : [];
+    const list = stripMetaBlocks(rawList && rawList.length > 0 ? [...rawList] : []);
     const kopIndex = list.findIndex((b) => b.type === "OFFICIAL_LETTERHEAD");
     let kopBlock: DocBlock;
     if (kopIndex === -1) {
@@ -174,21 +140,18 @@ export function useCanvaStudioState({
       kopBlock = { ...OFFICIAL_KOP_SURAT_BLOCK, ...existingKop, isLocked: true, width: "100%", x: 0, y: 0 };
     }
 
-    const footerBlocks = list
-      .filter((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK")
-      .map((b) => ({ ...b, width: "100%", x: 0, y: 0 }));
     const bodyBlocks = list.filter(
       (b) => b.type !== "OFFICIAL_LETTERHEAD" && b.type !== "FOOTER" && b.type !== "FOOTER_BLOCK"
     );
-    // Keep only the latest footer block pinned at the bottom if one exists; allow zero footers when deleted by user
-    const pinnedFooter: DocBlock[] =
-      footerBlocks.length > 0 ? [footerBlocks[footerBlocks.length - 1]] : [];
+    const footerBlocks = list
+      .filter((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK")
+      .map((b) => ({ ...b, width: "100%", x: 0, y: 0 }));
 
-    return [kopBlock, ...bodyBlocks, ...pinnedFooter].map((b) => normalizeBlockAlignment(b));
+    return [kopBlock, ...bodyBlocks, ...footerBlocks].map((b) => normalizeBlockAlignment(b));
   }, []);
 
   const [blocks, setBlocksState] = useState<DocBlock[]>(() =>
-    normalizeBlocksStructure(initialBlocks && initialBlocks.length > 0 ? [...initialBlocks] : [])
+    normalizeBlocksStructure(visibleInitialBlocks)
   );
   const blocksRef = useRef(blocks);
   const [past, setPast] = useState<DocBlock[][]>([]);
@@ -276,11 +239,49 @@ export function useCanvaStudioState({
   /* ---------- Studio chrome ---------- */
   const [sidebarTab, setSidebarTab] = useState<BlockCategory>("BODY_TEXT");
   const [libraryQuery, setLibraryQuery] = useState("");
-  const [showLeftPanel, setShowLeftPanel] = useState(false); // mobile drawer
-  const [showRightPanel, setShowRightPanel] = useState(false); // mobile drawer
+  const [showLeftPanel, setShowLeftPanel] = useState(false); // mobile library drawer
+  const [showRightPanel, setShowRightPanel] = useState(false); // mobile inspector drawer
+  const [rightInspectorOpen, setRightInspectorOpen] = useState<boolean>(() =>
+    typeof window !== "undefined" ? window.innerWidth >= 1280 : true
+  );
+  const [showLeftReviewDrawer, setShowLeftReviewDrawer] = useState(false);
+  const [activeRibbonTab, setActiveRibbonTab] = useState<"INSERT" | "LAYOUT" | "REVIEW" | "DATA">(
+    initialStatus === "APPROVED" ? "REVIEW" : "INSERT"
+  );
+  const [ribbonCollapsed, setRibbonCollapsed] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [showGrid, setShowGrid] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<"edit" | "preview">("edit");
+  const [layoutMode, setLayoutMode] = useState<WorkspaceLayoutMode>("PAGINATED");
+  const [showRuler, setShowRuler] = useState<boolean>(true);
+  const [leftReviewTab, setLeftReviewTab] = useState<
+    "PAGES" | "OUTLINE" | "COMMENTS" | "CHANGES" | "PREFLIGHT" | null
+  >(() => (typeof window !== "undefined" && window.innerWidth >= 1280 ? "PAGES" : null));
+  const [activePageNumber, setActivePageNumber] = useState<number>(1);
+  const lastPageJumpAtRef = useRef<number>(0);
+  const [isTrackChangesEnabled, setIsTrackChangesEnabled] = useState<boolean>(false);
+  const [commentFilter, setCommentFilter] = useState<"OPEN" | "RESOLVED" | "ALL">("OPEN");
+  const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>({});
+  const [pageSetupModalOpen, setPageSetupModalOpen] = useState(false);
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [preflightGuardOpen, setPreflightGuardOpen] = useState(false);
+
+  // Find & Replace
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [replaceQuery, setReplaceQuery] = useState("");
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+
+  // ERP Live Mail Merge
+  const [mailMergeOpen, setMailMergeOpen] = useState(false);
+  const [mailMergeSourceType, setMailMergeSourceType] = useState<"ALL" | MailMergeSourceType>("ALL");
+  const [mailMergeSearch, setMailMergeSearch] = useState("");
+  const [mailMergeRecords, setMailMergeRecords] = useState<MailMergeSourceRecord[]>([]);
+  const [mailMergeLoading, setMailMergeLoading] = useState(false);
+  const [activeMergeRecord, setActiveMergeRecord] = useState<MailMergeSourceRecord | null>(null);
+  const [isMergePreview, setIsMergePreview] = useState(false);
+
   const [quickInsertIndex, setQuickInsertIndex] = useState<number | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -292,6 +293,7 @@ export function useCanvaStudioState({
   const blocksContainerRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const docxInputRef = useRef<HTMLInputElement | null>(null);
+  const lastTrackedEditRef = useRef<{ blockId: string; ts: number } | null>(null);
 
   const notify = useCallback((text: string, tone: "info" | "success" | "error" = "info") => {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
@@ -473,61 +475,135 @@ export function useCanvaStudioState({
     [blocks, selectedBlockId]
   );
 
+  const recordBlockRevision = useCallback(
+    (
+      type: DocTrackedChange["type"],
+      blockId: string,
+      beforeBlock: DocBlock | undefined,
+      afterBlock: DocBlock | undefined,
+      targetIndex?: number
+    ) => {
+      if (!isTrackChangesEnabled) return;
+      const now = Date.now();
+      const nowIso = new Date(now).toISOString();
+      const beforeSummary = summarizeBlockChange(beforeBlock);
+      const afterSummary = summarizeBlockChange(afterBlock);
+
+      setTrackedChanges((prev) => {
+        const last = lastTrackedEditRef.current;
+        if (
+          type !== "INSERT" &&
+          type !== "DELETE" &&
+          last &&
+          last.blockId === blockId &&
+          now - last.ts < 3500
+        ) {
+          const existingIdx = [...prev]
+            .reverse()
+            .findIndex((c) => c.blockId === blockId && c.status === "PENDING" && (c.type === "FORMAT" || c.type === "TABLE_EDIT"));
+          if (existingIdx !== -1) {
+            const realIdx = prev.length - 1 - existingIdx;
+            const updated = [...prev];
+            updated[realIdx] = {
+              ...updated[realIdx],
+              afterSummary,
+              createdAt: nowIso,
+            };
+            lastTrackedEditRef.current = { blockId, ts: now };
+            return updated;
+          }
+        }
+        lastTrackedEditRef.current = { blockId, ts: now };
+        return [
+          ...prev,
+          {
+            id: `tc-${now}-${Math.random().toString(36).slice(2, 6)}`,
+            blockId,
+            type,
+            authorUsername: actorUsername,
+            authorRole: actorRole,
+            beforeSummary,
+            afterSummary,
+            status: "PENDING",
+            createdAt: nowIso,
+            snapshotBlock: beforeBlock ? JSON.parse(JSON.stringify(beforeBlock)) : undefined,
+            targetIndex,
+          },
+        ];
+      });
+    },
+    [isTrackChangesEnabled, actorUsername, actorRole]
+  );
+
   const updateBlock = useCallback(
     (id: string, updates: Partial<DocBlock>) => {
-      applyBlocks(
-        blocksRef.current.map((b) => {
-          if (b.id !== id) return b;
-          if (b.type === "OFFICIAL_LETTERHEAD" || b.isLocked) {
-            return {
-              ...b,
-              width: updates.width !== undefined ? updates.width : b.width,
-              height: updates.height !== undefined ? updates.height : b.height,
-            };
-          }
-          const modified: DocBlock = { ...b, ...updates };
-          if (updates.alignment !== undefined || updates.align !== undefined) {
-            const normA = normalizeHorizontalAlign(
-              (updates.alignment || updates.align) as string,
-              b.type === "HEADER" ? "CENTER" : "LEFT"
-            );
-            modified.alignment = normA;
-            modified.align = normA.toLowerCase() as DocBlock["align"];
-          }
-          if (updates.verticalAlignment !== undefined || updates.verticalAlign !== undefined) {
-            const normV = normalizeVerticalAlign(
-              (updates.verticalAlignment || updates.verticalAlign) as string,
-              "TOP"
-            );
-            modified.verticalAlignment = normV;
-            modified.verticalAlign = normV.toLowerCase() as DocBlock["verticalAlign"];
-          }
-          if (
-            (b.type === "SIGNATURE_COLUMN" || b.type === "SIGNATURE_STAMP" || b.type === "DUAL_SIGNATURE") &&
-            (updates.targetDepartment !== undefined || updates.targetRole !== undefined)
-          ) {
-            const nextDept = (updates.targetDepartment || b.targetDepartment || "HR") as TargetDepartment;
-            const nextTier = updates.targetRole
-              ? extractTierFromRole(updates.targetRole, nextDept)
-              : extractTierFromRole(b.targetRole, nextDept);
-            const effectiveDept: TargetDepartment = nextTier === "FC" ? "FC" : nextDept;
-            const cfg = DEPARTMENT_ROUTING_CONFIG[effectiveDept] || DEPARTMENT_ROUTING_CONFIG.HR;
-            const canonicalRole = resolveCanonicalRoleForDeptAndTier(effectiveDept, nextTier);
-            const sigTitle =
-              updates.signatoryTitle !== undefined
-                ? updates.signatoryTitle
-                : getSignatoryTitleForDeptAndTier(effectiveDept, nextTier);
-            modified.targetDepartment = effectiveDept;
-            modified.targetRole = canonicalRole;
-            modified.signatoryTitle = sigTitle;
-            modified.title = `Authorization Sign-off: ${cfg.deptNameEn}`;
-            modified.subtitle = `Official Signature ${sigTitle}`;
-          }
-          return modified;
-        })
-      );
+      const beforeBlock = blocksRef.current.find((b) => b.id === id);
+      let modifiedTarget: DocBlock | undefined;
+      const nextList = blocksRef.current.map((b) => {
+        if (b.id !== id) return b;
+        if (b.type === "OFFICIAL_LETTERHEAD" || b.isLocked) {
+          modifiedTarget = {
+            ...b,
+            width: updates.width !== undefined ? updates.width : b.width,
+            height: updates.height !== undefined ? updates.height : b.height,
+          };
+          return modifiedTarget;
+        }
+        const modified: DocBlock = { ...b, ...updates };
+        if (b.type === "FOOTER" || b.type === "FOOTER_BLOCK") {
+          modified.x = 0;
+          modified.y = 0;
+          modified.width = "100%";
+          delete modified.height;
+        }
+        if (updates.alignment !== undefined || updates.align !== undefined) {
+          const normA = normalizeHorizontalAlign(
+            (updates.alignment || updates.align) as string,
+            b.type === "HEADER" ? "CENTER" : "LEFT"
+          );
+          modified.alignment = normA;
+          modified.align = normA.toLowerCase() as DocBlock["align"];
+        }
+        if (updates.verticalAlignment !== undefined || updates.verticalAlign !== undefined) {
+          const normV = normalizeVerticalAlign(
+            (updates.verticalAlignment || updates.verticalAlign) as string,
+            "TOP"
+          );
+          modified.verticalAlignment = normV;
+          modified.verticalAlign = normV.toLowerCase() as DocBlock["verticalAlign"];
+        }
+        if (
+          (b.type === "SIGNATURE_COLUMN" || b.type === "SIGNATURE_STAMP" || b.type === "DUAL_SIGNATURE") &&
+          (updates.targetDepartment !== undefined || updates.targetRole !== undefined)
+        ) {
+          const nextDept = (updates.targetDepartment || b.targetDepartment || "HR") as TargetDepartment;
+          const nextTier = updates.targetRole
+            ? extractTierFromRole(updates.targetRole, nextDept)
+            : extractTierFromRole(b.targetRole, nextDept);
+          const effectiveDept: TargetDepartment = nextTier === "FC" ? "FC" : nextDept;
+          const cfg = DEPARTMENT_ROUTING_CONFIG[effectiveDept] || DEPARTMENT_ROUTING_CONFIG.HR;
+          const canonicalRole = resolveCanonicalRoleForDeptAndTier(effectiveDept, nextTier);
+          const sigTitle =
+            updates.signatoryTitle !== undefined
+              ? updates.signatoryTitle
+              : getSignatoryTitleForDeptAndTier(effectiveDept, nextTier);
+          modified.targetDepartment = effectiveDept;
+          modified.targetRole = canonicalRole;
+          modified.signatoryTitle = sigTitle;
+          modified.title = `Authorization Sign-off: ${cfg.deptNameEn}`;
+          modified.subtitle = `Official Signature ${sigTitle}`;
+        }
+        modifiedTarget = modified;
+        return modified;
+      });
+      applyBlocks(nextList);
+      if (beforeBlock && modifiedTarget) {
+        const revType: DocTrackedChange["type"] =
+          updates.tableData !== undefined || beforeBlock.type === "TABLE" ? "TABLE_EDIT" : "FORMAT";
+        recordBlockRevision(revType, id, beforeBlock, modifiedTarget);
+      }
     },
-    [applyBlocks]
+    [applyBlocks, recordBlockRevision]
   );
 
   /* ---------- Insert / delete / duplicate / reorder ---------- */
@@ -556,6 +632,7 @@ export function useCanvaStudioState({
           (b) => b.type === "SIGNATURE_COLUMN" || b.type === "SIGNATURE_STAMP" || b.type === "DUAL_SIGNATURE"
         );
         if (existingSigIdx >= 0) {
+          const prevSig = current[existingSigIdx];
           const filtered = current.filter(
             (b, i) =>
               i === existingSigIdx ||
@@ -567,6 +644,7 @@ export function useCanvaStudioState({
           const next = [...filtered];
           next[replaceIdx] = block;
           applyBlocks(next);
+          recordBlockRevision("FORMAT", block.id, prevSig, block, replaceIdx);
           setSelectedBlockId(block.id);
           setQuickInsertIndex(null);
           notify(
@@ -580,37 +658,25 @@ export function useCanvaStudioState({
       }
 
       const isFooterItem = item.type === "FOOTER" || item.type === "FOOTER_BLOCK";
-      if (isFooterItem) {
-        const footerBlock: DocBlock = { ...block, width: "100%", x: 0, y: 0 };
-        const withoutOldFooter = current.filter(
-          (b) => b.type !== "FOOTER" && b.type !== "FOOTER_BLOCK"
-        );
-        const next = [...withoutOldFooter, footerBlock];
-        applyBlocks(next);
-        setSelectedBlockId(footerBlock.id);
-        setQuickInsertIndex(null);
-        notify(
-          isId
-            ? `Footer dokumen "${item.labelId}" terpasang otomatis di posisi paling bawah.`
-            : `Document footer "${item.labelEn}" automatically pinned to the bottom.`,
-          "success"
-        );
-        return;
-      }
-
+      const firstFooterIdx = current.findIndex((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK");
       let idx: number;
-      const footerIdx = current.findIndex((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK");
-      const maxInsertIdx = footerIdx >= 0 ? footerIdx : current.length;
-      if (atIndex !== undefined && atIndex !== null) {
-        idx = Math.max(1, Math.min(atIndex, maxInsertIdx)); // never above locked kop or below pinned footer
-      } else if (selectedBlockId) {
-        const selIdx = current.findIndex((b) => b.id === selectedBlockId);
-        idx = selIdx >= 0 ? Math.min(selIdx + 1, maxInsertIdx) : maxInsertIdx;
+      if (isFooterItem) {
+        // Footer blocks always stay at the bottom of the document
+        idx = current.length;
       } else {
-        idx = maxInsertIdx;
+        const maxInsertIdx = firstFooterIdx >= 0 ? firstFooterIdx : current.length;
+        if (atIndex !== undefined && atIndex !== null) {
+          idx = Math.max(1, Math.min(atIndex, maxInsertIdx)); // never above locked kop or below footer
+        } else if (selectedBlockId) {
+          const selIdx = current.findIndex((b) => b.id === selectedBlockId);
+          idx = selIdx >= 0 ? Math.max(1, Math.min(selIdx + 1, maxInsertIdx)) : maxInsertIdx;
+        } else {
+          idx = maxInsertIdx;
+        }
       }
       const next = [...current.slice(0, idx), block, ...current.slice(idx)];
       applyBlocks(next);
+      recordBlockRevision("INSERT", block.id, undefined, block, idx);
       setSelectedBlockId(block.id);
       setQuickInsertIndex(null);
       notify(
@@ -618,12 +684,13 @@ export function useCanvaStudioState({
         "success"
       );
     },
-    [applyBlocks, department, isId, notify, selectedBlockId, targetAuthDept]
+    [applyBlocks, department, isId, notify, selectedBlockId, targetAuthDept, recordBlockRevision]
   );
 
   const deleteBlock = useCallback(
     (id: string) => {
-      const target = blocksRef.current.find((b) => b.id === id);
+      const targetIdx = blocksRef.current.findIndex((b) => b.id === id);
+      const target = targetIdx >= 0 ? blocksRef.current[targetIdx] : undefined;
       if (!target) return;
       if (target.type === "OFFICIAL_LETTERHEAD" || target.isLocked) {
         notify(
@@ -634,17 +701,11 @@ export function useCanvaStudioState({
         );
         return;
       }
-      const isFooterTarget = target.type === "FOOTER" || target.type === "FOOTER_BLOCK";
+      recordBlockRevision("DELETE", id, target, undefined, targetIdx);
       applyBlocks(blocksRef.current.filter((b) => b.id !== id));
       if (selectedBlockId === id) setSelectedBlockId(null);
-      if (isFooterTarget) {
-        notify(
-          "Document footer removed. You can re-add an ERP footer anytime from the Left Panel.",
-          "info"
-        );
-      }
     },
-    [applyBlocks, isId, notify, selectedBlockId]
+    [applyBlocks, isId, notify, selectedBlockId, recordBlockRevision]
   );
 
   const duplicateBlock = useCallback(
@@ -660,7 +721,7 @@ export function useCanvaStudioState({
       }
       if (target.type === "FOOTER" || target.type === "FOOTER_BLOCK") {
         notify(
-          isId ? "Footer dokumen hanya satu dan selalu berada di posisi paling bawah." : "Only one document footer is allowed at the bottom.",
+          isId ? "Footer dokumen terkunci di bagian bawah dan tidak dapat diduplikasi." : "Pinned document footer cannot be duplicated.",
           "info"
         );
         return;
@@ -670,9 +731,10 @@ export function useCanvaStudioState({
       const next = [...blocksRef.current];
       next.splice(idx + 1, 0, copy);
       applyBlocks(next);
+      recordBlockRevision("INSERT", copy.id, undefined, copy, idx + 1);
       setSelectedBlockId(copy.id);
     },
-    [applyBlocks, isId, notify]
+    [applyBlocks, isId, notify, recordBlockRevision]
   );
 
   const moveBlock = useCallback(
@@ -680,16 +742,12 @@ export function useCanvaStudioState({
       const current = blocksRef.current;
       const idx = current.findIndex((b) => b.id === id);
       if (idx === -1) return;
-      if (
-        current[idx].type === "OFFICIAL_LETTERHEAD" ||
-        current[idx].type === "FOOTER" ||
-        current[idx].type === "FOOTER_BLOCK" ||
-        current[idx].isLocked
-      )
-        return;
+      if (current[idx].type === "OFFICIAL_LETTERHEAD" || current[idx].isLocked) return;
+      const isFooter = current[idx].type === "FOOTER" || current[idx].type === "FOOTER_BLOCK";
+      if (isFooter) return; // footer stays anchored at the bottom of the page
       if (direction === "UP" && idx <= 1) return; // kop stays at index 0
-      const footerIdx = current.findIndex((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK");
-      const lastMovableIdx = footerIdx >= 0 ? footerIdx - 1 : current.length - 1;
+      const firstFooterIdx = current.findIndex((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK");
+      const lastMovableIdx = firstFooterIdx >= 0 ? firstFooterIdx - 1 : current.length - 1;
       if (direction === "DOWN" && idx >= lastMovableIdx) return;
       const targetIdx = direction === "UP" ? idx - 1 : idx + 1;
       const next = [...current];
@@ -708,20 +766,16 @@ export function useCanvaStudioState({
       const fromIdx = current.findIndex((b) => b.id === dragId);
       let toIdx = current.findIndex((b) => b.id === targetId);
       if (fromIdx === -1 || toIdx === -1) return;
-      if (
-        current[fromIdx].type === "OFFICIAL_LETTERHEAD" ||
-        current[fromIdx].type === "FOOTER" ||
-        current[fromIdx].type === "FOOTER_BLOCK" ||
-        current[fromIdx].isLocked
-      )
-        return;
+      if (current[fromIdx].type === "OFFICIAL_LETTERHEAD" || current[fromIdx].isLocked) return;
+      if (current[fromIdx].type === "FOOTER" || current[fromIdx].type === "FOOTER_BLOCK") return;
+      if (current[toIdx].type === "FOOTER" || current[toIdx].type === "FOOTER_BLOCK") return;
       const next = [...current];
       const [moved] = next.splice(fromIdx, 1);
       toIdx = next.findIndex((b) => b.id === targetId);
-      const footerIdx = next.findIndex((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK");
-      const maxInsert = footerIdx >= 0 ? footerIdx : next.length;
+      const firstFooterIdx = next.findIndex((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK");
+      const maxInsert = firstFooterIdx >= 0 ? firstFooterIdx : next.length;
       const insertAt = pos === "before" ? toIdx : toIdx + 1;
-      next.splice(Math.max(1, Math.min(insertAt, maxInsert)), 0, moved); // never above locked kop or below pinned footer
+      next.splice(Math.max(1, Math.min(insertAt, maxInsert)), 0, moved); // never above locked kop or below footer
       applyBlocks(next);
     },
     [applyBlocks]
@@ -746,7 +800,15 @@ export function useCanvaStudioState({
       const containerEl = blocksContainerRef.current;
       const contentWidth = containerEl?.clientWidth || (sheetRef.current ? sheetRef.current.clientWidth - 96 : 704);
       const currentBlock = blocksRef.current.find((b) => b.id === id);
-      if (!currentBlock) return;
+      if (
+        !currentBlock ||
+        currentBlock.isLocked ||
+        currentBlock.type === "OFFICIAL_LETTERHEAD" ||
+        currentBlock.type === "FOOTER" ||
+        currentBlock.type === "FOOTER_BLOCK"
+      ) {
+        return;
+      }
       const blockW =
         typeof currentBlock.width === "number"
           ? currentBlock.width
@@ -955,7 +1017,15 @@ export function useCanvaStudioState({
     e.preventDefault();
     e.stopPropagation();
     const currentBlock = blocksRef.current.find((b) => b.id === blockId);
-    if (!currentBlock || currentBlock.isLocked || currentBlock.type === "OFFICIAL_LETTERHEAD") return;
+    if (
+      !currentBlock ||
+      currentBlock.isLocked ||
+      currentBlock.type === "OFFICIAL_LETTERHEAD" ||
+      currentBlock.type === "FOOTER" ||
+      currentBlock.type === "FOOTER_BLOCK"
+    ) {
+      return;
+    }
     setSelectedBlockId(blockId);
     setDragging({
       blockId,
@@ -1029,6 +1099,15 @@ export function useCanvaStudioState({
     if (!containerElem) return;
     const rect = containerElem.getBoundingClientRect();
     const currentBlock = blocksRef.current.find((b) => b.id === blockId);
+    if (
+      !currentBlock ||
+      currentBlock.isLocked ||
+      currentBlock.type === "OFFICIAL_LETTERHEAD" ||
+      currentBlock.type === "FOOTER" ||
+      currentBlock.type === "FOOTER_BLOCK"
+    ) {
+      return;
+    }
     const startW = typeof currentBlock?.width === "number" ? currentBlock.width : rect.width;
     const startH = typeof currentBlock?.height === "number" ? currentBlock.height : rect.height;
     setResizing({
@@ -1224,10 +1303,26 @@ export function useCanvaStudioState({
     }
   }, [selectionToolbar.targetInput]);
 
+  /* ---------- WordCraft Document Meta envelope getter ---------- */
+  const getBlocksWithMeta = useCallback(() => {
+    return mergeDocumentMeta(blocksRef.current, {
+      pageSetup,
+      comments,
+      trackedChanges,
+      footnotes,
+    });
+  }, [pageSetup, comments, trackedChanges, footnotes]);
+
   /* ---------- Save ---------- */
   const handleSave = useCallback(
     async (submitForApproval: boolean, closeAfter: boolean) => {
       const currentBlocks = blocksRef.current;
+      const contentWithMeta = mergeDocumentMeta(currentBlocks, {
+        pageSetup,
+        comments,
+        trackedChanges,
+        footnotes,
+      });
       const sigBlocks = currentBlocks.filter(
         (b) => b.type === "SIGNATURE_COLUMN" || b.type === "SIGNATURE_STAMP" || b.type === "DUAL_SIGNATURE"
       );
@@ -1249,7 +1344,7 @@ export function useCanvaStudioState({
             title: docTitle.trim() || "Untitled Document",
             document_type: docType,
             department: department || "General",
-            content: currentBlocks,
+            content: contentWithMeta,
             layout_preset: layoutPreset,
             custom_width_mm: layoutPreset === "CUSTOM" ? customWidthMm : null,
             custom_height_mm: layoutPreset === "CUSTOM" ? customHeightMm : null,
@@ -1280,8 +1375,662 @@ export function useCanvaStudioState({
       targetAuthRole,
       targetAuthDept,
       targetAuthName,
+      pageSetup,
+      comments,
+      trackedChanges,
+      footnotes,
       notify,
     ]
+  );
+
+  /* ---------- WordCraft Review Actions (Page Setup, Comments, Track Changes) ---------- */
+  const updatePageSetup = useCallback((patch: Partial<DocPageSetup>) => {
+    setPageSetup((prev) => ({ ...prev, ...patch }));
+    setDirty(true);
+  }, []);
+
+  const addCommentThread = useCallback(
+    (blockId: string, text: string, selectedText = "") => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const newThread: DocCommentThread = {
+        id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        blockId,
+        selectedText,
+        authorUsername: actorUsername,
+        authorRole: actorRole,
+        text: trimmed,
+        resolved: false,
+        createdAt: new Date().toISOString(),
+        replies: [],
+      };
+      setComments((prev) => [newThread, ...prev]);
+      setDirty(true);
+      setLeftReviewTab("COMMENTS");
+      notify("Margin comment added.", "success");
+    },
+    [actorUsername, actorRole, notify]
+  );
+
+  const replyToComment = useCallback(
+    (threadId: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === threadId
+            ? {
+                ...c,
+                replies: [
+                  ...c.replies,
+                  {
+                    id: `rep-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+                    authorUsername: actorUsername,
+                    authorRole: actorRole,
+                    text: trimmed,
+                    createdAt: new Date().toISOString(),
+                  },
+                ],
+              }
+            : c
+        )
+      );
+      setDirty(true);
+    },
+    [actorUsername, actorRole]
+  );
+
+  const toggleResolveComment = useCallback((threadId: string) => {
+    setComments((prev) =>
+      prev.map((c) => (c.id === threadId ? { ...c, resolved: !c.resolved } : c))
+    );
+    setDirty(true);
+  }, []);
+
+  const deleteCommentThread = useCallback((threadId: string) => {
+    setComments((prev) => prev.filter((c) => c.id !== threadId));
+    setDirty(true);
+  }, []);
+
+  const acceptTrackedChange = useCallback(
+    (changeId: string) => {
+      setTrackedChanges((prev) =>
+        prev.map((c) => (c.id === changeId ? { ...c, status: "ACCEPTED" } : c))
+      );
+      setDirty(true);
+      notify("Revision accepted.", "success");
+    },
+    [notify]
+  );
+
+  const rejectTrackedChange = useCallback(
+    (changeId: string) => {
+      const target = trackedChanges.find((c) => c.id === changeId);
+      if (!target || target.status !== "PENDING") return;
+      if (target.type === "INSERT") {
+        applyBlocks(blocksRef.current.filter((b) => b.id !== target.blockId));
+      } else if (target.type === "DELETE" && target.snapshotBlock) {
+        const list = [...blocksRef.current];
+        const idx = Math.max(1, Math.min(target.targetIndex ?? list.length, list.length));
+        list.splice(idx, 0, target.snapshotBlock);
+        applyBlocks(list);
+      } else if (target.snapshotBlock) {
+        applyBlocks(
+          blocksRef.current.map((b) => (b.id === target.blockId ? target.snapshotBlock! : b))
+        );
+      }
+      setTrackedChanges((prev) =>
+        prev.map((c) => (c.id === changeId ? { ...c, status: "REJECTED" } : c))
+      );
+      setDirty(true);
+      notify("Revision rejected and content restored.", "info");
+    },
+    [trackedChanges, applyBlocks, notify]
+  );
+
+  const acceptAllTrackedChanges = useCallback(() => {
+    setTrackedChanges((prev) =>
+      prev.map((c) => (c.status === "PENDING" ? { ...c, status: "ACCEPTED" } : c))
+    );
+    setDirty(true);
+    notify("All pending tracked changes accepted.", "success");
+  }, [notify]);
+
+  const rejectAllTrackedChanges = useCallback(() => {
+    const pending = trackedChanges.filter((c) => c.status === "PENDING");
+    if (pending.length === 0) return;
+    let next = [...blocksRef.current];
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const ch = pending[i];
+      if (ch.type === "INSERT") {
+        next = next.filter((b) => b.id !== ch.blockId);
+      } else if (ch.type === "DELETE" && ch.snapshotBlock) {
+        const idx = Math.max(1, Math.min(ch.targetIndex ?? next.length, next.length));
+        next.splice(idx, 0, ch.snapshotBlock);
+      } else if (ch.snapshotBlock) {
+        next = next.map((b) => (b.id === ch.blockId ? ch.snapshotBlock! : b));
+      }
+    }
+    applyBlocks(next);
+    setTrackedChanges((prev) =>
+      prev.map((c) => (c.status === "PENDING" ? { ...c, status: "REJECTED" } : c))
+    );
+    setDirty(true);
+    notify("All pending tracked changes rejected and reverted.", "info");
+  }, [trackedChanges, applyBlocks, notify]);
+
+  /* ---------- Pagination, Outline, Stats, Find & Replace, Preflight ---------- */
+  const registerBlockHeight = useCallback((blockId: string, heightPx: number) => {
+    if (!Number.isFinite(heightPx) || heightPx <= 0) return;
+    const rounded = Math.round(heightPx);
+    setMeasuredHeights((prev) => {
+      if (prev[blockId] !== undefined && Math.abs(prev[blockId] - rounded) <= 5) {
+        return prev;
+      }
+      return { ...prev, [blockId]: rounded };
+    });
+  }, []);
+
+  const paperDims = useMemo(
+    () => getPaperDimensions(layoutPreset, customWidthMm, customHeightMm),
+    [layoutPreset, customWidthMm, customHeightMm]
+  );
+
+  const displayBlocks = useMemo(
+    () => (isMergePreview && activeMergeRecord ? applyMailMergeToBlocks(blocks, activeMergeRecord) : blocks),
+    [blocks, isMergePreview, activeMergeRecord]
+  );
+
+  const paginatedPages = useMemo(
+    () => paginateDocumentBlocks(displayBlocks, paperDims, pageSetup, measuredHeights),
+    [displayBlocks, paperDims, pageSetup, measuredHeights]
+  );
+
+  const outlineNodes = useMemo(() => buildDocumentOutline(blocks), [blocks]);
+
+  const docStats = useMemo(
+    () => computeDocumentStats(blocks, paginatedPages.length),
+    [blocks, paginatedPages.length]
+  );
+
+  const jumpToBlock = useCallback((blockId: string) => {
+    if (!blockId) return;
+    setSelectedBlockId(blockId);
+    setTimeout(() => {
+      const el = document.getElementById(`doc-container-${blockId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 40);
+  }, []);
+
+  /* ---------- Left-Side Page Menu Sync & Operations ---------- */
+  useEffect(() => {
+    setActivePageNumber((prev) => Math.max(1, Math.min(prev, Math.max(1, paginatedPages.length))));
+  }, [paginatedPages.length]);
+
+  useEffect(() => {
+    if (!selectedBlockId) return;
+    const owner = paginatedPages.find((p) => p.blocks.some((b) => b.id === selectedBlockId));
+    if (owner) {
+      setActivePageNumber(owner.pageNumber);
+    }
+  }, [selectedBlockId, paginatedPages]);
+
+  const jumpToPage = useCallback(
+    (pageNumber: number) => {
+      const target = Math.max(1, Math.min(pageNumber, Math.max(1, paginatedPages.length)));
+      lastPageJumpAtRef.current = Date.now();
+      if (layoutMode === "CONTINUOUS") {
+        setLayoutMode("PAGINATED");
+      }
+      setActivePageNumber(target);
+      const pageObj = paginatedPages.find((p) => p.pageNumber === target);
+      const focusBlock =
+        pageObj?.blocks.find((b) => b.type !== "OFFICIAL_LETTERHEAD") ||
+        pageObj?.blocks[0];
+      if (focusBlock) {
+        setSelectedBlockId(focusBlock.id);
+      }
+      setTimeout(() => {
+        const container = scrollRef.current;
+        const pageEl =
+          container?.querySelector<HTMLElement>(`[data-studio-page="${target}"]`) ||
+          document.querySelector<HTMLElement>(`[data-studio-page="${target}"]`);
+        if (pageEl) {
+          pageEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 50);
+    },
+    [layoutMode, paginatedPages]
+  );
+
+  const extractBodyPageSlices = useCallback((): {
+    kopBlock: DocBlock;
+    slices: DocBlock[][];
+    footerBlocks: DocBlock[];
+  } => {
+    const raw = blocksRef.current;
+    const kopBlock =
+      raw.find((b) => b.type === "OFFICIAL_LETTERHEAD") ||
+      ({ ...OFFICIAL_KOP_SURAT_BLOCK, isLocked: true, width: "100%", x: 0, y: 0 } as DocBlock);
+    const rawById = new Map<string, DocBlock>();
+    for (const b of raw) {
+      rawById.set(b.id, b);
+    }
+
+    const footerBlocks = raw.filter(
+      (b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK"
+    );
+    const slices: DocBlock[][] = paginatedPages.map((p) =>
+      p.blocks
+        .filter(
+          (b) =>
+            b.type !== "OFFICIAL_LETTERHEAD" &&
+            b.type !== "FOOTER" &&
+            b.type !== "FOOTER_BLOCK"
+        )
+        .map((b) => rawById.get(b.id) || b)
+    );
+    return { kopBlock, slices, footerBlocks };
+  }, [paginatedPages]);
+
+  const commitPageSlices = useCallback(
+    (kopBlock: DocBlock, slices: DocBlock[][], footerBlocks: DocBlock[]) => {
+      const rebuilt: DocBlock[] = [kopBlock];
+      for (let i = 0; i < slices.length; i++) {
+        const slice = slices[i];
+        const hasMoreNonEmptyAfter = slices.slice(i + 1).some((s) => s.length > 0);
+        if (i > 0 && (slice.length > 0 || hasMoreNonEmptyAfter)) {
+          rebuilt.push(buildBlock("PAGE_BREAK", isId, department, targetAuthDept, "PAGE_BREAK"));
+        }
+        rebuilt.push(...slice);
+      }
+      rebuilt.push(...footerBlocks);
+      applyBlocks(rebuilt);
+    },
+    [applyBlocks, department, isId, targetAuthDept]
+  );
+
+  const addNewPage = useCallback(
+    (afterPageNumber?: number) => {
+      if (viewMode !== "edit" || initialStatus === "APPROVED") {
+        notify("Document is currently in read-only mode.", "info");
+        return;
+      }
+      const starterBlock: DocBlock = {
+        ...buildBlock("TEXT", isId, department, targetAuthDept, "TEXT"),
+        content: isId
+          ? "Halaman baru — klik di sini untuk mulai menulis konten..."
+          : "New page — click here to start writing...",
+      };
+      const pageBreak = buildBlock("PAGE_BREAK", isId, department, targetAuthDept, "PAGE_BREAK");
+      const current = [...blocksRef.current];
+      const firstFooterIdx = current.findIndex((b) => b.type === "FOOTER" || b.type === "FOOTER_BLOCK");
+      const maxInsertIdx = firstFooterIdx >= 0 ? firstFooterIdx : current.length;
+
+      let insertIdx = maxInsertIdx;
+      const targetAfter = afterPageNumber
+        ? Math.max(1, Math.min(afterPageNumber, paginatedPages.length))
+        : paginatedPages.length;
+      const targetPageObj = paginatedPages.find((p) => p.pageNumber === targetAfter);
+
+      if (afterPageNumber && targetAfter < paginatedPages.length && targetPageObj) {
+        const movableIds = targetPageObj.blocks
+          .filter(
+            (b) =>
+              b.type !== "OFFICIAL_LETTERHEAD" &&
+              b.type !== "FOOTER" &&
+              b.type !== "FOOTER_BLOCK"
+          )
+          .map((b) => b.id);
+        if (movableIds.length > 0) {
+          const lastId = movableIds[movableIds.length - 1];
+          const foundIdx = current.findIndex((b) => b.id === lastId);
+          if (foundIdx >= 0) {
+            insertIdx = Math.min(foundIdx + 1, maxInsertIdx);
+          }
+        } else if (targetAfter === 1) {
+          const kopIdx = current.findIndex((b) => b.type === "OFFICIAL_LETTERHEAD");
+          insertIdx = Math.min(Math.max(1, kopIdx + 1), maxInsertIdx);
+        }
+        const nextIsBreakOrEnd =
+          insertIdx >= maxInsertIdx || current[insertIdx]?.type === "PAGE_BREAK";
+        const inserted: DocBlock[] = nextIsBreakOrEnd
+          ? [pageBreak, starterBlock]
+          : [pageBreak, starterBlock, buildBlock("PAGE_BREAK", isId, department, targetAuthDept, "PAGE_BREAK")];
+        const next = [...current.slice(0, insertIdx), ...inserted, ...current.slice(insertIdx)];
+        applyBlocks(next);
+      } else {
+        const next = [...current.slice(0, maxInsertIdx), pageBreak, starterBlock, ...current.slice(maxInsertIdx)];
+        applyBlocks(next);
+      }
+
+      setSelectedBlockId(starterBlock.id);
+      const nextPageNum = targetAfter + 1;
+      setActivePageNumber(nextPageNum);
+      lastPageJumpAtRef.current = Date.now();
+      if (layoutMode === "CONTINUOUS") setLayoutMode("PAGINATED");
+      setTimeout(() => {
+        const pageEl =
+          scrollRef.current?.querySelector<HTMLElement>(`[data-studio-page="${nextPageNum}"]`) ||
+          document.getElementById(`doc-container-${starterBlock.id}`);
+        if (pageEl) {
+          pageEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 60);
+      notify(`Page ${nextPageNum} added.`, "success");
+    },
+    [
+      applyBlocks,
+      department,
+      initialStatus,
+      isId,
+      layoutMode,
+      notify,
+      paginatedPages,
+      targetAuthDept,
+      viewMode,
+    ]
+  );
+
+  const duplicatePage = useCallback(
+    (pageNumber: number) => {
+      if (viewMode !== "edit" || initialStatus === "APPROVED") {
+        notify("Document is currently in read-only mode.", "info");
+        return;
+      }
+      const idx = pageNumber - 1;
+      if (idx < 0 || idx >= paginatedPages.length) return;
+      const { kopBlock, slices, footerBlocks } = extractBodyPageSlices();
+      const sourceSlice = slices[idx] || [];
+      const clonedSlice: DocBlock[] =
+        sourceSlice.length > 0
+          ? sourceSlice.map((b) => ({
+              ...JSON.parse(JSON.stringify(b)),
+              id: newBlockId(),
+            }))
+          : [
+              {
+                ...buildBlock("TEXT", isId, department, targetAuthDept, "TEXT"),
+                content: isId
+                  ? "Salinan halaman baru..."
+                  : "Duplicated page content...",
+              },
+            ];
+      const nextSlices = [...slices.slice(0, idx + 1), clonedSlice, ...slices.slice(idx + 1)];
+      commitPageSlices(kopBlock, nextSlices, footerBlocks);
+      const nextPageNum = idx + 2;
+      if (clonedSlice[0]) {
+        setSelectedBlockId(clonedSlice[0].id);
+      }
+      setActivePageNumber(nextPageNum);
+      lastPageJumpAtRef.current = Date.now();
+      setTimeout(() => {
+        const pageEl = scrollRef.current?.querySelector<HTMLElement>(`[data-studio-page="${nextPageNum}"]`);
+        if (pageEl) {
+          pageEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 60);
+      notify(`Page ${pageNumber} duplicated as Page ${nextPageNum}.`, "success");
+    },
+    [
+      commitPageSlices,
+      department,
+      extractBodyPageSlices,
+      initialStatus,
+      isId,
+      notify,
+      paginatedPages.length,
+      targetAuthDept,
+      viewMode,
+    ]
+  );
+
+  const reorderPages = useCallback(
+    (fromPageNumber: number, toPageNumber: number) => {
+      if (viewMode !== "edit" || initialStatus === "APPROVED") {
+        notify("Document is currently in read-only mode.", "info");
+        return;
+      }
+      const fromIdx = fromPageNumber - 1;
+      const toIdx = toPageNumber - 1;
+      if (
+        fromIdx === toIdx ||
+        fromIdx < 0 ||
+        toIdx < 0 ||
+        fromIdx >= paginatedPages.length ||
+        toIdx >= paginatedPages.length
+      ) {
+        return;
+      }
+      const { kopBlock, slices, footerBlocks } = extractBodyPageSlices();
+      const nextSlices = [...slices];
+      const [moved] = nextSlices.splice(fromIdx, 1);
+      nextSlices.splice(toIdx, 0, moved);
+      commitPageSlices(kopBlock, nextSlices, footerBlocks);
+      setActivePageNumber(toPageNumber);
+      lastPageJumpAtRef.current = Date.now();
+      setTimeout(() => {
+        const pageEl = scrollRef.current?.querySelector<HTMLElement>(`[data-studio-page="${toPageNumber}"]`);
+        if (pageEl) {
+          pageEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 60);
+      notify(`Moved Page ${fromPageNumber} to Page ${toPageNumber}.`, "success");
+    },
+    [
+      commitPageSlices,
+      extractBodyPageSlices,
+      initialStatus,
+      notify,
+      paginatedPages.length,
+      viewMode,
+    ]
+  );
+
+  const deletePage = useCallback(
+    (pageNumber: number) => {
+      if (viewMode !== "edit" || initialStatus === "APPROVED") {
+        notify("Document is currently in read-only mode.", "info");
+        return;
+      }
+      if (paginatedPages.length <= 1) {
+        notify("Document must contain at least one page.", "info");
+        return;
+      }
+      const idx = pageNumber - 1;
+      if (idx < 0 || idx >= paginatedPages.length) return;
+      const { kopBlock, slices, footerBlocks } = extractBodyPageSlices();
+      const removedSlice = slices[idx] || [];
+      if (selectedBlockId && removedSlice.some((b) => b.id === selectedBlockId)) {
+        setSelectedBlockId(null);
+      }
+      const nextSlices = slices.filter((_, sIdx) => sIdx !== idx);
+      commitPageSlices(kopBlock, nextSlices, footerBlocks);
+      const nextActive = Math.max(1, Math.min(pageNumber, nextSlices.length));
+      setActivePageNumber(nextActive);
+      notify(`Page ${pageNumber} deleted (Ctrl+Z to undo).`, "info");
+    },
+    [
+      commitPageSlices,
+      extractBodyPageSlices,
+      initialStatus,
+      notify,
+      paginatedPages.length,
+      selectedBlockId,
+      viewMode,
+    ]
+  );
+
+  const findMatches = useMemo<FindMatch[]>(
+    () => findMatchesInBlocks(blocks, findQuery, caseSensitive),
+    [blocks, findQuery, caseSensitive]
+  );
+
+  useEffect(() => {
+    setActiveMatchIndex((idx) => (findMatches.length === 0 ? 0 : Math.min(idx, findMatches.length - 1)));
+  }, [findMatches.length]);
+
+  const nextMatch = useCallback(() => {
+    if (findMatches.length === 0) return;
+    setActiveMatchIndex((prev) => {
+      const nextIdx = (prev + 1) % findMatches.length;
+      jumpToBlock(findMatches[nextIdx].blockId);
+      return nextIdx;
+    });
+  }, [findMatches, jumpToBlock]);
+
+  const prevMatch = useCallback(() => {
+    if (findMatches.length === 0) return;
+    setActiveMatchIndex((prev) => {
+      const nextIdx = (prev - 1 + findMatches.length) % findMatches.length;
+      jumpToBlock(findMatches[nextIdx].blockId);
+      return nextIdx;
+    });
+  }, [findMatches, jumpToBlock]);
+
+  const replaceCurrentMatch = useCallback(() => {
+    if (findMatches.length === 0) return;
+    const targetMatch = findMatches[activeMatchIndex] || findMatches[0];
+    const next = replaceSingleMatchInBlocks(blocksRef.current, targetMatch, replaceQuery);
+    applyBlocks(next);
+    setDirty(true);
+    notify("Replaced 1 occurrence.", "success");
+  }, [findMatches, activeMatchIndex, replaceQuery, applyBlocks, notify]);
+
+  const replaceAllMatches = useCallback(() => {
+    if (!findQuery) return;
+    const { blocks: next, count } = replaceAllMatchesInBlocks(
+      blocksRef.current,
+      findQuery,
+      replaceQuery,
+      caseSensitive
+    );
+    if (count === 0) {
+      notify("No matching occurrences found.", "info");
+      return;
+    }
+    applyBlocks(next);
+    setDirty(true);
+    notify(`Replaced ${count} occurrence(s).`, "success");
+  }, [findQuery, replaceQuery, caseSensitive, applyBlocks, notify]);
+
+  const printableWidthPx = useMemo(
+    () => Math.max(220, paperDims.widthPx - mmToPx(pageSetup.marginLeftMm) - mmToPx(pageSetup.marginRightMm)),
+    [paperDims.widthPx, pageSetup.marginLeftMm, pageSetup.marginRightMm]
+  );
+
+  const preflightReport = useMemo(
+    () =>
+      runDocumentPreflight(
+        displayBlocks,
+        { pageSetup, comments, trackedChanges, footnotes },
+        { title: docTitle, printableWidthPx }
+      ),
+    [displayBlocks, pageSetup, comments, trackedChanges, footnotes, docTitle, printableWidthPx]
+  );
+
+  const requestSubmitWithPreflight = useCallback(
+    (closeAfter = true) => {
+      if (preflightReport.errorCount > 0) {
+        setPreflightGuardOpen(true);
+        setLeftReviewTab("PREFLIGHT");
+        return;
+      }
+      handleSave(true, closeAfter);
+    },
+    [preflightReport.errorCount, handleSave]
+  );
+
+  /* ---------- ERP Live Mail Merge ---------- */
+  const loadMailMergeSources = useCallback(
+    async (type = mailMergeSourceType, q = mailMergeSearch) => {
+      setMailMergeLoading(true);
+      try {
+        const res = await apiFetch(
+          `/api/workspace-documents/mail-merge-sources?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`,
+          {},
+          actorUsername
+        );
+        const list = (res.data as any)?.data || [];
+        setMailMergeRecords(Array.isArray(list) ? list : []);
+      } catch {
+        setMailMergeRecords([]);
+      } finally {
+        setMailMergeLoading(false);
+      }
+    },
+    [mailMergeSourceType, mailMergeSearch, actorUsername]
+  );
+
+  useEffect(() => {
+    if (mailMergeOpen) {
+      loadMailMergeSources(mailMergeSourceType, mailMergeSearch);
+    }
+  }, [mailMergeOpen, mailMergeSourceType]);
+
+  const insertMergeToken = useCallback(
+    (token: string) => {
+      const chip = `{{${token}}}`;
+      const sel = blocksRef.current.find((b) => b.id === selectedBlockId);
+      if (sel && !sel.isLocked && sel.type !== "OFFICIAL_LETTERHEAD") {
+        const curText = sel.content || "";
+        const spacer = curText && !curText.endsWith(" ") ? " " : "";
+        updateBlock(sel.id, { content: `${curText}${spacer}${chip}` });
+        notify(`Inserted token ${chip} into selected block.`, "success");
+        return;
+      }
+      const newBlock: DocBlock = {
+        ...buildBlock("TEXT", false, department),
+        content: `Reference Data: ${chip}`,
+      };
+      const insertAt = blocksRef.current.length;
+      const next = [...blocksRef.current.slice(0, insertAt), newBlock, ...blocksRef.current.slice(insertAt)];
+      applyBlocks(next);
+      setSelectedBlockId(newBlock.id);
+      notify(`Added paragraph block with ${chip}.`, "success");
+    },
+    [selectedBlockId, updateBlock, department, applyBlocks, notify]
+  );
+
+  const applyMergePermanently = useCallback(
+    (record: MailMergeSourceRecord) => {
+      const merged = applyMailMergeToBlocks(blocksRef.current, record);
+      applyBlocks(merged);
+      setIsMergePreview(false);
+      setActiveMergeRecord(null);
+      setDirty(true);
+      notify(`Applied live ERP record "${record.label}" to document.`, "success");
+    },
+    [applyBlocks, notify]
+  );
+
+  const batchGenerateDrafts = useCallback(
+    async (records: MailMergeSourceRecord[]) => {
+      if (!records.length) return;
+      const targetDocId = documentId || "template";
+      const res = await apiFetch(
+        `/api/workspace-documents/${targetDocId}/batch-merge`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            records,
+            title: docTitle,
+            content: getBlocksWithMeta(),
+          }),
+        },
+        actorUsername
+      );
+      if (res.ok) {
+        const count = (res.data as any)?.count || records.length;
+        notify(`Generated ${count} personalized draft document(s) in Workspace.`, "success");
+        setMailMergeOpen(false);
+      } else {
+        notify(res.error || "Batch draft generation failed.", "error");
+      }
+    },
+    [documentId, docTitle, getBlocksWithMeta, actorUsername, notify]
   );
 
   /* ---------- Close with unsaved-changes guard ---------- */
@@ -1310,10 +2059,15 @@ export function useCanvaStudioState({
       const isTyping = !!target?.closest("input, textarea, select, [contenteditable=true]");
       const mod = e.ctrlKey || e.metaKey;
 
+      if (mod && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setFindOpen(true);
+        return;
+      }
       if (mod && e.key.toLowerCase() === "s") {
         e.preventDefault();
         if (e.shiftKey) {
-          handleSave(true, true);
+          requestSubmitWithPreflight(true);
         } else {
           handleSave(false, false);
         }
@@ -1365,7 +2119,13 @@ export function useCanvaStudioState({
         (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")
       ) {
         const blk = blocksRef.current.find((b) => b.id === selectedBlockId);
-        if (blk && blk.type !== "OFFICIAL_LETTERHEAD" && !blk.isLocked) {
+        if (
+          blk &&
+          blk.type !== "OFFICIAL_LETTERHEAD" &&
+          blk.type !== "FOOTER" &&
+          blk.type !== "FOOTER_BLOCK" &&
+          !blk.isLocked
+        ) {
           e.preventDefault();
           const step = e.shiftKey ? 10 : 1;
           const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
@@ -1378,7 +2138,15 @@ export function useCanvaStudioState({
         }
       }
       if (e.key === "Escape") {
-        if (quickInsertIndex !== null) {
+        if (findOpen) {
+          setFindOpen(false);
+        } else if (pageSetupModalOpen) {
+          setPageSetupModalOpen(false);
+        } else if (mailMergeOpen) {
+          setMailMergeOpen(false);
+        } else if (compareModalOpen) {
+          setCompareModalOpen(false);
+        } else if (quickInsertIndex !== null) {
           setQuickInsertIndex(null);
         } else if (showShortcuts) {
           setShowShortcuts(false);
@@ -1391,7 +2159,7 @@ export function useCanvaStudioState({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleSave, undo, redo, duplicateBlock, deleteBlock, updateBlock, selectedBlockId, viewMode, quickInsertIndex, showShortcuts, showCloseConfirm]);
+  }, [handleSave, requestSubmitWithPreflight, undo, redo, duplicateBlock, deleteBlock, updateBlock, selectedBlockId, viewMode, quickInsertIndex, showShortcuts, showCloseConfirm, findOpen, pageSetupModalOpen, mailMergeOpen, compareModalOpen]);
 
   useEffect(() => {
     const cleanup = () => document.body.classList.remove("printing-workspace");
@@ -1410,6 +2178,51 @@ export function useCanvaStudioState({
     const fit = Math.floor(((scroller.clientWidth - 48) / dims.widthPx) * 100);
     setZoomLevel(Math.max(40, Math.min(150, fit)));
   }, [layoutPreset, customWidthMm, customHeightMm]);
+
+  /* ---------- Responsive Rail Toggles (Desktop + Mobile/Tablet Drawer) ---------- */
+  const openLeftReviewPanel = useCallback(
+    (tab: "PAGES" | "OUTLINE" | "COMMENTS" | "CHANGES" | "PREFLIGHT") => {
+      setLeftReviewTab(tab);
+      if (layoutMode === "FOCUS") setLayoutMode("PAGINATED");
+      if (typeof window !== "undefined" && window.innerWidth < 1024) {
+        setShowLeftReviewDrawer(true);
+      }
+    },
+    [layoutMode]
+  );
+
+  const toggleLeftReviewRail = useCallback(() => {
+    const isSmall = typeof window !== "undefined" && window.innerWidth < 1024;
+    if (isSmall) {
+      setShowLeftReviewDrawer((prev) => {
+        const next = !prev;
+        if (next && !leftReviewTab) setLeftReviewTab("PAGES");
+        return next;
+      });
+      if (layoutMode === "FOCUS") setLayoutMode("PAGINATED");
+    } else {
+      if (layoutMode === "FOCUS") {
+        setLayoutMode("PAGINATED");
+        setLeftReviewTab("PAGES");
+        return;
+      }
+      setLeftReviewTab((prev) => (prev ? null : "PAGES"));
+    }
+  }, [layoutMode, leftReviewTab]);
+
+  const toggleRightInspector = useCallback(() => {
+    const isSmall = typeof window !== "undefined" && window.innerWidth < 1024;
+    if (isSmall) {
+      setShowRightPanel((prev) => !prev);
+    } else {
+      if (layoutMode === "FOCUS") {
+        setLayoutMode("PAGINATED");
+        setRightInspectorOpen(true);
+        return;
+      }
+      setRightInspectorOpen((prev) => !prev);
+    }
+  }, [layoutMode]);
 
   /* ---------- Library filtering ---------- */
   const filteredLibrary = useMemo(() => {
@@ -1515,6 +2328,8 @@ export function useCanvaStudioState({
 
   return {
     isId,
+    actorUsername,
+    actorRole,
     documentId,
     documentCode,
     initialStatus,
@@ -1545,6 +2360,8 @@ export function useCanvaStudioState({
     signerChain,
     readinessChecks,
     blocks,
+    displayBlocks,
+    getBlocksWithMeta,
     setBlocksState,
     blocksRef,
     past,
@@ -1580,12 +2397,98 @@ export function useCanvaStudioState({
     setShowLeftPanel,
     showRightPanel,
     setShowRightPanel,
+    rightInspectorOpen,
+    setRightInspectorOpen,
+    showLeftReviewDrawer,
+    setShowLeftReviewDrawer,
+    activeRibbonTab,
+    setActiveRibbonTab,
+    ribbonCollapsed,
+    setRibbonCollapsed,
+    openLeftReviewPanel,
+    toggleLeftReviewRail,
+    toggleRightInspector,
     zoomLevel,
     setZoomLevel,
     showGrid,
     setShowGrid,
     viewMode,
     setViewMode,
+    layoutMode,
+    setLayoutMode,
+    showRuler,
+    setShowRuler,
+    leftReviewTab,
+    setLeftReviewTab,
+    pageSetup,
+    updatePageSetup,
+    comments,
+    commentFilter,
+    setCommentFilter,
+    addCommentThread,
+    replyToComment,
+    toggleResolveComment,
+    deleteCommentThread,
+    trackedChanges,
+    isTrackChangesEnabled,
+    setIsTrackChangesEnabled,
+    acceptTrackedChange,
+    rejectTrackedChange,
+    acceptAllTrackedChanges,
+    rejectAllTrackedChanges,
+    footnotes,
+    paginatedPages,
+    activePageNumber,
+    setActivePageNumber,
+    lastPageJumpAtRef,
+    jumpToPage,
+    addNewPage,
+    duplicatePage,
+    reorderPages,
+    deletePage,
+    registerBlockHeight,
+    outlineNodes,
+    docStats,
+    jumpToBlock,
+    findOpen,
+    setFindOpen,
+    findQuery,
+    setFindQuery,
+    replaceQuery,
+    setReplaceQuery,
+    caseSensitive,
+    setCaseSensitive,
+    findMatches,
+    activeMatchIndex,
+    setActiveMatchIndex,
+    nextMatch,
+    prevMatch,
+    replaceCurrentMatch,
+    replaceAllMatches,
+    preflightReport,
+    preflightGuardOpen,
+    setPreflightGuardOpen,
+    requestSubmitWithPreflight,
+    mailMergeOpen,
+    setMailMergeOpen,
+    mailMergeSourceType,
+    setMailMergeSourceType,
+    mailMergeSearch,
+    setMailMergeSearch,
+    mailMergeRecords,
+    mailMergeLoading,
+    activeMergeRecord,
+    setActiveMergeRecord,
+    isMergePreview,
+    setIsMergePreview,
+    loadMailMergeSources,
+    insertMergeToken,
+    applyMergePermanently,
+    batchGenerateDrafts,
+    pageSetupModalOpen,
+    setPageSetupModalOpen,
+    compareModalOpen,
+    setCompareModalOpen,
     quickInsertIndex,
     setQuickInsertIndex,
     showShortcuts,

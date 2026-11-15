@@ -7,7 +7,21 @@ import { CreateJournalEntrySchema, COAAccountSchema, InvoicePaymentSchema, Expen
 import { financeService } from "../services/financeService.ts";
 import { logAudit } from "../utils/audit.ts";
 import { syncCollectionToFirestore } from "../db/firebaseSync.ts";
-import { postInvoicePaymentJournal, postPurchaseOrderPaymentJournal, postPayrollDisbursementJournal, assertAccountingPeriodOpen } from "../utils/accountingBridge.ts";
+import {
+  postInvoicePaymentJournal,
+  postPurchaseOrderPaymentJournal,
+  postPayrollDisbursementJournal,
+  postExpenseJournal,
+  postVoidReversalJournal,
+  assertAccountingPeriodOpen,
+} from "../utils/accountingBridge.ts";
+import {
+  assertClosingWindowOpen,
+  buildFullClosingWorkspaceState,
+  computePeriodFinancialPackage,
+  createClosingSnapshot,
+  resolvePeriodKey,
+} from "../utils/closingEngine.ts";
 import { calculateFinancialBreakdown } from "../lib/financialEngine.ts";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
@@ -52,6 +66,12 @@ function requireFinanceManager(req: any, res: any): boolean {
           }
 
           const userEmail = getActor(req);
+          const nowIso = new Date().toISOString();
+          const payrollPeriodKey =
+            payroll.period_key || resolvePeriodKey(payroll.period_month, payroll.period_year, payroll.period_name);
+
+          assertAccountingPeriodOpen(db, `${payrollPeriodKey}-01`);
+          assertAccountingPeriodOpen(db, nowIso);
 
           db.transaction(() => {
             // 1. Revert Payroll Status
@@ -59,14 +79,13 @@ function requireFinanceManager(req: any, res: any): boolean {
               "UPDATE finance_payroll SET status = 'DRAFTED', paid_at = NULL WHERE id = ?",
             ).run(req.params.id);
 
-            // 2. Revert HR Payslips Status (valid values: DRAFT, PUBLISHED, PAID)
+            // 2. Revert HR Payslips Status (match canonical period_key OR period_month)
             db.prepare(
-              "UPDATE hr_payslips SET status = 'PUBLISHED' WHERE period_month = ?",
-            ).run(payroll.period_name);
+              "UPDATE hr_payslips SET status = 'PUBLISHED' WHERE period_key = ? OR LOWER(TRIM(period_month)) = LOWER(TRIM(?))",
+            ).run(payrollPeriodKey, payroll.period_name || "");
 
             // 3. Insert Compensating Transaction (IN) to reverse the OUT
             const txId = "TX-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-            const nowIso = new Date().toISOString();
             db.prepare(
               `
              INSERT INTO finance_transactions (
@@ -84,6 +103,20 @@ function requireFinanceManager(req: any, res: any): boolean {
                 (notes ? " - " + notes : ""),
               userEmail,
             );
+
+            // 4. Atomic GL Reversal Journal Entry (mirrors original PAYROLL disbursement lines)
+            postVoidReversalJournal(db, {
+              reference_type: "VOID_REVERSAL",
+              reference_id: payroll.id,
+              reference_number: payroll.voucher_number || payroll.id,
+              original_reference_type: "PAYROLL",
+              fallback_debit_account: { code: "1101", name: "Kas & Rekening Bank (Cash & Bank)" },
+              fallback_credit_account: { code: "6101", name: "Beban Gaji Operasional & Staff" },
+              fallback_amount: Number(payroll.total_amount) || 0,
+              description: `Void/Reversal of Payroll ${payroll.period_name}${notes ? " - " + notes : ""}`,
+              entry_date: nowIso,
+              user: userEmail,
+            });
 
             syncCollectionToFirestore("finance_payroll", req.params.id, { id: req.params.id, status: 'DRAFTED', paid_at: null });
             syncCollectionToFirestore("finance_transactions", txId, {
@@ -109,7 +142,8 @@ function requireFinanceManager(req: any, res: any): boolean {
           res.json({ success: true });
         } catch (e: any) {
           console.error("Void payroll failed:", e);
-          res.status(500).json({ error: "Failed to void payroll" });
+          const msg = e?.message || "Failed to void payroll";
+          res.status(msg.includes("PERIOD") ? 400 : 500).json({ error: msg });
         }
       },
     );
@@ -280,23 +314,29 @@ function requireFinanceManager(req: any, res: any): boolean {
           }
 
           const userEmail = getActor(req);
+          const nowIso = new Date().toISOString();
+          const payrollPeriodKey =
+            payroll.period_key || resolvePeriodKey(payroll.period_month, payroll.period_year, payroll.period_name);
+
+          assertAccountingPeriodOpen(db, `${payrollPeriodKey}-01`);
+          assertAccountingPeriodOpen(db, nowIso);
+
           db.transaction(() => {
             const upd = db.prepare(
-              "UPDATE finance_payroll SET status = 'PAID', paid_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'PAID'",
-            ).run(req.params.id);
+              "UPDATE finance_payroll SET status = 'PAID', paid_at = CURRENT_TIMESTAMP, period_key = ? WHERE id = ? AND status != 'PAID'",
+            ).run(payrollPeriodKey, req.params.id);
             if (upd.changes === 0) {
               throw new Error("Payroll has already been disbursed (PAID).");
             }
 
-            // PIPE: Mark HR payslips as PAID for this period
+            // PIPE: Mark HR payslips as PAID for this canonical period_key OR period_month
             db.prepare(
-              "UPDATE hr_payslips SET status = 'PAID' WHERE period_month = ?",
-            ).run(payroll.period_name);
+              "UPDATE hr_payslips SET status = 'PAID', period_key = ? WHERE period_key = ? OR LOWER(TRIM(period_month)) = LOWER(TRIM(?))",
+            ).run(payrollPeriodKey, payrollPeriodKey, payroll.period_name || "");
 
             // INSERT GL TRANSACTION
             const txId =
               "TX-PRL-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-            const nowIso = new Date().toISOString();
             db.prepare(
               "INSERT INTO finance_transactions (id, type, category, reference_id, amount, payment_method, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             ).run(
@@ -310,31 +350,28 @@ function requireFinanceManager(req: any, res: any): boolean {
               userEmail,
             );
 
-            // POST BALANCED DOUBLE ENTRY JOURNAL (HPP Direct Labor vs OPEX)
-            try {
-              let details: any[] = [];
-              try { details = JSON.parse(payroll.details_json || "[]"); } catch {}
-              const totalDirectLabor = Number(payroll.total_direct_labor) || details.filter((d: any) => d.cost_category === "DIRECT_LABOR").reduce((sum: number, d: any) => sum + (Number(d.gross_pay) || 0), 0);
-              const totalOpex = Number(payroll.total_opex) || details.filter((d: any) => d.cost_category !== "DIRECT_LABOR").reduce((sum: number, d: any) => sum + (Number(d.gross_pay) || 0), 0);
-              const totalBpjs = details.reduce((sum: number, d: any) => sum + (Number(d.bpjs_deduction) || 0), 0);
-              const totalPph21 = details.reduce((sum: number, d: any) => sum + (Number(d.pph21_deduction) || 0), 0);
+            // POST BALANCED DOUBLE ENTRY JOURNAL ATOMICALLY (HPP Direct Labor vs OPEX)
+            let details: any[] = [];
+            try { details = JSON.parse(payroll.details_json || "[]"); } catch {}
+            const totalDirectLabor = Number(payroll.total_direct_labor) || details.filter((d: any) => d.cost_category === "DIRECT_LABOR").reduce((sum: number, d: any) => sum + (Number(d.gross_pay) || 0), 0);
+            const totalOpex = Number(payroll.total_opex) || details.filter((d: any) => d.cost_category !== "DIRECT_LABOR").reduce((sum: number, d: any) => sum + (Number(d.gross_pay) || 0), 0);
+            const totalBpjs = details.reduce((sum: number, d: any) => sum + (Number(d.bpjs_deduction) || 0), 0);
+            const totalPph21 = details.reduce((sum: number, d: any) => sum + (Number(d.pph21_deduction) || 0), 0);
 
-              postPayrollDisbursementJournal(db, {
-                payroll_id: payroll.id,
-                voucher_number: payroll.voucher_number || payroll.id,
-                period_name: payroll.period_name || "Payroll",
-                total_direct_labor: totalDirectLabor,
-                total_opex: totalOpex,
-                total_net: Number(payroll.total_amount) || 0,
-                total_bpjs: totalBpjs,
-                total_pph21: totalPph21,
-                user: userEmail,
-              });
-            } catch (journalErr) {
-              console.warn("Posting payroll disbursement journal skipped:", journalErr);
-            }
+            postPayrollDisbursementJournal(db, {
+              payroll_id: payroll.id,
+              voucher_number: payroll.voucher_number || payroll.id,
+              period_name: payroll.period_name || "Payroll",
+              entry_date: nowIso,
+              total_direct_labor: totalDirectLabor,
+              total_opex: totalOpex,
+              total_net: Number(payroll.total_amount) || 0,
+              total_bpjs: totalBpjs,
+              total_pph21: totalPph21,
+              user: userEmail,
+            });
 
-            syncCollectionToFirestore("finance_payroll", req.params.id, { id: req.params.id, status: 'PAID', paid_at: nowIso });
+            syncCollectionToFirestore("finance_payroll", req.params.id, { id: req.params.id, status: 'PAID', paid_at: nowIso, period_key: payrollPeriodKey });
             syncCollectionToFirestore("finance_transactions", txId, {
               id: txId,
               type: "OUT",
@@ -358,9 +395,10 @@ function requireFinanceManager(req: any, res: any): boolean {
 
           res.json({ success: true });
         } catch (e: any) {
+          const msg = e?.message || "Failed to process payroll disbursement";
           res
-            .status(500)
-            .json({ error: e?.message || "Failed to process payroll disbursement" });
+            .status(msg.includes("PERIOD") || msg.includes("disbursed") ? 400 : 500)
+            .json({ error: msg });
         }
       },
     );
@@ -389,9 +427,11 @@ function requireFinanceManager(req: any, res: any): boolean {
               .json({ error: "Can only void paid payables." });
           }
 
-          const userEmail = getActor(req);
+            const userEmail = getActor(req);
+            const nowIso = new Date().toISOString();
+            assertAccountingPeriodOpen(db, nowIso);
 
-          db.transaction(() => {
+            db.transaction(() => {
             // 1. Revert PO Status atomically
             const updPo = db.prepare(
               "UPDATE purchase_orders SET payment_status = 'UNPAID', amount_paid = 0 WHERE id = ? AND payment_status = 'PAID'",
@@ -438,6 +478,20 @@ function requireFinanceManager(req: any, res: any): boolean {
               userEmail,
             );
 
+            // 3. Post Atomic Reversal Journal Entry (Dr 1101 Cash/Bank, Cr 2101 AP)
+            postVoidReversalJournal(db, {
+              reference_type: "VOID_REVERSAL",
+              reference_id: po.id,
+              reference_number: po.po_number || po.id,
+              original_reference_type: "PO_PAYMENT",
+              fallback_debit_account: { code: "1101", name: "Kas & Rekening Bank (Cash & Bank)" },
+              fallback_credit_account: { code: "2101", name: "Hutang Usaha (Accounts Payable)" },
+              fallback_amount: Number(po.amount_paid || po.total_amount) || 0,
+              description: `Void/Reversal of PO Payment ${po.po_number}${notes ? " - " + notes : ""}`,
+              entry_date: nowIso,
+              user: userEmail,
+            });
+
             logAudit(
               userEmail,
               "VOID_PAYABLE",
@@ -450,7 +504,8 @@ function requireFinanceManager(req: any, res: any): boolean {
           res.json({ success: true });
         } catch (e: any) {
           console.error("Void payable failed:", e);
-          res.status(500).json({ error: "Failed to void payable" });
+          const msg = e?.message || "Failed to void payable";
+          res.status(msg.includes("PERIOD") ? 400 : 500).json({ error: msg });
         }
       },
     );
@@ -482,17 +537,30 @@ function requireFinanceManager(req: any, res: any): boolean {
             "TX-EXP-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
           const nowIso = new Date().toISOString();
 
-          db.prepare(
-            "INSERT INTO finance_transactions (id, type, category, amount, payment_method, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          ).run(
-            txId,
-            "OUT",
-            category,
-            amount,
-            payment_method || "BANK TRANSFER",
-            notes || `General Expense - ${category}`,
-            userEmail,
-          );
+          assertAccountingPeriodOpen(db, nowIso);
+
+          db.transaction(() => {
+            db.prepare(
+              "INSERT INTO finance_transactions (id, type, category, amount, payment_method, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ).run(
+              txId,
+              "OUT",
+              category,
+              amount,
+              payment_method || "BANK TRANSFER",
+              notes || `General Expense - ${category}`,
+              userEmail,
+            );
+
+            postExpenseJournal(db, {
+              tx_id: txId,
+              category,
+              amount: Number(amount),
+              notes: notes || `General Expense - ${category}`,
+              entry_date: nowIso,
+              user: userEmail,
+            });
+          })();
 
           syncCollectionToFirestore("finance_transactions", txId, {
             id: txId,
@@ -513,10 +581,11 @@ function requireFinanceManager(req: any, res: any): boolean {
             `Recorded expense ${category} of ${amount}`,
           );
 
-          res.json({ success: true });
+          res.json({ success: true, id: txId });
         } catch (e: any) {
           console.error("Record expense failed:", e);
-          res.status(500).json({ error: "Failed to record expense" });
+          const msg = e?.message || "Failed to record expense";
+          res.status(msg.includes("PERIOD") ? 400 : 500).json({ error: msg });
         }
       }
     );
@@ -638,6 +707,9 @@ function requireFinanceManager(req: any, res: any): boolean {
             mainStatus = "PAID";
           }
 
+          const nowIso = new Date().toISOString();
+          assertAccountingPeriodOpen(db, nowIso);
+
           db.transaction(() => {
             const paidAtClause = isFullySettled ? ", paid_at = CURRENT_TIMESTAMP" : "";
             db.prepare(
@@ -646,7 +718,6 @@ function requireFinanceManager(req: any, res: any): boolean {
 
             const txId =
               "TX-INV-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-            const nowIso = new Date().toISOString();
             
             // Record actual cash/bank receipt (the actual money entering accounts)
             db.prepare(
@@ -662,6 +733,13 @@ function requireFinanceManager(req: any, res: any): boolean {
               userEmail,
             );
 
+            // Atomic Automated Accounting Bridge: Post Customer Payment Journal (Debit Bank/Cash, Credit Accounts Receivable)
+            postInvoicePaymentJournal(db, {
+              ci_id: invoice.id,
+              ci_number: invoice.ci_number || invoice.id,
+              payment_amount: payAmount,
+              user: userEmail,
+            });
 
             syncCollectionToFirestore("commercial_invoices", req.params.id, {
               id: req.params.id,
@@ -687,18 +765,6 @@ function requireFinanceManager(req: any, res: any): boolean {
             });
           })();
 
-          // Automated Accounting Bridge: Post Customer Payment Journal (Debit Bank/Cash, Credit Accounts Receivable)
-          try {
-            postInvoicePaymentJournal(db, {
-              ci_id: invoice.id,
-              ci_number: invoice.ci_number || invoice.id,
-              payment_amount: payAmount,
-              user: userEmail,
-            });
-          } catch (payAccErr) {
-            console.error("Automated Accounting postInvoicePaymentJournal error:", payAccErr);
-          }
-
           logAudit(
             userEmail,
             "INVOICE_PAID",
@@ -709,7 +775,8 @@ function requireFinanceManager(req: any, res: any): boolean {
           res.json({ success: true, payment_status: paymentStatus });
         } catch (e: any) {
           console.error("Mark invoice paid failed:", e);
-          res.status(500).json({ error: "Failed to mark as paid: " + (e.message || "Internal server error") });
+          const msg = e?.message || "Internal server error";
+          res.status(msg.includes("PERIOD") ? 400 : 500).json({ error: msg.includes("PERIOD") ? msg : "Failed to mark as paid: " + msg });
         }
       },
     );
@@ -746,6 +813,8 @@ function requireFinanceManager(req: any, res: any): boolean {
           }
 
           const userEmail = getActor(req);
+          const nowIso = new Date().toISOString();
+          assertAccountingPeriodOpen(db, nowIso);
 
           db.transaction(() => {
             // 1. Revert Invoice Status
@@ -772,6 +841,20 @@ function requireFinanceManager(req: any, res: any): boolean {
               userEmail,
             );
 
+            // 3. Post Atomic Reversal Journal Entry (Dr 1102 AR, Cr 1101 Bank/Cash)
+            postVoidReversalJournal(db, {
+              reference_type: "VOID_REVERSAL",
+              reference_id: invoice.id,
+              reference_number: invoice.ci_number || invoice.id,
+              original_reference_type: "INVOICE_PAYMENT",
+              fallback_debit_account: { code: "1102", name: "Piutang Usaha (Accounts Receivable)" },
+              fallback_credit_account: { code: "1101", name: "Kas & Rekening Bank (Cash & Bank)" },
+              fallback_amount: Number(invoice.amount_paid || invoice.amount) || 0,
+              description: `Void/Reversal of Invoice Payment ${invoice.ci_number}${notes ? " - " + notes : ""}`,
+              entry_date: nowIso,
+              user: userEmail,
+            });
+
             logAudit(
               userEmail,
               "VOID_INVOICE",
@@ -784,7 +867,8 @@ function requireFinanceManager(req: any, res: any): boolean {
           res.json({ success: true });
         } catch (e: any) {
           console.error("Void invoice failed:", e);
-          res.status(500).json({ error: "Failed to void invoice" });
+          const msg = e?.message || "Failed to void invoice";
+          res.status(msg.includes("PERIOD") ? 400 : 500).json({ error: msg });
         }
       },
     );
@@ -816,6 +900,93 @@ function requireFinanceManager(req: any, res: any): boolean {
         } catch (e: any) {
           console.error("Payables error:", e);
           res.status(500).json({ error: "Failed to load payables" });
+        }
+      },
+    );
+
+    router.post(
+      "/api/finance/payables/:id/verify-bill",
+      requireRole(["FC", "SALES", "PURCHASING", "FINANCE"]),
+      (req, res) => {
+        try {
+          if (!requireFinanceManager(req, res)) return;
+          const { pin, vendor_invoice_number, vendor_invoice_amount, notes } = req.body;
+          if (!pin || !isValidDailyAuthKey(getActor(req), pin)) {
+            return res.status(400).json({ error: "Invalid authorization PIN" });
+          }
+          if (!vendor_invoice_number || !String(vendor_invoice_number).trim()) {
+            return res.status(400).json({ error: "Vendor invoice number is required" });
+          }
+
+          const po = db
+            .prepare("SELECT * FROM purchase_orders WHERE id = ?")
+            .get(req.params.id) as any;
+          if (!po) return res.status(404).json({ error: "PO not found" });
+
+          const receivedResult = db
+            .prepare(`
+              SELECT COALESCE(SUM(gi.qty_received * pri.unit_price), 0) as raw_received_amount
+              FROM grn_items gi
+              JOIN grns g ON gi.grn_id = g.id
+              JOIN pr_items pri ON gi.item_id = pri.item_id AND pri.po_id = ?
+              WHERE g.po_id = ? AND g.qc_status IN ('PASSED', 'CONDITIONAL')
+            `)
+            .get(req.params.id, req.params.id) as any;
+
+          const rawReceived = receivedResult?.raw_received_amount || 0;
+          if (rawReceived === 0 && po.status !== "FINISHED") {
+            return res.status(400).json({
+              error: "HARD STOP: 3-Way Match failed. No QC-passed Goods Receipt (GRN) recorded for this PO yet.",
+            });
+          }
+
+          const grnBreakdown = calculateFinancialBreakdown({
+            grossAmount: rawReceived,
+            taxRate: po.ppn_rate,
+            pphRate: po.pph_rate,
+            taxScheme: po.tax_scheme || "DPP_NILAI_LAIN",
+          });
+          const receivedAmt = po.pph_rate > 0 ? grnBreakdown.netPayable : grnBreakdown.grandTotal;
+
+          const billedAmt = vendor_invoice_amount !== undefined && vendor_invoice_amount !== null && vendor_invoice_amount !== ""
+            ? Math.round(Number(vendor_invoice_amount) * 100) / 100
+            : receivedAmt;
+
+          const deviation = Math.abs(billedAmt - receivedAmt);
+          const deviationPercent = (deviation / (receivedAmt || 1)) * 100;
+          if (deviationPercent > 5) {
+            return res.status(400).json({
+              error: "HARD STOP: Billed amount deviates from physically received amount by more than 5%. Verification rejected.",
+            });
+          }
+
+          const cleanInvNo = String(vendor_invoice_number).trim();
+          db.prepare(
+            "UPDATE purchase_orders SET vendor_invoice_number = ?, vendor_invoice_amount = ? WHERE id = ?",
+          ).run(cleanInvNo, billedAmt, req.params.id);
+
+          syncCollectionToFirestore("purchase_orders", req.params.id, {
+            id: req.params.id,
+            vendor_invoice_number: cleanInvNo,
+            vendor_invoice_amount: billedAmt,
+          });
+
+          logAudit(
+            getActor(req),
+            "PAYABLE_BILL_VERIFIED",
+            "FINANCE",
+            req.params.id,
+            `3-Way Match verified invoice ${cleanInvNo} (${billedAmt})${notes ? `: ${notes}` : ""}`,
+          );
+
+          res.json({
+            success: true,
+            vendor_invoice_number: cleanInvNo,
+            vendor_invoice_amount: billedAmt,
+          });
+        } catch (e: any) {
+          console.error("Verify bill error:", e);
+          res.status(500).json({ error: e?.message || "Failed to verify vendor bill" });
         }
       },
     );
@@ -901,6 +1072,9 @@ function requireFinanceManager(req: any, res: any): boolean {
             }
           }
 
+          const nowIso = new Date().toISOString();
+          assertAccountingPeriodOpen(db, nowIso);
+
           db.transaction(() => {
             db.prepare(
               "UPDATE purchase_orders SET amount_paid = ?, payment_status = ?, status = ?, vendor_invoice_number = COALESCE(?, vendor_invoice_number), vendor_invoice_amount = COALESCE(?, vendor_invoice_amount) WHERE id = ?",
@@ -908,7 +1082,6 @@ function requireFinanceManager(req: any, res: any): boolean {
 
             const txId =
               "TX-PO-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-            const nowIso = new Date().toISOString();
 
             const categoryRow = db.prepare(`
               SELECT pr.project_id, pr.category
@@ -939,6 +1112,14 @@ function requireFinanceManager(req: any, res: any): boolean {
               getActor(req),
             );
 
+            // Atomic Automated Accounting Bridge: Post Vendor Payment Journal (Debit Accounts Payable, Credit Bank/Cash)
+            postPurchaseOrderPaymentJournal(db, {
+              po_id: po.id,
+              po_number: po.po_number || po.id,
+              payment_amount: payAmount,
+              user: getActor(req),
+            });
+
             syncCollectionToFirestore("purchase_orders", req.params.id, {
               id: req.params.id,
               amount_paid: newPaid,
@@ -960,18 +1141,6 @@ function requireFinanceManager(req: any, res: any): boolean {
             });
           })();
 
-          // Automated Accounting Bridge: Post Vendor Payment Journal (Debit Accounts Payable, Credit Bank/Cash)
-          try {
-            postPurchaseOrderPaymentJournal(db, {
-              po_id: po.id,
-              po_number: po.po_number || po.id,
-              payment_amount: payAmount,
-              user: getActor(req),
-            });
-          } catch (vendAccErr) {
-            console.error("Automated Accounting postPurchaseOrderPaymentJournal error:", vendAccErr);
-          }
-
           logAudit(
             getActor(req),
             "PO_PAID",
@@ -982,7 +1151,8 @@ function requireFinanceManager(req: any, res: any): boolean {
           res.json({ success: true, payment_status: paymentStatus });
         } catch (e: any) {
           console.error("Mark PO paid failed:", e);
-          res.status(500).json({ error: "Failed to mark as paid" });
+          const msg = e?.message || "Failed to mark as paid";
+          res.status(msg.includes("PERIOD") ? 400 : 500).json({ error: msg });
         }
       },
     );
@@ -1098,6 +1268,28 @@ function requireFinanceManager(req: any, res: any): boolean {
       requireRole(["FC", "BOD", "ADMIN", "FINANCE"]),
       (req, res) => {
         try {
+          const periodKeyParam = String(req.query.period_key || "").trim();
+          if (periodKeyParam && periodKeyParam !== "ALL") {
+            const normalizedKey = resolvePeriodKey(null, null, periodKeyParam);
+            const pkg = computePeriodFinancialPackage(db, normalizedKey);
+            return res.json({
+              success: true,
+              period_key: normalizedKey,
+              data: pkg.trial_balance.map((r: any) => ({
+                ...r,
+                total_debit: r.period_debit,
+                total_credit: r.period_credit,
+              })),
+              summary: {
+                total_debit: pkg.trial_balance_summary.period_debit,
+                total_credit: pkg.trial_balance_summary.period_credit,
+                closing_debit: pkg.trial_balance_summary.closing_debit,
+                closing_credit: pkg.trial_balance_summary.closing_credit,
+                is_balanced: pkg.trial_balance_summary.is_balanced,
+              },
+            });
+          }
+
           const rows = db.prepare(`
             SELECT 
               coa.code, 
@@ -1143,6 +1335,7 @@ function requireFinanceManager(req: any, res: any): boolean {
 
           res.json({
             success: true,
+            period_key: "ALL",
             data: trialBalance,
             summary: {
               total_debit: totalDebit,
@@ -1210,25 +1403,90 @@ function requireFinanceManager(req: any, res: any): boolean {
     router.put(
       "/api/finance/periods/:id/status",
       requireRole(["FC", "BOD", "ADMIN", "FINANCE"]),
-      (req, res) => {
+      (req: any, res) => {
         try {
           if (!requireFinanceManager(req, res)) return;
-          const { status, pin, notes } = req.body;
+          const { status, pin, notes, reopen_reason } = req.body;
           const userEmail = getActor(req);
+          const actorRole = String(req.userRole || req.user?.role || "").trim().toUpperCase();
 
           if (!["OPEN", "SOFT_LOCKED", "HARD_CLOSED"].includes(status)) {
             return res.status(400).json({ error: "Invalid status: Must be OPEN, SOFT_LOCKED, or HARD_CLOSED" });
           }
 
-          if (
-            (status === "HARD_CLOSED" || status === "OPEN") &&
-            (!pin || !isValidDailyAuthKey(userEmail, pin))
-          ) {
-            return res.status(400).json({ error: "PIN otorisasi harian tidak valid untuk perubahan status periode kritis." });
-          }
-
           const period = db.prepare("SELECT * FROM accounting_periods WHERE id = ?").get(req.params.id) as any;
           if (!period) return res.status(404).json({ error: "Periode akuntansi tidak ditemukan." });
+
+          // Governance 1: Reopening a HARD_CLOSED period is strictly restricted to BOD / FC / DIRECTOR with audit reason + PIN
+          if (period.status === "HARD_CLOSED" && status !== "HARD_CLOSED") {
+            if (!["BOD", "FC", "DIRECTOR"].includes(actorRole)) {
+              return res.status(403).json({
+                error: "Akses ditolak: Periode HARD_CLOSED terkunci total. Hanya BOD atau Finance Controller (FC) yang dapat membuka kembali periode.",
+              });
+            }
+            if (!pin || !isValidDailyAuthKey(userEmail, pin)) {
+              return res.status(400).json({ error: "PIN otorisasi harian BOD/FC tidak valid." });
+            }
+            const cleanReason = String(reopen_reason || notes || "").trim();
+            if (cleanReason.length < 10) {
+              return res.status(400).json({
+                error: "Alasan pembukaan kembali periode HARD_CLOSED wajib diisi minimal 10 karakter.",
+              });
+            }
+
+            const nowIso = new Date().toISOString();
+            db.prepare(`
+              UPDATE accounting_periods
+              SET status = 'SOFT_LOCKED',
+                  reopened_by = ?,
+                  reopened_at = ?,
+                  reopen_reason = ?,
+                  reopen_count = COALESCE(reopen_count, 0) + 1
+              WHERE id = ?
+            `).run(userEmail, nowIso, cleanReason, req.params.id);
+
+            const updated = db.prepare("SELECT * FROM accounting_periods WHERE id = ?").get(req.params.id) as any;
+            if (updated) syncCollectionToFirestore("accounting_periods", req.params.id, updated);
+
+            logAudit(
+              userEmail,
+              "REOPEN_HARD_CLOSED_PERIOD",
+              "ACCOUNTING_PERIOD",
+              req.params.id,
+              `BOD/FC (${actorRole}) reopened HARD_CLOSED period ${period.period_key} -> SOFT_LOCKED. Reason: ${cleanReason}`,
+            );
+
+            return res.json({ success: true, status: "SOFT_LOCKED", period: updated });
+          }
+
+          // Governance 2: Hard-closing requires active 15-24 window + PIN + 100% Required Items + Trial Balance equilibrium + Immutable Snapshot
+          if (status === "HARD_CLOSED") {
+            assertClosingWindowOpen();
+            if (!pin || !isValidDailyAuthKey(userEmail, pin)) {
+              return res.status(400).json({ error: "PIN otorisasi harian tidak valid untuk Hard Close." });
+            }
+            const state = buildFullClosingWorkspaceState(db, period.period_key);
+            if (!state.checklist_summary.all_required_satisfied) {
+              return res.status(403).json({
+                error: `HARD CLOSE DITOLAK: Masih ada ${state.checklist_summary.required_pending} Required Items belum terisi/terverifikasi.`,
+                missing_items: state.checklist_summary.pending_titles,
+              });
+            }
+            if (!state.financial_preview.trial_balance_summary.is_balanced) {
+              return res.status(400).json({
+                error: "HARD CLOSE DITOLAK: Neraca Saldo (Trial Balance) periode tidak seimbang.",
+              });
+            }
+          }
+
+          // Governance 3: Moving OPEN -> SOFT_LOCKED also enforces the 15-24 monthly closing schedule
+          if (status === "SOFT_LOCKED" && period.status === "OPEN") {
+            assertClosingWindowOpen();
+          }
+
+          if (status === "OPEN" && (!pin || !isValidDailyAuthKey(userEmail, pin))) {
+            return res.status(400).json({ error: "PIN otorisasi harian tidak valid untuk membuka kunci periode." });
+          }
 
           const now = new Date().toISOString();
           let lockedBy = period.locked_by;
@@ -1240,6 +1498,8 @@ function requireFinanceManager(req: any, res: any): boolean {
             lockedBy = userEmail;
             lockedAt = now;
           } else if (status === "HARD_CLOSED") {
+            lockedBy = lockedBy || userEmail;
+            lockedAt = lockedAt || now;
             closedBy = userEmail;
             closedAt = now;
           } else if (status === "OPEN") {
@@ -1249,23 +1509,37 @@ function requireFinanceManager(req: any, res: any): boolean {
             closedAt = null;
           }
 
-          db.prepare(`
-            UPDATE accounting_periods 
-            SET status = ?, locked_by = ?, locked_at = ?, closed_by = ?, closed_at = ?, notes = COALESCE(?, notes)
-            WHERE id = ?
-          `).run(status, lockedBy, lockedAt, closedBy, closedAt, notes || null, req.params.id);
+          let snapshotMeta: any = null;
+          db.transaction(() => {
+            if (status === "HARD_CLOSED") {
+              snapshotMeta = createClosingSnapshot(db, period.period_key, userEmail, notes);
+            }
+            db.prepare(`
+              UPDATE accounting_periods 
+              SET status = ?, locked_by = ?, locked_at = ?, closed_by = ?, closed_at = ?, notes = COALESCE(?, notes)
+              WHERE id = ?
+            `).run(status, lockedBy, lockedAt, closedBy, closedAt, notes || null, req.params.id);
+          })();
+
+          const updatedPeriod = db.prepare("SELECT * FROM accounting_periods WHERE id = ?").get(req.params.id) as any;
+          if (updatedPeriod) syncCollectionToFirestore("accounting_periods", req.params.id, updatedPeriod);
+          if (snapshotMeta) {
+            const snap = db.prepare("SELECT * FROM closing_snapshots WHERE id = ?").get(snapshotMeta.id) as any;
+            if (snap) syncCollectionToFirestore("closing_snapshots", snapshotMeta.id, snap);
+          }
 
           logAudit(
             userEmail,
             "CHANGE_PERIOD_STATUS",
             "ACCOUNTING_PERIOD",
             req.params.id,
-            `Status periode ${period.period_key} diubah ke ${status}`
+            `Status periode ${period.period_key} diubah ke ${status}${snapshotMeta ? ` (Snapshot ${snapshotMeta.id})` : ""}`
           );
 
-          res.json({ success: true, status });
+          res.json({ success: true, status, snapshot: snapshotMeta });
         } catch (e: any) {
-          res.status(500).json({ error: "Failed to update period status: " + e.message });
+          const msg = e?.message || "Failed to update period status";
+          res.status(msg.startsWith("CLOSING_WINDOW_LOCKED") ? 403 : 400).json({ error: msg });
         }
       }
     );

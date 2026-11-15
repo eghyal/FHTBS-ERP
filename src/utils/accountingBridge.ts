@@ -20,6 +20,8 @@ export interface PostJournalParams {
     | "WIP_MATERIAL_ISSUE"
     | "PRODUCTION_FINISH"
     | "PAYROLL"
+    | "EXPENSE"
+    | "VOID_REVERSAL"
     | "MANUAL_ADJUSTMENT";
   reference_id: string;
   reference_number: string;
@@ -27,28 +29,56 @@ export interface PostJournalParams {
   entry_date?: string;
   lines: JournalLine[];
   created_by?: string;
+  allowSoftLockAdjustment?: boolean;
+}
+
+export function extractPeriodKeyFromDate(dateStr?: string): string {
+  if (dateStr && /^\d{4}-\d{2}/.test(dateStr.trim())) {
+    return dateStr.trim().slice(0, 7);
+  }
+  const targetDate = dateStr ? new Date(dateStr) : new Date();
+  if (isNaN(targetDate.getTime())) {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+  return `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, "0")}`;
 }
 
 /**
  * Check if the target accounting period is locked or closed.
- * Throws error if SOFT_LOCKED or HARD_CLOSED.
+ * Throws error if HARD_CLOSED, or if SOFT_LOCKED (unless adjustment is explicitly allowed).
  */
-export function assertAccountingPeriodOpen(db: Database.Database, dateStr?: string): void {
+export function assertAccountingPeriodOpen(
+  db: Database.Database,
+  dateStr?: string,
+  options?: { allowSoftLockAdjustment?: boolean; referenceType?: string },
+): void {
+  const periodKey = extractPeriodKeyFromDate(dateStr);
+  let period: any = null;
   try {
-    const targetDate = dateStr ? new Date(dateStr) : new Date();
-    const periodKey = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, "0")}`;
-    const period = db.prepare("SELECT * FROM accounting_periods WHERE period_key = ?").get(periodKey) as any;
-    if (period) {
-      if (period.status === "HARD_CLOSED") {
-        throw new Error(`PERIOD CLOSED: Accounting period ${period.period_name} (${period.period_key}) is HARD_CLOSED. Financial transactions cannot be posted.`);
-      }
-      if (period.status === "SOFT_LOCKED") {
-        throw new Error(`PERIOD LOCKED: Accounting period ${period.period_name} (${period.period_key}) is SOFT_LOCKED for period-end reconciliation.`);
-      }
+    period = db
+      .prepare("SELECT * FROM accounting_periods WHERE period_key = ?")
+      .get(periodKey) as any;
+  } catch {
+    // Table may not exist yet during very first bootstrap before migrations
+    return;
+  }
+
+  if (period) {
+    if (period.status === "HARD_CLOSED") {
+      throw new Error(
+        `PERIOD CLOSED: Periode akuntansi ${period.period_name} (${period.period_key}) berstatus HARD_CLOSED dan telah disegel permanen. Transaksi baru ditolak.`,
+      );
     }
-  } catch (err: any) {
-    if (err.message && (err.message.includes("PERIOD CLOSED") || err.message.includes("PERIOD LOCKED"))) {
-      throw err;
+    if (period.status === "SOFT_LOCKED") {
+      const isAllowedAdjustment =
+        Boolean(options?.allowSoftLockAdjustment) &&
+        options?.referenceType === "MANUAL_ADJUSTMENT";
+      if (!isAllowedAdjustment) {
+        throw new Error(
+          `PERIOD LOCKED: Periode akuntansi ${period.period_name} (${period.period_key}) berstatus SOFT_LOCKED untuk rekonsiliasi Tutup Buku. Hanya jurnal penyesuaian akuntansi yang diizinkan.`,
+        );
+      }
     }
   }
 }
@@ -69,10 +99,14 @@ export function postJournalEntry(
     entry_date = new Date().toISOString(),
     lines,
     created_by = "SYSTEM",
+    allowSoftLockAdjustment = false,
   } = params;
 
   // Enforce period lock integrity
-  assertAccountingPeriodOpen(db, entry_date);
+  assertAccountingPeriodOpen(db, entry_date, {
+    allowSoftLockAdjustment,
+    referenceType: reference_type,
+  });
 
   if (!lines || lines.length < 2) {
     throw new Error("Journal entry must contain at least two lines.");
@@ -174,93 +208,6 @@ export function postGoodsReceiptJournal(
       },
     ],
     created_by: user || "WAREHOUSE_INTAKE",
-  });
-}
-
-// 1b. Procure-to-Pay 3-Way Matching: Vendor Bill / Invoice Verification
-// Clears Unbilled GRN Accrual (2105) into Accounts Payable (2101), recognizing VAT in (1106) and Purchase Price Variance (5103)
-export function postVendorBillMatchingJournal(
-  db: Database.Database,
-  {
-    bill_id,
-    po_id,
-    po_number,
-    vendor_invoice_number,
-    grn_cleared_cost,
-    tax_amount = 0,
-    total_billed,
-    user,
-  }: {
-    bill_id?: string;
-    po_id: string;
-    po_number: string;
-    vendor_invoice_number: string;
-    grn_cleared_cost: number;
-    tax_amount?: number;
-    total_billed: number;
-    user?: string;
-  },
-) {
-  if (total_billed <= 0 && grn_cleared_cost <= 0) return null;
-
-  const lines: JournalLine[] = [
-    {
-      account_code: "2105",
-      account_name: "Unbilled GRN Accrual (GRNI)",
-      debit: grn_cleared_cost,
-      credit: 0,
-      memo: `Clear GRNI accrual for PO ${po_number} upon vendor bill match`,
-    },
-  ];
-
-  if (tax_amount > 0) {
-    lines.push({
-      account_code: "1106",
-      account_name: "Input VAT / Prepaid Tax",
-      debit: tax_amount,
-      credit: 0,
-      memo: `Input VAT from vendor invoice ${vendor_invoice_number}`,
-    });
-  }
-
-  // Calculate price variance (PPV)
-  const expectedSubtotalWithTax = grn_cleared_cost + tax_amount;
-  const variance = Math.round((total_billed - expectedSubtotalWithTax) * 100) / 100;
-
-  if (variance > 0.01) {
-    lines.push({
-      account_code: "5103",
-      account_name: "Purchase Price Variance (PPV)",
-      debit: variance,
-      credit: 0,
-      memo: `Unfavorable invoice variance PO ${po_number} vs invoice ${vendor_invoice_number}`,
-    });
-  } else if (variance < -0.01) {
-    lines.push({
-      account_code: "5103",
-      account_name: "Purchase Price Variance (PPV)",
-      debit: 0,
-      credit: Math.abs(variance),
-      memo: `Favorable invoice discount/variance PO ${po_number} vs invoice ${vendor_invoice_number}`,
-    });
-  }
-
-  // Credit Accounts Payable (Total Payable)
-  lines.push({
-    account_code: "2101",
-    account_name: "Accounts Payable",
-    debit: 0,
-    credit: total_billed,
-    memo: `Accounts Payable verified for PO ${po_number} (Inv: ${vendor_invoice_number})`,
-  });
-
-  return postJournalEntry(db, {
-    reference_type: "VENDOR_BILL",
-    reference_id: bill_id || po_id,
-    reference_number: vendor_invoice_number || po_number,
-    description: `3-Way Matching Bill Recognition for PO ${po_number} (Invoice: ${vendor_invoice_number})`,
-    lines,
-    created_by: user || "FINANCE_P2P",
   });
 }
 
@@ -627,6 +574,7 @@ export function postPayrollDisbursementJournal(
     payroll_id,
     voucher_number,
     period_name,
+    entry_date,
     total_direct_labor,
     total_opex,
     total_net,
@@ -637,6 +585,7 @@ export function postPayrollDisbursementJournal(
     payroll_id: string;
     voucher_number: string;
     period_name: string;
+    entry_date?: string;
     total_direct_labor: number;
     total_opex: number;
     total_net: number;
@@ -706,7 +655,7 @@ export function postPayrollDisbursementJournal(
   // Cash / Bank Settlement (Credit)
   const totalDebit = lines.reduce((acc, l) => acc + (l.debit || 0), 0);
   const totalExistingCredit = lines.reduce((acc, l) => acc + (l.credit || 0), 0);
-  const netBankCredit = Math.max(0, totalDebit - totalExistingCredit);
+  const netBankCredit = Math.max(0, Math.round((totalDebit - totalExistingCredit) * 100) / 100);
 
   lines.push({
     account_code: "1101",
@@ -721,6 +670,7 @@ export function postPayrollDisbursementJournal(
     reference_id: payroll_id,
     reference_number: voucher_number,
     description: `Payroll Disbursement & COGS Direct Labor Allocation for ${period_name}`,
+    entry_date,
     lines,
     created_by: user || "FINANCE_PAYROLL",
   });
@@ -840,4 +790,137 @@ export function postProductionFinishJournal(
     created_by: user || "PRODUCTION_QC_FINISH",
   });
 }
+
+// 9. Operational Expense Posting (Cash / Bank -> OPEX)
+export function postExpenseJournal(
+  db: Database.Database,
+  {
+    tx_id,
+    category,
+    amount,
+    notes,
+    entry_date,
+    user,
+  }: {
+    tx_id: string;
+    category: string;
+    amount: number;
+    notes?: string;
+    entry_date?: string;
+    user?: string;
+  },
+) {
+  if (amount <= 0) return null;
+  const isLogistics = String(category || "").toUpperCase() === "TRANSPORTATION";
+  const accountCode = isLogistics ? "6103" : "6102";
+  const accountName = isLogistics
+    ? "Beban Logistik & Pengiriman (Freight Out)"
+    : "Beban Operasional & Umum (General & Admin)";
+
+  return postJournalEntry(db, {
+    reference_type: "EXPENSE",
+    reference_id: tx_id,
+    reference_number: tx_id,
+    description: `Operational Expense (${category}): ${notes || category}`,
+    entry_date,
+    lines: [
+      {
+        account_code: accountCode,
+        account_name: accountName,
+        debit: amount,
+        credit: 0,
+        memo: notes || `Operational expense - ${category}`,
+      },
+      {
+        account_code: "1101",
+        account_name: "Kas & Rekening Bank (Cash & Bank)",
+        debit: 0,
+        credit: amount,
+        memo: `Cash/Bank disbursement for ${tx_id}`,
+      },
+    ],
+    created_by: user || "FINANCE_EXPENSE",
+  });
+}
+
+// 10. Void / Reversal Balanced Journal (mirrors original journal entry lines)
+export function postVoidReversalJournal(
+  db: Database.Database,
+  {
+    reference_type,
+    reference_id,
+    reference_number,
+    original_reference_type,
+    fallback_debit_account,
+    fallback_credit_account,
+    fallback_amount = 0,
+    description,
+    entry_date,
+    user,
+  }: {
+    reference_type: "VOID_REVERSAL";
+    reference_id: string;
+    reference_number: string;
+    original_reference_type: string;
+    fallback_debit_account?: { code: string; name: string };
+    fallback_credit_account?: { code: string; name: string };
+    fallback_amount?: number;
+    description: string;
+    entry_date?: string;
+    user?: string;
+  },
+) {
+  const originalEntry = db
+    .prepare(
+      `SELECT id FROM journal_entries
+       WHERE reference_id = ? AND reference_type = ?
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(reference_id, original_reference_type) as { id: string } | undefined;
+
+  let lines: JournalLine[] = [];
+
+  if (originalEntry) {
+    const origLines = db
+      .prepare("SELECT account_code, account_name, debit, credit, memo FROM journal_entry_lines WHERE entry_id = ?")
+      .all(originalEntry.id) as any[];
+    lines = origLines.map((l) => ({
+      account_code: l.account_code,
+      account_name: l.account_name,
+      debit: Number(l.credit) || 0,
+      credit: Number(l.debit) || 0,
+      memo: `Reversal: ${l.memo || reference_number}`,
+    }));
+  } else if (fallback_amount > 0 && fallback_debit_account && fallback_credit_account) {
+    lines = [
+      {
+        account_code: fallback_debit_account.code,
+        account_name: fallback_debit_account.name,
+        debit: fallback_amount,
+        credit: 0,
+        memo: `Fallback reversal for ${reference_number}`,
+      },
+      {
+        account_code: fallback_credit_account.code,
+        account_name: fallback_credit_account.name,
+        debit: 0,
+        credit: fallback_amount,
+        memo: `Fallback reversal for ${reference_number}`,
+      },
+    ];
+  }
+
+  if (lines.length < 2) return null;
+
+  return postJournalEntry(db, {
+    reference_type,
+    reference_id,
+    reference_number,
+    description,
+    entry_date,
+    lines,
+    created_by: user || "FINANCE_VOID",
+  });
+}
+
 

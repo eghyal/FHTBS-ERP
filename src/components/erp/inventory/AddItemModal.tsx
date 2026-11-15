@@ -245,12 +245,12 @@ export function AddItemModal({
       onClose={onClose}
       title="Register New Item"
       description="Add a new SKU to the master inventory list with system-generated smart coding"
-      maxWidth="2xl"
+      maxWidth="4xl"
       contentClassName="p-0 border-t border-stone-100"
     >
       <form
         onSubmit={handleFormSubmit}
-        className="p-6 space-y-4"
+        className="p-5 sm:p-6 space-y-5"
       >
         {isSalesRestricted && (
           <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs flex items-center justify-between text-emerald-900">
@@ -266,7 +266,7 @@ export function AddItemModal({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Select
             label="Type of item"
             required
@@ -303,7 +303,7 @@ export function AddItemModal({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-stone-700">
@@ -376,7 +376,7 @@ export function AddItemModal({
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Dimension (Optional)"
             value={newItem.dimension || ""}
@@ -494,7 +494,7 @@ export function AddItemModal({
               </p>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Machine Category"
                 value={newItem.machine_category || ""}
@@ -520,7 +520,7 @@ export function AddItemModal({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Serial Number"
                 type="text"
@@ -574,7 +574,7 @@ export function AddItemModal({
           </div>
         )}
 
-        <div className="flex justify-end gap-3 pt-6 border-t border-stone-100">
+        <div className="flex flex-wrap justify-end gap-3 pt-6 border-t border-stone-100">
           <Button
             variant="secondary"
             onClick={onClose}

@@ -60,7 +60,45 @@ export const PayrollRequisitionModal: React.FC<PayrollRequisitionModalProps> = (
           : "Prepare HR Payroll Requisition (PRq)"
       }
       description="Structured packing list of HR expenditure breakdown before forwarding to Finance Division."
-      maxWidth="6xl"
+      maxWidth="7xl"
+      uiTheme="hris"
+      footer={
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 w-full">
+          <span className="text-[11px] font-bold text-stone-400 flex items-center gap-1.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Live calculations auto-updated upon field change.</span>
+          </span>
+
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              disabled={isSavingPrq || prqDetails.length === 0}
+              onClick={() => handleSavePayrollRequisition(false)}
+              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-sm transition-all disabled:opacity-50 cursor-pointer flex items-center gap-2"
+            >
+              <span>Save Draft</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isSavingPrq || prqDetails.length === 0}
+              onClick={handleRequestSubmitPrq}
+              className="px-6 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+              <span>{isSavingPrq ? "Submitting..." : "Submit Requisition to Finance"}</span>
+            </button>
+          </div>
+        </div>
+      }
     >
       <div className="space-y-6 text-left">
         {/* COMPACT PERIOD HEADER */}
@@ -131,8 +169,8 @@ export const PayrollRequisitionModal: React.FC<PayrollRequisitionModalProps> = (
               </span>
             </div>
 
-            <div className="overflow-x-auto max-h-[440px] custom-scrollbar">
-              <table className="w-full text-left font-bold text-xs border-collapse">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full min-w-[1080px] text-left font-bold text-xs border-collapse">
                 <thead className="sticky top-0 bg-stone-50 text-stone-500 uppercase text-[10px] tracking-widest border-b border-stone-200 z-10 shadow-xs">
                   <tr>
                     <th className="p-3.5 pl-6 min-w-[180px]">Staff Member</th>
@@ -344,42 +382,6 @@ export const PayrollRequisitionModal: React.FC<PayrollRequisitionModalProps> = (
           />
         </div>
 
-        {/* ACTION BUTTONS FOOTER */}
-        <div className="pt-4 border-t border-stone-200/80 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <span className="text-[11px] font-bold text-stone-400 flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>Live calculations auto-updated upon field change.</span>
-          </span>
-
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-3 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-black uppercase tracking-widest rounded-2xl transition-all cursor-pointer"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              disabled={isSavingPrq || prqDetails.length === 0}
-              onClick={() => handleSavePayrollRequisition(false)}
-              className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black uppercase tracking-widest rounded-2xl shadow-md transition-all disabled:opacity-50 cursor-pointer flex items-center gap-2"
-            >
-              <span>Save Draft</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={isSavingPrq || prqDetails.length === 0}
-              onClick={handleRequestSubmitPrq}
-              className="px-8 py-3 bg-stone-900 hover:bg-stone-800 text-white text-xs font-black uppercase tracking-widest rounded-2xl shadow-md hover:-translate-y-0.5 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Send className="w-4 h-4" />
-              <span>{isSavingPrq ? "Submitting..." : "Submit Requisition to Finance"}</span>
-            </button>
-          </div>
-        </div>
       </div>
     </Modal>
   );

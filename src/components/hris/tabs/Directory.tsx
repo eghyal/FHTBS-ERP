@@ -826,9 +826,35 @@ export const HrDirectoryTab: React.FC<HrDirectoryTabProps> = React.memo(
               : "Onboard New Employee to Directory"
           }
           description="Changes automatically synchronize across User Accounts, Legal/Tax Identity, Payroll Salary Master, and Shop Floor ManPower."
-          maxWidth="xl"
+          maxWidth="4xl"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2.5">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="hris-directory-form"
+                variant="primary"
+                disabled={isSaving}
+                className="px-6 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-xs disabled:opacity-50"
+              >
+                {isSaving
+                  ? "Saving..."
+                  : editingEmployee
+                    ? "Save Profile Changes"
+                    : "Create & Onboard Employee"}
+              </Button>
+            </div>
+          }
         >
           <form
+            id="hris-directory-form"
             onSubmit={handleSaveEmployee}
             className="space-y-4 text-left font-bold"
           >
@@ -876,7 +902,7 @@ export const HrDirectoryTab: React.FC<HrDirectoryTabProps> = React.memo(
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
                 <label className="text-[10px] font-black uppercase tracking-wider text-stone-500 block mb-1">
                   Department / Role
@@ -1133,28 +1159,6 @@ export const HrDirectoryTab: React.FC<HrDirectoryTabProps> = React.memo(
               />
             </div>
 
-            <div className="pt-4 border-t border-stone-200 flex justify-end gap-2.5">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-xl"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={isSaving}
-                className="px-6 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-xs disabled:opacity-50"
-              >
-                {isSaving
-                  ? "Saving..."
-                  : editingEmployee
-                    ? "Save Profile Changes"
-                    : "Create & Onboard Employee"}
-              </Button>
-            </div>
           </form>
         </Modal>
       </div>

@@ -27,7 +27,7 @@ import {
   Layers,
   FileText,
 } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { MachineBopModal } from "@/components/erp/inventory/MachineBopModal";
 import { cn, parseCurrency } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1083,7 +1083,7 @@ export default function Warehouse() {
         actions={
           <div className="flex items-center gap-2">
             <Button
-              size="sm"
+              size="xs"
               disabled={!user}
               onClick={() => {
                 if (isSalesRestricted) {
@@ -1093,9 +1093,9 @@ export default function Warehouse() {
                 }
                 setShowAddModal(true);
               }}
-              leftIcon={<Plus className="w-4 h-4" />}
+              leftIcon={<Plus className="w-3.5 h-3.5" />}
             >
-              Register Item / SKU
+              Register SKU
             </Button>
           </div>
         }

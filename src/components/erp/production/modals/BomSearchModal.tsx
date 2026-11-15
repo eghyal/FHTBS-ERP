@@ -1,6 +1,6 @@
 import React from "react";
 import { Modal } from "@/components/ui/Modal";
-import { Search, Package } from "lucide-react";
+import { Search, Package, AlertCircle } from "lucide-react";
 import { cn, formatIDR } from "@/lib/utils";
 
 interface BomRegistrySearchModalProps {
@@ -10,6 +10,8 @@ interface BomRegistrySearchModalProps {
   setSearchTerm: (term: string) => void;
   isSearching: boolean;
   searchResults: any[];
+  searchError?: string | null;
+  minQueryLength?: number;
   selectItemFromSearch: (item: any) => void;
   onOpenInventoryMaster?: (searchTerm?: string) => void;
   title?: string;
@@ -22,25 +24,30 @@ export const BomRegistrySearchModal: React.FC<BomRegistrySearchModalProps> = ({
   setSearchTerm,
   isSearching,
   searchResults,
+  searchError = null,
+  minQueryLength = 2,
   selectItemFromSearch,
   title = "Registry Database Search",
 }) => {
+  const trimmedQuery = searchTerm.trim();
+  const hasReachedMinChars = trimmedQuery.length >= minQueryLength;
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={title}
-      maxWidth="2xl"
-      contentClassName="p-0 flex flex-col h-[75vh]"
+      maxWidth="3xl"
+      contentClassName="p-0 flex flex-col min-h-0"
     >
-      <div className="p-6 border-b border-stone-100 shrink-0 space-y-3">
+      <div className="p-5 sm:p-6 border-b border-stone-100 shrink-0 space-y-3">
         <div className="relative group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
           <input
             type="text"
             autoFocus
             placeholder="Search items by name, SKU code, dimension, or specification..."
-            className="w-full bg-stone-50 border border-stone-200 rounded-xl pl-10 pr-4 py-4 text-sm font-bold text-stone-900 outline-none focus:border-stone-900 focus:ring-4 focus:ring-stone-100 transition-all font-sans"
+            className="w-full bg-stone-50 border border-stone-200 rounded-xl pl-10 pr-4 py-3.5 text-sm font-bold text-stone-900 outline-none focus:border-stone-900 focus:ring-4 focus:ring-stone-100 transition-all font-sans"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -54,7 +61,7 @@ export const BomRegistrySearchModal: React.FC<BomRegistrySearchModalProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-stone-50/50">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-3 bg-stone-50/50">
         {isSearching ? (
           <div className="text-center py-16 animate-pulse">
             <div className="text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] flex flex-col items-center gap-3">
@@ -62,9 +69,24 @@ export const BomRegistrySearchModal: React.FC<BomRegistrySearchModalProps> = ({
               Scanning Registry...
             </div>
           </div>
+        ) : searchError ? (
+          <div className="text-center py-14 space-y-3">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 mx-auto">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1 max-w-md mx-auto">
+              <div className="text-xs font-bold text-rose-700 uppercase tracking-widest">
+                Registry Search Failed
+              </div>
+              <p className="text-xs text-stone-600 leading-relaxed">
+                {searchError}
+              </p>
+            </div>
+          </div>
         ) : searchResults.length > 0 ? (
           searchResults.map((item) => {
             const ssotPrice = Number(item.ssot_unit_price ?? item.unit_price ?? 0);
+            const unitLabel = item.uom || item.unit || "PCS";
             return (
               <button
                 key={item.id}
@@ -85,7 +107,7 @@ export const BomRegistrySearchModal: React.FC<BomRegistrySearchModalProps> = ({
                     {item.dimension && <span>DIM: {item.dimension}</span>}
                     {item.spec && <span>SPEC: {item.spec}</span>}
                     {ssotPrice > 0 && (
-                      <span className="font-mono text-stone-700">
+                      <span className="font-mono tabular-nums text-stone-700">
                         SSOT: {formatIDR(ssotPrice)}
                       </span>
                     )}
@@ -105,19 +127,19 @@ export const BomRegistrySearchModal: React.FC<BomRegistrySearchModalProps> = ({
                   >
                     {item.free_stock || 0}{" "}
                     <span className="text-[10px] text-stone-500 font-sans tracking-widest ml-1 uppercase">
-                      {item.uom || "PCS"}
+                      {unitLabel}
                     </span>
                   </div>
                 </div>
               </button>
             );
           })
-        ) : searchTerm.trim().length > 0 ? (
+        ) : hasReachedMinChars ? (
           <div className="text-center py-16 space-y-3">
             <Package className="w-12 h-12 text-stone-300 mx-auto" />
             <div className="space-y-1.5 max-w-md mx-auto">
               <div className="text-xs font-bold text-stone-700 uppercase tracking-widest">
-                No matching Master SKU found for &quot;{searchTerm}&quot;
+                No matching Master SKU found for &quot;{trimmedQuery}&quot;
               </div>
               <p className="text-xs text-stone-500 leading-relaxed">
                 SKU not registered in Inventory Master. Register new items via{" "}
@@ -129,7 +151,9 @@ export const BomRegistrySearchModal: React.FC<BomRegistrySearchModalProps> = ({
           <div className="text-center py-20 flex flex-col items-center">
             <Search className="w-12 h-12 text-stone-200 mb-4" />
             <div className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-              Type item name, SKU code, dimension, or specification to search
+              {minQueryLength > 1
+                ? `Type at least ${minQueryLength} characters to search Master SKUs`
+                : "Type item name, SKU code, dimension, or specification to search"}
             </div>
           </div>
         )}

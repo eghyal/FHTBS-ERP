@@ -266,7 +266,7 @@ export const ForumModals = React.memo(function ForumModals({
                 download={lightboxData.name}
                 target="_blank"
                 rel="noreferrer"
-                className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 border border-white/15 text-white transition-colors"
                 title="Download Image"
               >
                 <Download className="w-4 h-4" />
@@ -303,17 +303,17 @@ export const ForumModals = React.memo(function ForumModals({
       <Modal
         isOpen={!!forwardingMsg}
         onClose={() => setForwardingMsg(null)}
-        maxWidth="lg"
+        maxWidth="xl"
         title={
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-700 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-700 flex items-center justify-center shrink-0">
               <CornerUpRight className="w-4 h-4" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="text-sm font-bold text-stone-900">
                 Forward Message
               </h3>
-              <p className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">
+              <p className="text-[10px] text-stone-400 font-bold uppercase tracking-wider truncate">
                 Automatic header: &quot;Forward from{" "}
                 {forwardingMsg?.forwarded_from ||
                   forwardingMsg?.sender_username}
@@ -322,10 +322,40 @@ export const ForumModals = React.memo(function ForumModals({
             </div>
           </div>
         }
-        contentClassName="p-0 overflow-hidden"
+        footer={
+          forwardingMsg ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+              <span className="text-[11px] text-stone-500 font-medium">
+                {forwardSelectedUsers.length + forwardSelectedThreads.length}{" "}
+                recipient(s) selected
+              </span>
+              <div className="flex items-center gap-2 ml-auto">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setForwardingMsg(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  form="forward-msg-form"
+                  disabled={
+                    isForwarding ||
+                    forwardSelectedUsers.length +
+                      forwardSelectedThreads.length ===
+                      0
+                  }
+                >
+                  {isForwarding ? "Forwarding..." : "Forward Now"}
+                </Button>
+              </div>
+            </div>
+          ) : undefined
+        }
       >
         {forwardingMsg && (
-          <form onSubmit={handleConfirmForward} className="p-5 space-y-4">
+          <form id="forward-msg-form" onSubmit={handleConfirmForward} className="space-y-4">
             {/* Forwarded Message Preview */}
             <div className="p-3 rounded-xl bg-stone-50 border border-stone-200/80 text-xs space-y-1">
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-stone-500 italic">
@@ -425,7 +455,7 @@ export const ForumModals = React.memo(function ForumModals({
                             className={cn(
                               "w-5 h-5 rounded-md border flex items-center justify-center",
                               isSel
-                                ? "bg-emerald-600 border-emerald-600 text-white"
+                                ? "bg-stone-900 border-stone-900 text-white"
                                 : "border-stone-300 bg-white",
                             )}
                           >
@@ -491,7 +521,7 @@ export const ForumModals = React.memo(function ForumModals({
                             className={cn(
                               "w-5 h-5 rounded-md border flex items-center justify-center",
                               isSel
-                                ? "bg-emerald-600 border-emerald-600 text-white"
+                                ? "bg-stone-900 border-stone-900 text-white"
                                 : "border-stone-300 bg-white",
                             )}
                           >
@@ -515,32 +545,6 @@ export const ForumModals = React.memo(function ForumModals({
               />
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-stone-100">
-              <span className="text-[11px] text-stone-500 font-medium">
-                {forwardSelectedUsers.length + forwardSelectedThreads.length}{" "}
-                recipient(s) selected
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setForwardingMsg(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={
-                    isForwarding ||
-                    forwardSelectedUsers.length +
-                      forwardSelectedThreads.length ===
-                      0
-                  }
-                >
-                  {isForwarding ? "Forwarding..." : "Forward Now"}
-                </Button>
-              </div>
-            </div>
           </form>
         )}
       </Modal>
@@ -549,11 +553,11 @@ export const ForumModals = React.memo(function ForumModals({
       <Modal
         isOpen={showErpPicker}
         onClose={() => setShowErpPicker(false)}
-        maxWidth="xl"
+        maxWidth="2xl"
         title="Attach ERP Document to Chat"
         description="Select a document to share or request direct Manager authorization"
-        contentClassName="p-4 space-y-3"
       >
+        <div className="space-y-3">
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide bg-stone-100 p-1 rounded-xl">
           {(["ALL", "NTP", "QUOTATION", "PR", "PO", "INVOICE"] as const).map(
             (tab) => (
@@ -650,6 +654,7 @@ export const ForumModals = React.memo(function ForumModals({
               </div>
             ))}
         </div>
+        </div>
       </Modal>
 
       {/* DIRECT MANAGER AUTHORIZATION MODAL IN CHAT */}
@@ -680,9 +685,34 @@ export const ForumModals = React.memo(function ForumModals({
         }}
         title="Start New Conversation"
         description="Select one teammate for a direct chat or multiple teammates to create a department group"
-        contentClassName="p-0 flex flex-col h-full"
+        maxWidth="2xl"
+        contentClassName="p-0 flex flex-col min-h-0"
+        footer={
+          selectedUsers.length > 0 ? (
+            <div className="flex flex-col gap-3 w-full">
+              {selectedUsers.length > 1 && (
+                <input
+                  type="text"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder="Enter discussion group name (required)"
+                  className="w-full px-3.5 py-2 border border-stone-200 bg-white rounded-xl text-xs focus:outline-none focus:border-stone-400"
+                />
+              )}
+              <Button
+                onClick={handleCreateChat}
+                disabled={selectedUsers.length > 1 && !groupName.trim()}
+                className="w-full"
+              >
+                {selectedUsers.length > 1
+                  ? `Create Group Chat (${selectedUsers.length} Members)`
+                  : "Start Chat"}
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
-        <div className="p-4 border-b border-stone-100 space-y-2.5">
+        <div className="p-4 border-b border-stone-100 space-y-2.5 shrink-0">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
@@ -702,7 +732,7 @@ export const ForumModals = React.memo(function ForumModals({
                 className={cn(
                   "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap border transition-all cursor-pointer",
                   newChatDeptFilter === dept
-                    ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                    ? "bg-stone-900 text-white border-stone-900 shadow-2xs"
                     : "bg-white text-stone-600 border-stone-200 hover:bg-stone-50 hover:text-stone-900",
                 )}
               >
@@ -712,7 +742,7 @@ export const ForumModals = React.memo(function ForumModals({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 max-h-80 custom-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto p-2 custom-scrollbar">
           {filteredDirectory.map((u) => {
             const isSelected = selectedUsers.includes(u.username);
             const senderUnread = unreadBySender[u.username] || 0;
@@ -741,7 +771,7 @@ export const ForumModals = React.memo(function ForumModals({
                     className={cn(
                       "w-5 h-5 rounded-md border flex items-center justify-center shrink-0",
                       isSelected
-                        ? "bg-emerald-600 border-emerald-600 text-white"
+                        ? "bg-stone-900 border-stone-900 text-white"
                         : "border-stone-300 bg-white",
                     )}
                   >
@@ -798,29 +828,6 @@ export const ForumModals = React.memo(function ForumModals({
             );
           })}
         </div>
-
-        {selectedUsers.length > 0 && (
-          <div className="p-4 border-t border-stone-100 bg-stone-50 flex flex-col gap-3 shrink-0">
-            {selectedUsers.length > 1 && (
-              <input
-                type="text"
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                placeholder="Enter discussion group name (required)"
-                className="w-full px-3.5 py-2 border border-stone-200 bg-white rounded-xl text-xs focus:outline-none focus:border-stone-400"
-              />
-            )}
-            <Button
-              onClick={handleCreateChat}
-              disabled={selectedUsers.length > 1 && !groupName.trim()}
-              className="w-full"
-            >
-              {selectedUsers.length > 1
-                ? `Create Group Chat (${selectedUsers.length} Members)`
-                : "Start Chat"}
-            </Button>
-          </div>
-        )}
       </Modal>
 
       {/* MEMBER LIST MODAL */}
@@ -828,10 +835,10 @@ export const ForumModals = React.memo(function ForumModals({
         isOpen={showMembersList && selectedThread !== null}
         onClose={() => setShowMembersList(false)}
         title="Conversation Participants"
-        maxWidth="sm"
-        contentClassName="p-2 flex flex-col"
+        maxWidth="md"
+        contentClassName="p-2 flex flex-col min-h-0"
       >
-        <div className="overflow-y-auto max-h-80 custom-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           {selectedThread?.participants.map((pUser) => {
             const dirUser = directory.find((d) => d.username === pUser);
             const unreadFromUser = unreadBySender[pUser] || 0;
@@ -888,9 +895,18 @@ export const ForumModals = React.memo(function ForumModals({
         }}
         title="Add Group Members"
         description="Select teammates to add to this group discussion"
-        contentClassName="p-0 flex flex-col h-full"
+        maxWidth="2xl"
+        contentClassName="p-0 flex flex-col min-h-0"
+        footer={
+          selectedUsers.length > 0 ? (
+            <Button onClick={handleAddMember} className="w-full">
+              Add {selectedUsers.length} Member
+              {selectedUsers.length === 1 ? "" : "s"}
+            </Button>
+          ) : undefined
+        }
       >
-        <div className="p-4 border-b border-stone-100">
+        <div className="p-4 border-b border-stone-100 shrink-0">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
@@ -903,7 +919,7 @@ export const ForumModals = React.memo(function ForumModals({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 max-h-72 custom-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto p-2 custom-scrollbar">
           {selectedThread &&
             filteredDirectory
               .filter((u) => !selectedThread.participants.includes(u.username))
@@ -927,7 +943,7 @@ export const ForumModals = React.memo(function ForumModals({
                       className={cn(
                         "w-5 h-5 rounded-md border mr-3 flex items-center justify-center",
                         isSelected
-                          ? "bg-emerald-600 border-emerald-600 text-white"
+                          ? "bg-stone-900 border-stone-900 text-white"
                           : "border-stone-300 bg-white",
                       )}
                     >
@@ -948,15 +964,6 @@ export const ForumModals = React.memo(function ForumModals({
                 );
               })}
         </div>
-
-        {selectedUsers.length > 0 && (
-          <div className="p-4 border-t border-stone-100 bg-stone-50 flex flex-col gap-3 shrink-0">
-            <Button onClick={handleAddMember} className="w-full">
-              Add {selectedUsers.length} Member
-              {selectedUsers.length === 1 ? "" : "s"}
-            </Button>
-          </div>
-        )}
       </Modal>
 
       {/* CONFIRM MODAL */}

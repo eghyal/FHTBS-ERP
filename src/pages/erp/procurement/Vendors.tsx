@@ -496,10 +496,27 @@ export default function Vendors() {
         onClose={() => setShowEditModal(false)}
         title="Edit Supplier"
         description="Update vendor information"
+        maxWidth="3xl"
+        footer={
+          editingSupplier ? (
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowEditModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" form="edit-supplier-form" disabled={isSubmitting}>
+                {isSubmitting ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {editingSupplier && (
-          <form onSubmit={handleUpdateSupplier} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <form id="edit-supplier-form" onSubmit={handleUpdateSupplier} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Supplier Name"
                 required
@@ -529,7 +546,7 @@ export default function Vendors() {
                 })
               }
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Email"
                 type="email"
@@ -575,18 +592,6 @@ export default function Vendors() {
               }
               className="min-h-[80px]"
             />
-            <div className="flex justify-end gap-3 pt-4 border-t border-stone-100">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setShowEditModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
           </form>
         )}
       </Modal>
@@ -610,9 +615,24 @@ export default function Vendors() {
         onClose={() => setShowAddModal(false)}
         title="Add New Supplier"
         description="Register a new vendor in the master data"
+        maxWidth="3xl"
+        footer={
+          <div className="flex flex-wrap justify-end gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowAddModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form="add-supplier-form" disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save Supplier"}
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleAddSupplier} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <form id="add-supplier-form" onSubmit={handleAddSupplier} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Supplier Name"
               required
@@ -655,7 +675,7 @@ export default function Vendors() {
             }
             placeholder="e.g. Bpk. Budi"
           />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Email"
               type="email"
@@ -692,18 +712,6 @@ export default function Vendors() {
             className="min-h-[80px]"
             placeholder="Jl. Raya Industri No. 123..."
           />
-          <div className="flex justify-end gap-3 pt-4 border-t border-stone-100">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setShowAddModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Save Supplier"}
-            </Button>
-          </div>
         </form>
       </Modal>
     </div>

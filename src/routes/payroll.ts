@@ -4,6 +4,13 @@ import db from "../db/database.ts";
 import { requireRole, getActor } from "../middleware/auth.ts";
 import { logAudit } from "../utils/audit.ts";
 import { calculateEmployeePayroll } from "../lib/hrisEngine.ts";
+import { assertAccountingPeriodOpen } from "../utils/accountingBridge.ts";
+import {
+  assertClosingWindowOpen,
+  evaluateClosingWindow,
+  resolvePeriodKey,
+  backfillPayrollPeriodKeys,
+} from "../utils/closingEngine.ts";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
@@ -14,6 +21,7 @@ export const router = Router();
       requireRole(["HR", "FINANCE", "FC", "BOD"]),
       (req, res) => {
         try {
+          backfillPayrollPeriodKeys(db);
           const reqs = db
             .prepare(
               "SELECT * FROM payroll_requisitions ORDER BY created_at DESC",
@@ -255,10 +263,13 @@ export const router = Router();
             };
           });
 
+          const windowStatus = evaluateClosingWindow();
           res.json({
+            period_key: resolvePeriodKey(pMonth, pYear, periodName),
             period_month: pMonth,
             period_year: pYear,
             period_name: periodName,
+            window_status: windowStatus,
             details,
           });
         } catch (e: any) {
@@ -282,12 +293,17 @@ export const router = Router();
             "July", "August", "September", "October", "November", "December"
           ];
           const periodName = `${monthNames[pMonth - 1] || pMonth} ${pYear}`;
+          const periodKey = resolvePeriodKey(pMonth, pYear, periodName);
+
+          // Strict 15th-24th monthly closing window & accounting period open check
+          assertClosingWindowOpen();
+          assertAccountingPeriodOpen(db, `${periodKey}-01`);
 
           const existing = db
             .prepare(
-              "SELECT id, requisition_number, status FROM payroll_requisitions WHERE period_month = ? AND period_year = ? AND status NOT IN ('REJECTED', 'CANCELLED') LIMIT 1",
+              "SELECT id, requisition_number, status FROM payroll_requisitions WHERE (period_key = ? OR (period_month = ? AND period_year = ?)) AND status NOT IN ('REJECTED', 'CANCELLED') LIMIT 1",
             )
-            .get(pMonth, pYear) as any;
+            .get(periodKey, pMonth, pYear) as any;
 
           if (existing) {
             return res.status(400).json({
@@ -297,12 +313,10 @@ export const router = Router();
 
           const userEmail = getActor(req);
 
-          if (submit && req.body.pin) {
-            if (!isValidDailyAuthKey(userEmail, req.body.pin)) {
-              return res.status(400).json({
-                error: "PIN Otorisasi / Auth Key Harian tidak valid. Silakan periksa PIN otorisasi Anda.",
-              });
-            }
+          if (submit && (!req.body.pin || !isValidDailyAuthKey(userEmail, req.body.pin))) {
+            return res.status(400).json({
+              error: "PIN Otorisasi / Auth Key Harian wajib diisi dan valid saat mengajukan PRq.",
+            });
           }
 
           const id = "PRQ-" + Date.now() + "-" + Math.floor(1000 + Math.random() * 9000);
@@ -358,10 +372,10 @@ export const router = Router();
           db.prepare(
             `
             INSERT INTO payroll_requisitions (
-              id, requisition_number, period_month, period_year, period_name,
+              id, requisition_number, period_month, period_year, period_name, period_key,
               submitted_by, submitted_at, status, total_gross, total_deductions,
               total_net, notes, details_json, total_direct_labor, total_opex
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
           ).run(
             id,
@@ -369,6 +383,7 @@ export const router = Router();
             pMonth,
             pYear,
             periodName,
+            periodKey,
             userEmail,
             submittedAt,
             status,
@@ -392,13 +407,15 @@ export const router = Router();
           res.json({
             success: true,
             id,
+            period_key: periodKey,
             requisition_number: reqNum,
             status,
             total_net: totalNet,
           });
         } catch (e: any) {
           console.error("Create PRq failed:", e);
-          res.status(500).json({ error: "Failed to create payroll requisition" });
+          const msg = e?.message || "Failed to create payroll requisition";
+          res.status(msg.startsWith("CLOSING_WINDOW_LOCKED") ? 403 : msg.includes("PERIOD") ? 400 : 500).json({ error: msg });
         }
       },
     );
@@ -414,6 +431,10 @@ export const router = Router();
             .get(req.params.id) as any;
 
           if (!prq) return res.status(404).json({ error: "PRq not found" });
+
+          const periodKey = prq.period_key || resolvePeriodKey(prq.period_month, prq.period_year, prq.period_name);
+          assertClosingWindowOpen();
+          assertAccountingPeriodOpen(db, `${periodKey}-01`);
 
           let totalGross = 0;
           let totalDeductions = 0;
@@ -462,12 +483,10 @@ export const router = Router();
           const status = submit ? "SUBMITTED" : "DRAFT";
           const userEmail = getActor(req);
 
-          if (submit && req.body.pin) {
-            if (!isValidDailyAuthKey(userEmail, req.body.pin)) {
-              return res.status(400).json({
-                error: "PIN Otorisasi / Auth Key Harian tidak valid. Silakan periksa PIN otorisasi Anda.",
-              });
-            }
+          if (submit && (!req.body.pin || !isValidDailyAuthKey(userEmail, req.body.pin))) {
+            return res.status(400).json({
+              error: "PIN Otorisasi / Auth Key Harian wajib diisi dan valid saat mengajukan PRq.",
+            });
           }
 
           db.prepare(
@@ -475,6 +494,7 @@ export const router = Router();
             UPDATE payroll_requisitions
             SET notes = ?,
                 details_json = ?,
+                period_key = ?,
                 total_gross = ?,
                 total_deductions = ?,
                 total_net = ?,
@@ -489,6 +509,7 @@ export const router = Router();
           ).run(
             notes || "",
             JSON.stringify(sanitizedDetails),
+            periodKey,
             totalGross,
             totalDeductions,
             totalNet,
@@ -510,7 +531,8 @@ export const router = Router();
           res.json({ success: true, status });
         } catch (e: any) {
           console.error("Update PRq failed:", e);
-          res.status(500).json({ error: "Failed to update payroll requisition" });
+          const msg = e?.message || "Failed to update payroll requisition";
+          res.status(msg.startsWith("CLOSING_WINDOW_LOCKED") ? 403 : msg.includes("PERIOD") ? 400 : 500).json({ error: msg });
         }
       },
     );
@@ -623,10 +645,11 @@ export const router = Router();
         try {
           const { pin } = req.body;
           const userEmail = getActor(req);
-          
-          // Verify PIN if provided
-          if (pin && !isValidDailyAuthKey(userEmail, pin)) {
-            return res.status(400).json({ error: "Invalid authorization PIN" });
+
+          // Strict Closing Window 15-24 & Mandatory Daily Auth PIN
+          assertClosingWindowOpen();
+          if (!pin || !isValidDailyAuthKey(userEmail, pin)) {
+            return res.status(400).json({ error: "PIN Otorisasi Harian wajib diisi dan valid untuk menyetujui PRq." });
           }
 
           const prq = db
@@ -642,6 +665,9 @@ export const router = Router();
             });
           }
 
+          const periodKey = prq.period_key || resolvePeriodKey(prq.period_month, prq.period_year, prq.period_name);
+          assertAccountingPeriodOpen(db, `${periodKey}-01`);
+
           const payrollId = "PAY-" + Date.now() + "-" + Math.floor(1000 + Math.random() * 9000);
           const voucherNumber = `PDV/FIN/${prq.period_year}/${String(prq.period_month).padStart(2, "0")}/${Math.floor(100 + Math.random() * 900)}`;
 
@@ -656,9 +682,9 @@ export const router = Router();
             // 1. Atomically mark PRq as CONVERTED first to guard against concurrent double-click conversion
             const updPrq = db
               .prepare(
-                "UPDATE payroll_requisitions SET status = 'CONVERTED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('SUBMITTED', 'APPROVED')",
+                "UPDATE payroll_requisitions SET status = 'CONVERTED', period_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('SUBMITTED', 'APPROVED')",
               )
-              .run(prq.id);
+              .run(periodKey, prq.id);
 
             if (updPrq.changes === 0) {
               throw new Error(
@@ -666,13 +692,13 @@ export const router = Router();
               );
             }
 
-            // 2. Create Finance Payroll Disbursement Order (PDV)
+            // 2. Create Finance Payroll Disbursement Order (PDV) with canonical period_key
             db.prepare(
               `
               INSERT INTO finance_payroll (
-                id, prq_id, voucher_number, period_name, period_month, period_year,
+                id, prq_id, voucher_number, period_name, period_month, period_year, period_key,
                 total_amount, details_json, status, total_direct_labor, total_opex
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFTED', ?, ?)
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFTED', ?, ?)
             `,
             ).run(
               payrollId,
@@ -681,26 +707,27 @@ export const router = Router();
               prq.period_name,
               prq.period_month,
               prq.period_year,
+              periodKey,
               prq.total_net,
               prq.details_json,
               prq.total_direct_labor || 0,
               prq.total_opex || 0,
             );
 
-            // 3. Generate or update individual employee payslips without duplicating (employee_username, period_month)
+            // 3. Generate or update individual employee payslips without duplicating (employee_username, period_key)
             const findExistingSlip = db.prepare(`
               SELECT id FROM hr_payslips
-              WHERE LOWER(employee_username) = LOWER(?) AND LOWER(TRIM(period_month)) = LOWER(TRIM(?))
+              WHERE LOWER(employee_username) = LOWER(?) AND (period_key = ? OR LOWER(TRIM(period_month)) = LOWER(TRIM(?)))
               LIMIT 1
             `);
             const updatePayslip = db.prepare(`
               UPDATE hr_payslips
-              SET basic_salary = ?, allowances = ?, deductions = ?, net_salary = ?, status = 'PUBLISHED'
+              SET period_key = ?, basic_salary = ?, allowances = ?, deductions = ?, net_salary = ?, status = 'PUBLISHED'
               WHERE id = ?
             `);
             const insertPayslip = db.prepare(`
-              INSERT INTO hr_payslips (id, employee_username, period_month, basic_salary, allowances, deductions, net_salary, status)
-              VALUES (?, ?, ?, ?, ?, ?, ?, 'PUBLISHED')
+              INSERT INTO hr_payslips (id, employee_username, period_month, period_key, basic_salary, allowances, deductions, net_salary, status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PUBLISHED')
             `);
 
             details.forEach((d: any) => {
@@ -711,10 +738,12 @@ export const router = Router();
 
               const existingSlip = findExistingSlip.get(
                 d.username,
+                periodKey,
                 prq.period_name,
               ) as any;
               if (existingSlip) {
                 updatePayslip.run(
+                  periodKey,
                   basicVal,
                   allowVal,
                   dedVal,
@@ -729,6 +758,7 @@ export const router = Router();
                   slipId,
                   d.username,
                   prq.period_name,
+                  periodKey,
                   basicVal,
                   allowVal,
                   dedVal,
@@ -749,15 +779,20 @@ export const router = Router();
           res.json({
             success: true,
             id: payrollId,
+            period_key: periodKey,
             voucher_number: voucherNumber,
             total_amount: prq.total_net,
           });
         } catch (e: any) {
           console.error("Convert PRq failed:", e);
-          if (e.message?.includes("sudah dikonversi")) {
-            return res.status(400).json({ error: e.message });
+          const msg = e?.message || "Failed to convert PRq to payroll order";
+          if (msg.startsWith("CLOSING_WINDOW_LOCKED")) {
+            return res.status(403).json({ error: msg });
           }
-          res.status(500).json({ error: "Failed to convert PRq to payroll order" });
+          if (msg.includes("sudah dikonversi") || msg.includes("PERIOD")) {
+            return res.status(400).json({ error: msg });
+          }
+          res.status(500).json({ error: msg });
         }
       },
     );

@@ -123,9 +123,49 @@ export function AuthorizeDocModal({
           </div>
         </div>
       }
-      contentClassName="p-0 border-t border-stone-100"
+      contentClassName="border-t border-stone-100"
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+          <button
+            type="button"
+            onClick={handleShareForAuth}
+            disabled={isSubmitting}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-stone-200 bg-white hover:bg-stone-100 text-stone-700 text-xs font-bold transition-colors cursor-pointer"
+            title="Share this document with a Manager or another Department via Messages for authorization or discussion"
+          >
+            <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Share / Request Auth via Message</span>
+          </button>
+
+          <div className="flex flex-wrap items-center gap-2.5 ml-auto">
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="authorize-doc-form"
+              disabled={isSubmitting || !authPin.trim() || submitDisabled}
+              className={cn("flex items-center gap-2", submitVariant)}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                submitLabel || "Authorize & Release"
+              )}
+            </Button>
+          </div>
+        </div>
+      }
     >
-      <form onSubmit={handleSubmit} className="p-6 space-y-5">
+      <form id="authorize-doc-form" onSubmit={handleSubmit} className="space-y-5">
         {/* Document Info Card */}
         <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200/80 space-y-2">
           <div className="flex justify-between items-start">
@@ -221,45 +261,6 @@ export function AuthorizeDocModal({
                 )}
               />
             </div>
-          </div>
-        </div>
-
-        {/* Action Controls */}
-        <div className="pt-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={handleShareForAuth}
-            disabled={isSubmitting}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 text-xs font-bold transition-colors cursor-pointer"
-            title="Share this document with a Manager or another Department via Messages for authorization or discussion"
-          >
-            <Share2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Share / Request Auth via Message</span>
-          </button>
-
-          <div className="flex items-center gap-2.5 ml-auto">
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting || !authPin.trim() || submitDisabled}
-              className={cn("flex items-center gap-2", submitVariant)}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                submitLabel || "Authorize & Release"
-              )}
-            </Button>
           </div>
         </div>
       </form>

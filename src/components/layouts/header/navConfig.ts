@@ -219,6 +219,11 @@ export const NAV_GROUPS: NavGroupConfig[] = [
         action: Action.VIEW_FINANCE,
       },
       {
+        name: "Book Closing",
+        path: "/book-closing",
+        action: Action.VIEW_FINANCE,
+      },
+      {
         name: "Cash Flow Forecasting",
         path: "/cashflow-forecast",
         action: Action.VIEW_FINANCE,

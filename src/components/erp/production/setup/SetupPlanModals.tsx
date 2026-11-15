@@ -60,8 +60,8 @@ export const SetupPlanModals: React.FC<SetupPlanModalsProps> = React.memo(({
       {/* MODAL: INTEGRATED BOP WORKSTATION & PROCESS ROUTE VIEWER */}
       {showBopEditorModal && (
         <div className="fixed inset-0 z-50 bg-stone-950/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
-          <div className="bg-stone-50 border border-stone-200 rounded-2xl w-full max-w-[96vw] h-[92vh] flex flex-col overflow-hidden shadow-2xl">
-            <div className="bg-white border-b border-stone-200 px-5 py-3.5 flex items-center justify-between gap-4 shrink-0">
+          <div className="bg-stone-50 border border-stone-200 rounded-2xl w-full max-w-[96vw] h-[92dvh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="bg-white border-b border-stone-200 px-5 py-3.5 flex flex-wrap items-center justify-between gap-4 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0">
                   <GitFork className="w-4 h-4" />
@@ -105,7 +105,7 @@ export const SetupPlanModals: React.FC<SetupPlanModalsProps> = React.memo(({
       <Modal
         isOpen={showPreviewPlanModal}
         onClose={() => setShowPreviewPlanModal(false)}
-        maxWidth="5xl"
+        maxWidth="7xl"
         title={
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0">
@@ -126,9 +126,24 @@ export const SetupPlanModals: React.FC<SetupPlanModalsProps> = React.memo(({
             </div>
           </div>
         }
-        contentClassName="p-0 flex flex-col max-h-[85vh] bg-stone-50"
+        contentClassName="p-0 flex flex-col min-h-0 bg-stone-50"
+        footer={
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="text-[11px] font-mono text-stone-500">
+              Read-Only Schedule &amp; Routing Preview
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowPreviewPlanModal(false)}
+            >
+              Close
+            </Button>
+          </div>
+        }
       >
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs text-stone-800">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-5 text-xs text-stone-800">
           {/* 01. PLANNED PRODUCTION GANTT & PIPELINE SCHEDULE */}
           <div className="bg-white rounded-xl border border-stone-200 p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-100 pb-2.5">
@@ -160,15 +175,16 @@ export const SetupPlanModals: React.FC<SetupPlanModalsProps> = React.memo(({
               const baseStartMs = new Date(`${startDate}T00:00:00`).getTime();
 
               return (
-                <div className="border border-stone-200 rounded-lg overflow-hidden">
-                  <div className="grid grid-cols-12 bg-stone-50 border-b border-stone-200 py-2 px-3 text-[10px] font-bold uppercase text-stone-500">
-                    <div className="col-span-4">Step / Process / Station</div>
-                    <div className="col-span-6">
-                      Planned Timeline ({startDate} → {scheduleInsight.estimatedFinishDate} · {totalCalendarDays}d)
+                <div className="border border-stone-200 rounded-lg overflow-x-auto">
+                  <div className="min-w-[680px]">
+                    <div className="grid grid-cols-12 bg-stone-50 border-b border-stone-200 py-2 px-3 text-[10px] font-bold uppercase text-stone-500">
+                      <div className="col-span-4">Step / Process / Station</div>
+                      <div className="col-span-6">
+                        Planned Timeline ({startDate} → {scheduleInsight.estimatedFinishDate} · {totalCalendarDays}d)
+                      </div>
+                      <div className="col-span-2 text-right">Window &amp; Load</div>
                     </div>
-                    <div className="col-span-2 text-right">Window &amp; Load</div>
-                  </div>
-                  <div className="divide-y divide-stone-100">
+                    <div className="divide-y divide-stone-100">
                     {processConfigs.map((row, idx) => {
                       const stObj = stations.find(
                         (st: any) => st.id === row.station_id || st.station_code === row.station_id
@@ -263,6 +279,7 @@ export const SetupPlanModals: React.FC<SetupPlanModalsProps> = React.memo(({
                         </div>
                       );
                     })}
+                    </div>
                   </div>
                 </div>
               );
@@ -392,8 +409,8 @@ export const SetupPlanModals: React.FC<SetupPlanModalsProps> = React.memo(({
               </span>
             </div>
 
-            <div className="border border-stone-200 rounded-lg overflow-hidden">
-              <Table className="text-xs">
+            <div className="border border-stone-200 rounded-lg overflow-x-auto">
+              <Table className="text-xs min-w-[880px]">
                 <TableHeader>
                   <TableRow className="bg-stone-50 border-b border-stone-200">
                     <TableHead className="py-2 px-3">Step</TableHead>
@@ -513,21 +530,6 @@ export const SetupPlanModals: React.FC<SetupPlanModalsProps> = React.memo(({
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Modal Footer */}
-        <div className="bg-white border-t border-stone-200 px-5 py-3 flex items-center justify-between gap-4 shrink-0">
-          <div className="text-[11px] font-mono text-stone-500">
-            Read-Only Schedule &amp; Routing Preview
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => setShowPreviewPlanModal(false)}
-          >
-            Close
-          </Button>
         </div>
       </Modal>
     </>

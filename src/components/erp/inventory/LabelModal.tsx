@@ -141,7 +141,36 @@ export const WarehouseLabelModal: React.FC<WarehouseLabelModalProps> = ({
           </div>
         </div>
       }
-      maxWidth="md"
+      maxWidth="xl"
+      contentClassName="p-0 flex flex-col min-h-0"
+      footer={
+        <div className="flex flex-wrap items-center justify-end gap-2.5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition-colors"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="px-4 py-2 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors flex items-center gap-1.5"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            Print Label
+          </button>
+          <button
+            type="button"
+            onClick={exportSingleLabelPng}
+            disabled={isSubmitting}
+            className="px-5 py-2 text-xs font-bold text-white bg-stone-900 hover:bg-stone-800 rounded-xl transition-all shadow-2xs active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {isSubmitting ? "Downloading..." : "Download PNG"}
+          </button>
+        </div>
+      }
     >
       <div className="p-6 flex flex-col items-center">
         {/* Sleek, Simple & Elegant QR Card */}
@@ -212,33 +241,6 @@ export const WarehouseLabelModal: React.FC<WarehouseLabelModalProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="w-full flex items-center justify-end gap-2.5 mt-6 pt-4 border-t border-stone-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition-colors"
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="px-4 py-2 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors flex items-center gap-1.5"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            Print Label
-          </button>
-          <button
-            type="button"
-            onClick={exportSingleLabelPng}
-            disabled={isSubmitting}
-            className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all shadow-2xs active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5" />
-            {isSubmitting ? "Downloading..." : "Download PNG"}
-          </button>
-        </div>
       </div>
     </Modal>
   );

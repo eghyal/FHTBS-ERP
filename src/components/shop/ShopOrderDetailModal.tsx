@@ -52,7 +52,14 @@ export const ShopOrderDetailModal = React.memo<ShopOrderDetailModalProps>(functi
       isOpen={true}
       onClose={onClose}
       title={`Order Details: ${selectedOrder.order_number}`}
-      maxWidth="2xl"
+      maxWidth="5xl"
+      footer={
+        <div className="flex justify-end w-full">
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      }
     >
       <div className="space-y-4 text-xs text-stone-700">
         {/* Header Status Bar */}
@@ -182,7 +189,8 @@ export const ShopOrderDetailModal = React.memo<ShopOrderDetailModalProps>(functi
         )}
 
         {/* Line Items Table */}
-        <div className="border border-stone-200 rounded-xl overflow-hidden">
+        <div className="border border-stone-200 rounded-xl overflow-x-auto">
+          <div className="min-w-[540px]">
           <Table>
             <TableHeader>
               <TableRow>
@@ -212,6 +220,7 @@ export const ShopOrderDetailModal = React.memo<ShopOrderDetailModalProps>(functi
               ))}
             </TableBody>
           </Table>
+          </div>
         </div>
 
         {/* Omnichannel Tax & Production Work Order Governance */}
@@ -348,7 +357,7 @@ export const ShopOrderDetailModal = React.memo<ShopOrderDetailModalProps>(functi
             {selectedOrder.ci_number || selectedOrder.final_ci_number ? (
               <Link
                 to="/invoices"
-                className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs"
+                className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-bold rounded-lg bg-stone-900 hover:bg-stone-800 text-white shadow-2xs"
               >
                 <Receipt className="w-3.5 h-3.5" />
                 <span>Invoice: {selectedOrder.final_ci_number || selectedOrder.ci_number}</span>

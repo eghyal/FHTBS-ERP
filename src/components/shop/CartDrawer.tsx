@@ -205,7 +205,7 @@ export function CartDrawer({
       />
 
       {/* Modern Window Modal Container */}
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-stone-200 flex flex-col max-h-[92vh] overflow-hidden animate-in zoom-in-95 duration-150 z-10">
+      <div className="relative w-full max-w-3xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-stone-200 flex flex-col max-h-[92dvh] overflow-hidden animate-in zoom-in-95 duration-150 z-10">
         {/* Window Header */}
         <div className="p-4 sm:p-5 border-b border-stone-100 flex items-center justify-between bg-white shrink-0">
           <div className="flex items-center gap-2.5">
@@ -273,7 +273,7 @@ export function CartDrawer({
             </div>
 
             {/* Promo Product Showcase Card */}
-            <div className="bg-white rounded-xl border border-stone-200/80 p-2.5 sm:p-3 flex items-center justify-between gap-3 shadow-2xs">
+            <div className="bg-white rounded-xl border border-stone-200/80 p-2.5 sm:p-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shadow-2xs">
               <div className="flex items-center gap-3 min-w-0">
                 <img
                   src={currentPromo.image_url}
@@ -351,7 +351,7 @@ export function CartDrawer({
               return (
                 <div
                   key={product.id}
-                  className="py-3.5 first:pt-0 flex items-center justify-between gap-3 sm:gap-4"
+                  className="py-3.5 first:pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4"
                 >
                   {/* Thumbnail & Product Details */}
                   <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -376,7 +376,7 @@ export function CartDrawer({
                   </div>
 
                   {/* Quantity Stepper & Line Total */}
-                  <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+                  <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0">
                     {/* Stepper */}
                     <CartItemStepper
                       productId={product.id}

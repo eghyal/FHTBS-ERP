@@ -71,15 +71,15 @@ const actionMap: Record<string, { variant: any; icon: any; text: string; tooltip
 
 const variants: Record<string, string> = {
   primary:
-    "bg-emerald-600 text-white hover:bg-emerald-700 shadow-2xs border border-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none",
+    "bg-stone-900 text-white hover:bg-stone-800 shadow-2xs border border-stone-900 focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:outline-none",
   dark:
-    "bg-emerald-600 text-white hover:bg-emerald-700 shadow-2xs border border-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none",
+    "bg-stone-900 text-white hover:bg-stone-800 shadow-2xs border border-stone-900 focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:outline-none",
   brand:
-    "bg-emerald-600 text-white hover:bg-emerald-700 shadow-2xs border border-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none",
+    "bg-stone-900 text-white hover:bg-stone-800 shadow-2xs border border-stone-900 focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:outline-none",
   coral:
-    "bg-emerald-600 text-white hover:bg-emerald-700 shadow-2xs border border-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none",
+    "bg-stone-900 text-white hover:bg-stone-800 shadow-2xs border border-stone-900 focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:outline-none",
   coral_soft:
-    "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/80 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none",
+    "bg-stone-100 text-stone-800 hover:bg-stone-200 border border-stone-200/80 focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:outline-none",
   glass:
     "bg-white/80 backdrop-blur-md border border-stone-200/80 text-stone-700 hover:bg-white hover:text-stone-900 shadow-2xs focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:outline-none",
   secondary:

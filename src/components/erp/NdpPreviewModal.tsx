@@ -42,10 +42,21 @@ export const NdpPreviewModal: React.FC<NdpPreviewModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="NOTICE TO DOWN PROCESS (NDP)"
-      maxWidth="5xl"
-      contentClassName="p-0 flex flex-col h-[85vh] border-t border-stone-100"
+      maxWidth="6xl"
+      contentClassName="p-0 flex flex-col min-h-0 bg-stone-100"
+      footer={
+        <div className="w-full flex items-center justify-end gap-2.5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-xs font-semibold border border-stone-200 bg-white hover:bg-stone-100 text-stone-700 cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
+      }
     >
-      <div className="flex-1 w-full bg-stone-50 p-2 sm:p-6 custom-scrollbar overflow-y-auto">
+      <div className="flex-1 min-h-0 w-full bg-stone-100/80 p-3 sm:p-6 custom-scrollbar overflow-y-auto">
         <PdfPreviewWrapper>
           <PrintTemplate
             ref={printDocRef}

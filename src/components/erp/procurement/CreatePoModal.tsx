@@ -60,7 +60,7 @@ export const CreatePoModal = memo(function CreatePoModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="2xl"
+      maxWidth="4xl"
       title={
         <div>
           <h3 className="text-lg font-bold text-stone-900">
@@ -102,7 +102,7 @@ export const CreatePoModal = memo(function CreatePoModal({
         </div>
       )}
 
-      <div className="px-6 py-5 bg-stone-50 border-b border-stone-100 -mx-6 -mt-2 mb-4">
+      <div className="px-5 py-4 bg-stone-50 border border-stone-200 rounded-xl mb-5">
         <div className="flex justify-between items-start mb-1.5">
           <div>
             <div className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mb-1.5">
@@ -235,7 +235,7 @@ export const CreatePoModal = memo(function CreatePoModal({
                         )}
                       </div>
 
-                      <div className="grid grid-cols-3 gap-3 mt-2.5 pt-2.5 border-t border-stone-100 text-[9px] leading-none text-stone-500 font-mono">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2.5 pt-2.5 border-t border-stone-100 text-[9px] leading-none text-stone-500 font-mono">
                         <div>
                           <span className="block text-[7px] uppercase tracking-widest text-stone-400 font-sans mb-1 font-bold">
                             Catalog Compliance
@@ -621,7 +621,7 @@ export const CreatePoModal = memo(function CreatePoModal({
           ) : (
             <div></div>
           )}
-          <div className="flex gap-3 ml-auto">
+          <div className="flex flex-wrap gap-3 ml-auto">
             <Button
               variant="secondary"
               type="button"

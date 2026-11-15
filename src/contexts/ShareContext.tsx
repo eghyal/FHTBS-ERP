@@ -355,25 +355,54 @@ export function ShareProvider({ children }: { children: ReactNode }) {
         <Modal
           isOpen={!!shareData}
           onClose={closeShareModal}
-          maxWidth="xl"
+          maxWidth="2xl"
           title={
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-stone-900 text-white flex items-center justify-center shadow-2xs shrink-0">
                 <Share2 className="w-4 h-4" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h3 className="text-sm font-bold text-stone-900 leading-tight">
-                  Share ERP Document & Manager Authorization
+                  Share ERP Document &amp; Manager Authorization
                 </h3>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-0.5">
-                  Cross-Department Collaboration & Direct Approval in Messages
+                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mt-0.5 truncate">
+                  Cross-Department Collaboration &amp; Direct Approval in Messages
                 </p>
               </div>
             </div>
           }
-          contentClassName="p-0 overflow-hidden"
+          contentClassName="p-0 flex flex-col min-h-0"
+          footer={
+            <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+              <span className="text-[11px] text-stone-500 font-medium">
+                {totalSelected > 0
+                  ? `Ready to send to ${totalSelected} recipient${totalSelected === 1 ? "" : "s"}`
+                  : "Select at least 1 recipient above"}
+              </span>
+              <div className="flex flex-wrap items-center gap-2.5 ml-auto">
+                <button
+                  type="button"
+                  onClick={closeShareModal}
+                  className="px-4 py-2 bg-white border border-stone-200 text-stone-600 rounded-xl font-bold text-xs hover:bg-stone-50 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  disabled={isSubmitting || totalSelected === 0}
+                  className="px-5 py-2 bg-stone-900 text-white rounded-xl font-bold text-xs hover:bg-stone-800 transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {isSubmitting
+                    ? "Sending..."
+                    : `Share to ${totalSelected > 0 ? `${totalSelected} Chat${totalSelected === 1 ? "" : "s"}` : "Messages"}`}
+                </button>
+              </div>
+            </div>
+          }
         >
-          <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
+          <div className="p-5 space-y-4 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
             {/* Shared Resource Preview Card */}
             <div className="bg-stone-50 border border-stone-200/80 rounded-2xl p-3.5 flex items-start gap-3.5">
               <div className="p-2.5 bg-white rounded-xl border border-stone-200/80 shadow-2xs shrink-0">
@@ -496,7 +525,7 @@ export function ShareProvider({ children }: { children: ReactNode }) {
                 )}
               </div>
 
-              <div className="flex gap-1.5 p-1 bg-stone-100 rounded-xl">
+              <div className="flex flex-wrap gap-1.5 p-1 bg-stone-100 rounded-xl">
                 <button
                   type="button"
                   onClick={() => setRecipientTab("MANAGERS")}
@@ -695,34 +724,6 @@ export function ShareProvider({ children }: { children: ReactNode }) {
                 className="w-full border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs outline-none focus:border-stone-400 h-20 resize-none"
                 placeholder="Add collaboration notes or authorization instructions for the target department..."
               />
-            </div>
-          </div>
-
-          <div className="px-5 py-4 border-t border-stone-100 flex items-center justify-between gap-3 bg-stone-50/60">
-            <span className="text-[11px] text-stone-500 font-medium">
-              {totalSelected > 0
-                ? `Ready to send to ${totalSelected} recipient${totalSelected === 1 ? "" : "s"}`
-                : "Select at least 1 recipient above"}
-            </span>
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                onClick={closeShareModal}
-                className="px-4 py-2 bg-white border border-stone-200 text-stone-600 rounded-xl font-bold text-xs hover:bg-stone-50 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleShare}
-                disabled={isSubmitting || totalSelected === 0}
-                className="px-5 py-2 bg-stone-900 text-white rounded-xl font-bold text-xs hover:bg-stone-800 transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <Send className="w-3.5 h-3.5" />
-                {isSubmitting
-                  ? "Sending..."
-                  : `Share to ${totalSelected > 0 ? `${totalSelected} Chat${totalSelected === 1 ? "" : "s"}` : "Messages"}`}
-              </button>
             </div>
           </div>
         </Modal>

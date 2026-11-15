@@ -86,7 +86,7 @@ export const BopProductQcBuilder: React.FC<BopProductQcBuilderProps> = React.mem
             "px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shrink-0 shadow-2xs",
             selectedProductRole === "WIP_SUB_ASSY"
               ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-              : "bg-emerald-600 hover:bg-emerald-700 text-white"
+              : "bg-stone-900 hover:bg-stone-800 text-white"
           )}
         >
           <Plus className="w-3 h-3" />

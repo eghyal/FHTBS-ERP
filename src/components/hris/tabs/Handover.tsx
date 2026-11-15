@@ -485,10 +485,30 @@ export const HrHandoverTab: React.FC<HrHandoverTabProps> = React.memo(
           onClose={() => setIsModalOpen(false)}
           title="Initiate Employee Offboarding & Handover"
           description="Assign a successor and clearance checklist. Account access revokes automatically when 100% completed."
-          maxWidth="lg"
+          maxWidth="3xl"
           uiTheme="hris"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2.5">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setIsModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="hris-handover-form"
+                variant="primary"
+                isLoading={isSaving}
+              >
+                Create Handover Tracker
+              </Button>
+            </div>
+          }
         >
           <form
+            id="hris-handover-form"
             onSubmit={handleCreateHandover}
             className="space-y-4 text-left font-bold"
           >
@@ -544,22 +564,6 @@ export const HrHandoverTab: React.FC<HrHandoverTabProps> = React.memo(
               placeholder="Optional handover instructions..."
             />
 
-            <div className="pt-4 border-t border-stone-200 flex justify-end gap-2.5">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setIsModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={isSaving}
-              >
-                Create Handover Tracker
-              </Button>
-            </div>
           </form>
         </Modal>
       </div>

@@ -156,7 +156,7 @@ export const MobileMonitorHub: React.FC<MobileMonitorHubProps> = ({
       const requests: Promise<void>[] = [];
 
       requests.push(
-        apiFetch("/api/summary", {}, user.username)
+        apiFetch("/api/inventory/summary", {}, user.username)
           .then((res) => setSummary(res?.data ?? res))
           .catch(() => {}),
       );
@@ -262,8 +262,8 @@ export const MobileMonitorHub: React.FC<MobileMonitorHubProps> = ({
 
       if (hasDesktopPermission(user, Action.VIEW_PRODUCTION) || isExecutive) {
         requests.push(
-          apiFetch("/api/production/hub", {}, user.username)
-            .then((res) => setProductionHub(res?.data ?? res))
+          apiFetch("/api/production/command-center", {}, user.username)
+            .then((res) => setProductionHub(res?.data?.data ?? res?.data ?? res))
             .catch(() => {}),
         );
       }
@@ -273,7 +273,7 @@ export const MobileMonitorHub: React.FC<MobileMonitorHubProps> = ({
         isExecutive
       ) {
         requests.push(
-          apiFetch("/api/design-requests", {}, user.username)
+          apiFetch("/api/purchasing/prs?scope=PROJECT", {}, user.username)
             .then((res) => {
               const d = res?.data ?? res;
               setDesignRequests(Array.isArray(d) ? d : []);

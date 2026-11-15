@@ -3,7 +3,7 @@ import db from "../../db/database.ts";
 import { requireRole } from "../../middleware/auth.ts";
 import { logAudit } from "../../utils/audit.ts";
 import { syncProcurementTaskGantt } from "../../utils/ganttUtils.ts";
-import { postGoodsReceiptJournal } from "../../utils/accountingBridge.ts";
+import { postGoodsReceiptJournal, assertAccountingPeriodOpen } from "../../utils/accountingBridge.ts";
 import { syncProjectMaterialAndWakeProcesses } from "../production/utils.ts";
 import { cacheService } from "../../services/cacheService.ts";
 import { outboxService } from "../../services/outboxService.ts";
@@ -518,6 +518,7 @@ export function registerGrnInventoryRoutes(purchasingRouter: Router) {
         );
 
         const createdLabels: any[] = [];
+        assertAccountingPeriodOpen(db);
         db.transaction(() => {
           const updGrn = db.prepare(
             "UPDATE grns SET inventory_updated_at = CURRENT_TIMESTAMP WHERE id = ? AND inventory_updated_at IS NULL",

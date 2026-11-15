@@ -26,6 +26,7 @@ import {
   QcProcessSummary,
   QcProjectItem,
 } from "@/components/erp/qc/qcTypes";
+import { Action, hasPermission, hasGodMode } from "@/utils/pbac";
 import { cn } from "@/lib/utils";
 
 export default function ProcessQualityControl() {
@@ -470,14 +471,16 @@ export default function ProcessQualityControl() {
         icon={<ClipboardCheck className="w-5 h-5" />}
         actions={
           <div className="flex items-center gap-2">
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={() => handleOpenNcrModal()}
-              leftIcon={<AlertOctagon className="w-3.5 h-3.5 text-rose-600" />}
-            >
-              Log NCR / Defect
-            </Button>
+            {(hasGodMode(user) || hasPermission(user, Action.INSPECT_QC)) && (
+              <Button
+                size="xs"
+                variant="primary"
+                onClick={() => handleOpenNcrModal()}
+                leftIcon={<AlertOctagon className="w-3.5 h-3.5" />}
+              >
+                Log NCR / Defect
+              </Button>
+            )}
             <Button
               type="button"
               variant="secondary"

@@ -10,7 +10,6 @@ import {
   ClipboardList,
   History,
   Bell,
-  ArrowRight,
   Calendar,
   Wrench,
   PackageCheck,
@@ -36,7 +35,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { cn, formatIDR } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useInterval } from "@/hooks/useInterval";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";

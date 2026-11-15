@@ -367,10 +367,30 @@ export const HrKpiTab: React.FC<HrKpiTabProps> = React.memo(
           onClose={() => setIsModalOpen(false)}
           title="Submit 360° Employee KPI Appraisal"
           description="Scores >= 4.0 automatically qualify for KPI Performance Bonus in Payroll Requisition."
-          maxWidth="lg"
+          maxWidth="4xl"
           uiTheme="hris"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2.5">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setIsModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form="hris-kpi-form"
+                variant="primary"
+                isLoading={isSaving}
+              >
+                Save KPI Appraisal
+              </Button>
+            </div>
+          }
         >
           <form
+            id="hris-kpi-form"
             onSubmit={handleSubmitKpi}
             className="space-y-4 text-left font-bold"
           >
@@ -397,7 +417,7 @@ export const HrKpiTab: React.FC<HrKpiTabProps> = React.memo(
               />
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {[
                 { label: "Communication", val: comm, set: setComm },
                 { label: "Productivity", val: prod, set: setProd },
@@ -427,22 +447,6 @@ export const HrKpiTab: React.FC<HrKpiTabProps> = React.memo(
               placeholder="Document key achievements or areas for improvement..."
             />
 
-            <div className="pt-4 border-t border-stone-200 flex justify-end gap-2.5">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setIsModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={isSaving}
-              >
-                Save KPI Appraisal
-              </Button>
-            </div>
           </form>
         </Modal>
       </div>

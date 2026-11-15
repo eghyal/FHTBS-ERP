@@ -113,7 +113,7 @@ export const ReissueGrnModal = memo(function ReissueGrnModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="5xl"
+      maxWidth="6xl"
       title={
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-rose-50 border border-rose-200/80 rounded-lg flex items-center justify-center shrink-0">
@@ -275,7 +275,8 @@ export const ReissueGrnModal = memo(function ReissueGrnModal({
             <Layers className="w-3.5 h-3.5 text-stone-500" />
             Replacement Item Confirmations &amp; Split QC Disposition
           </label>
-          <Table compact>
+          <div className="overflow-x-auto border border-stone-200 rounded-xl">
+            <Table compact className="min-w-[820px]">
             <TableHeader>
               <TableRow hoverable={false}>
                 <TableHead>Material &amp; BOM Spec</TableHead>
@@ -447,6 +448,7 @@ export const ReissueGrnModal = memo(function ReissueGrnModal({
               })}
             </TableBody>
           </Table>
+          </div>
         </div>
 
         <div className="p-4 bg-emerald-50/50 border border-emerald-200/80 rounded-xl flex items-start gap-3.5">

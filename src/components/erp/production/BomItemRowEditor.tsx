@@ -1,5 +1,5 @@
 import React, { memo } from "react";
-import { Search, AlertCircle, AlertTriangle, Trash2, CheckCircle2, ExternalLink, Lock } from "lucide-react";
+import { Search, AlertCircle, AlertTriangle, Trash2, ExternalLink, Lock } from "lucide-react";
 import { cn, formatNumberWithDots } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
 
@@ -64,11 +64,6 @@ export const BomItemRowEditor = memo(function BomItemRowEditor({
           <div className="col-span-4 space-y-1.5">
             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.15em] px-1 flex items-center justify-between">
               <span>Item Code (Master SKU)</span>
-              {row.item_id && (
-                <span className="text-[8px] text-emerald-600 font-bold uppercase flex items-center gap-0.5">
-                  <CheckCircle2 className="w-2.5 h-2.5" /> Master Linked
-                </span>
-              )}
             </label>
             <div className="relative group/input">
               <input

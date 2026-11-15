@@ -498,7 +498,7 @@ export default function HumanResource() {
       title: "Submit Payroll Requisition (PRq) to Finance",
       message:
         "This action locks and forwards the monthly HR Payroll Requisition to the Finance Division for Disbursement Order (PDV) conversion and General Ledger posting.",
-      authPin: "123456",
+      authPin: "",
       data: null,
     });
   }, []);
@@ -523,7 +523,7 @@ export default function HumanResource() {
               details: prqDetails,
               submit: submitToFinance,
               pin: submitToFinance
-                ? prqConfirmModal.authPin || "123456"
+                ? prqConfirmModal.authPin || ""
                 : undefined,
             }),
           },
@@ -574,7 +574,7 @@ export default function HumanResource() {
       message:
         "Are you sure you want to cancel this Payroll Requisition? Please state the reason below.",
       reasonInput: "",
-      authPin: "123456",
+      authPin: "",
       data: prq,
     });
   }, []);
@@ -602,7 +602,7 @@ export default function HumanResource() {
             method: "POST",
             body: JSON.stringify({
               cancel_reason: reason || "Cancelled by HR",
-              pin: prqConfirmModal.authPin || "123456",
+              pin: prqConfirmModal.authPin || "",
             }),
           },
           user?.username

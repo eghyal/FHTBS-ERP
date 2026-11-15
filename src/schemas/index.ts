@@ -16,6 +16,7 @@ export const CreateJournalEntrySchema = z.object({
   reference_number: z.string().optional().default(""),
   description: z.string().min(1, "Journal description is required"),
   category: z.string().optional().default("GENERAL"),
+  allow_soft_lock_adjustment: z.boolean().optional().default(false),
   lines: z.array(JournalLineSchema).min(2, "Journal must have at least 2 lines (Debit & Credit)"),
 }).refine((data) => {
   const totalDebit = data.lines.reduce((sum, line) => sum + (Number(line.debit) || 0), 0);
