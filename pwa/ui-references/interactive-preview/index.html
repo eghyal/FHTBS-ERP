@@ -3,42 +3,26 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Paving Joss ERP Mobile — Interactive UI Reference & Density Simulator</title>
+  <title>Paving Joss ERP Mobile — Interactive Modular Minimalist Preview</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
-      --stone-50: #fafaf9;
-      --stone-100: #f5f5f4;
-      --stone-200: #e7e5e4;
-      --stone-300: #d6d3d1;
-      --stone-400: #a8a29e;
-      --stone-500: #78716c;
-      --stone-600: #57534e;
-      --stone-700: #44403c;
-      --stone-800: #292524;
-      --stone-900: #1c1917;
-      --hris-50: #F7F7F9;
-      --hris-100: #EFEFF3;
-      --hris-200: #E2E3EA;
-      --hris-500: #646876;
-      --hris-900: #121318;
-      --emerald-50: #ecfdf5;
-      --emerald-600: #059669;
-      --emerald-700: #047857;
-      --amber-50: #fffbeb;
-      --amber-700: #b45309;
-      --red-50: #fef2f2;
-      --red-700: #b91c1c;
-      --gold: #FFD700;
+      --canvas: #fafaf9;
+      --surface: #ffffff;
+      --border: #e7e5e4;
+      --ink: #1c1917;
+      --muted: #78716c;
+      --subtle: #a8a29e;
+      --crimson: #b02524;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: var(--font-sans);
-      background: #141413;
+      background: #161514;
       color: #f5f5f4;
       min-height: 100vh;
       display: flex;
@@ -47,10 +31,10 @@
       padding: 24px 16px;
     }
     .studio-bar {
-      max-width: 1040px;
+      max-width: 980px;
       width: 100%;
-      background: #1f1e1d;
-      border: 1px solid #33312f;
+      background: #22201e;
+      border: 1px solid #353230;
       border-radius: 16px;
       padding: 14px 18px;
       margin-bottom: 24px;
@@ -60,703 +44,478 @@
       justify-content: space-between;
       gap: 12px;
     }
-    .studio-title {
-      font-size: 14px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-    }
-    .studio-sub {
-      font-size: 11px;
-      color: #a8a29e;
-      font-family: var(--font-mono);
-    }
-    .control-group {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
+    .studio-title { font-size: 14px; font-weight: 800; letter-spacing: -0.02em; }
+    .studio-sub { font-size: 11px; color: #a8a29e; font-family: var(--font-mono); margin-top: 2px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 6px; }
     .ctrl-btn {
       height: 34px;
       padding: 0 12px;
       border-radius: 10px;
       border: 1px solid #3f3c39;
-      background: #292524;
+      background: #2c2927;
       color: #e7e5e4;
       font-family: var(--font-sans);
       font-size: 11px;
       font-weight: 700;
       cursor: pointer;
-      transition: all 0.15s ease;
     }
-    .ctrl-btn.active {
-      background: #ffffff;
-      color: #1c1917;
-      border-color: #ffffff;
-    }
-    .ctrl-btn.bad.active {
-      background: #ef4444;
-      color: #ffffff;
-      border-color: #ef4444;
-    }
+    .ctrl-btn.active { background: #ffffff; color: #1c1917; border-color: #ffffff; }
     .workspace {
       display: grid;
       grid-template-columns: 390px 1fr;
       gap: 28px;
-      max-width: 1040px;
+      max-width: 980px;
       width: 100%;
       align-items: start;
     }
     @media (max-width: 860px) {
       .workspace { grid-template-columns: 1fr; justify-items: center; }
     }
-    /* Mobile Viewport Canvas (390x820) */
     .phone-viewport {
       width: 390px;
-      height: 820px;
-      background: var(--stone-50);
-      color: var(--stone-900);
+      height: 812px;
+      background: var(--canvas);
+      color: var(--ink);
       border-radius: 28px;
       border: 1px solid #3f3c39;
       overflow: hidden;
       display: flex;
       flex-direction: column;
       position: relative;
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.45);
     }
-    .phone-viewport.hris-mode {
-      background: var(--hris-50);
-      color: var(--hris-900);
-    }
-    /* 1. Sticky Top App Bar (56px) */
-    .top-bar {
-      height: 56px;
-      background: rgba(255, 255, 255, 0.94);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--stone-200);
-      padding: 0 14px;
+    /* Login Canvas */
+    .login-wrap {
+      flex: 1;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      flex-shrink: 0;
-      z-index: 20;
+      justify-content: center;
+      padding: 20px;
+      background: var(--canvas);
     }
-    .brand-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .logo-box {
-      width: 36px; height: 36px;
-      border-radius: 12px;
-      background: #fff;
-      border: 1px solid var(--stone-200);
-      display: flex; align-items: center; justify-content: center;
-      font-family: var(--font-mono); font-weight: 800; font-size: 12px;
-    }
-    .screen-title { font-size: 14px; font-weight: 800; line-height: 1.2; }
-    .role-sub { font-size: 10px; font-family: var(--font-mono); font-weight: 600; color: var(--stone-500); }
-    .top-actions { display: flex; align-items: center; gap: 6px; }
-    .key-btn {
-      height: 36px; padding: 0 10px;
-      border-radius: 12px;
-      background: var(--stone-100);
-      border: 1px solid var(--stone-200);
-      font-size: 11px; font-weight: 700; color: var(--stone-700);
-      display: inline-flex; align-items: center; gap: 5px;
-      cursor: pointer;
-    }
-    /* 2. Scrollable Content Area (85%+ Viewport) */
-    .content-scroll {
-      flex: 1;
-      overflow-y: auto;
-      padding: 14px 14px 84px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    /* Cards & Grids */
-    .hero-dark {
-      background: var(--stone-900);
-      color: #fff;
-      border-radius: 22px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .hero-hris {
-      background: #ffffff;
-      border: 1px solid var(--hris-200);
-      border-radius: 22px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      box-shadow: 0 10px 28px -10px rgba(18, 19, 24, 0.06);
-    }
-    .meta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .mono-tag { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--stone-400); letter-spacing: 0.04em; }
-    .hris-mode .mono-tag { color: var(--hris-500); }
-    .badge {
-      font-family: var(--font-mono);
-      font-size: 10px;
-      font-weight: 700;
-      padding: 3px 8px;
-      border-radius: 8px;
-      text-transform: uppercase;
-    }
-    .badge.emerald { background: var(--emerald-50); color: var(--emerald-700); }
-    .badge.amber { background: var(--amber-50); color: var(--amber-700); }
-    .badge.red { background: var(--red-50); color: var(--red-700); }
-    .badge.stone { background: var(--stone-100); color: var(--stone-700); }
-    .live-clock {
-      font-family: var(--font-mono);
-      font-size: 26px;
-      font-weight: 800;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: -0.03em;
-    }
-    .primary-cta {
+    .login-card {
       width: 100%;
-      min-height: 48px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 28px 24px;
+      box-shadow: 0 16px 40px -16px rgba(28, 25, 23, 0.10);
+    }
+    .login-brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .login-heading { font-size: 20px; font-weight: 800; color: var(--ink); margin-top: 12px; }
+    .login-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .field-group { margin-bottom: 14px; }
+    .field-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .input-box {
+      width: 100%;
+      height: 48px;
       border-radius: 12px;
-      background: var(--stone-900);
-      color: #ffffff;
+      border: 1px solid var(--border);
+      background: var(--canvas);
+      padding: 0 14px;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      color: var(--ink);
+      outline: none;
+    }
+    .input-box:focus { border-color: var(--ink); background: #fff; }
+    .pw-wrap { position: relative; }
+    .pw-toggle {
+      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      border: none; background: transparent; font-size: 11px; font-weight: 700;
+      color: var(--muted); cursor: pointer;
+    }
+    .primary-btn {
+      width: 100%;
+      height: 48px;
+      border-radius: 12px;
       border: none;
+      background: var(--ink);
+      color: #ffffff;
       font-family: var(--font-sans);
       font-size: 13px;
       font-weight: 700;
       cursor: pointer;
+      margin-top: 6px;
     }
-    .secondary-cta {
-      width: 100%;
-      min-height: 44px;
-      border-radius: 12px;
-      background: var(--stone-100);
-      color: var(--stone-900);
-      border: 1px solid var(--stone-200);
-      font-family: var(--font-sans);
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .grid-2x2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+    .primary-btn:hover { background: #292524; }
+    /* App Shell */
+    .top-bar {
+      height: 56px;
+      background: rgba(255,255,255,0.96);
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
       gap: 10px;
+      flex-shrink: 0;
     }
-    .metric-card {
-      background: #ffffff;
-      border: 1px solid var(--stone-200);
-      border-radius: 16px;
-      padding: 14px;
+    .top-title { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; color: var(--ink); }
+    .content-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 16px 84px 16px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 12px;
     }
-    .hris-mode .metric-card { border-color: var(--hris-200); }
-    .metric-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--stone-500); letter-spacing: 0.04em; }
-    .metric-val { font-family: var(--font-mono); font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
-    /* 3-Point Clean Card */
-    .clean-card {
-      background: #ffffff;
-      border: 1px solid var(--stone-200);
+    .mod-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 16px;
-      padding: 14px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 8px;
-      cursor: pointer;
-      transition: transform 0.12s ease, border-color 0.12s ease;
     }
-    .clean-card:hover { border-color: var(--stone-400); }
-    .clean-card:active { transform: scale(0.99); }
-    .card-title { font-size: 14px; font-weight: 700; color: var(--stone-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .card-sub { font-size: 12px; color: var(--stone-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .card-val { font-family: var(--font-mono); font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
-    .inspect-link { font-size: 11px; font-weight: 600; color: var(--stone-500); }
-    /* Cluttered Anti-Pattern Card (for Do vs Don't comparison) */
-    .cluttered-card {
-      background: #fff;
-      border: 2px solid #fca5a5;
-      border-radius: 8px;
-      padding: 8px;
-      font-size: 10px;
-      line-height: 1.35;
+    .card-kicker {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+    .neutral-dash {
+      font-family: var(--font-mono);
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+    .neutral-caption { font-size: 12px; color: var(--muted); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .empty-center {
+      text-align: center;
+      padding: 24px 12px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      align-items: center;
+      gap: 6px;
     }
-    /* Bottom Nav Bar (64px) */
+    .menu-list {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .menu-row {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink);
+      border-top: 1px solid #f5f5f4;
+    }
+    .logout-btn {
+      width: 100%;
+      height: 48px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--crimson);
+      cursor: pointer;
+    }
     .bottom-nav {
       position: absolute;
       bottom: 0; left: 0; right: 0;
       height: 64px;
-      background: rgba(255, 255, 255, 0.96);
-      backdrop-filter: blur(12px);
-      border-top: 1px solid var(--stone-200);
+      background: rgba(255,255,255,0.98);
+      border-top: 1px solid var(--border);
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      padding: 0 4px;
-      z-index: 20;
     }
-    .nav-tab {
+    .nav-btn {
       border: none;
       background: transparent;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 3px;
-      color: var(--stone-400);
+      gap: 4px;
       font-family: var(--font-sans);
-      font-size: 10px;
-      font-weight: 600;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--subtle);
       cursor: pointer;
     }
-    .nav-tab.active { color: var(--stone-900); font-weight: 800; }
-    .nav-pill {
-      padding: 3px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-    }
-    .nav-tab.active .nav-pill { background: var(--stone-100); }
-    /* Slide-Up Bottom Inspector Sheet */
-    .sheet-backdrop {
-      position: absolute;
-      inset: 0;
-      background: rgba(28, 25, 23, 0.45);
-      backdrop-filter: blur(2px);
-      display: none;
-      align-items: flex-end;
-      z-index: 40;
-    }
-    .sheet-backdrop.open { display: flex; }
-    .bottom-sheet {
-      width: 100%;
-      background: #ffffff;
-      color: var(--stone-900);
-      border-top-left-radius: 24px;
-      border-top-right-radius: 24px;
-      border-top: 1px solid var(--stone-200);
-      padding: 14px 18px 24px 18px;
+    .nav-btn.active { color: var(--ink); font-weight: 700; }
+    .notes-panel {
+      background: #22201e;
+      border: 1px solid #353230;
+      border-radius: 20px;
+      padding: 20px;
       display: flex;
       flex-direction: column;
       gap: 14px;
-      max-height: 82%;
-      overflow-y: auto;
     }
-    .drag-handle {
-      width: 40px; height: 5px;
-      background: var(--stone-300);
-      border-radius: 999px;
-      margin: 0 auto;
-    }
-    .pin-box {
-      background: var(--stone-50);
-      border: 1px solid var(--stone-200);
-      border-radius: 16px;
+    .notes-panel h2 { font-size: 15px; font-weight: 800; }
+    .spec-box {
+      background: #171615;
+      border: 1px solid #2e2c2a;
+      border-radius: 12px;
       padding: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
+      font-size: 12px;
+      line-height: 1.65;
+      color: #d6d3d1;
     }
-    .pin-input {
-      width: 100%;
-      height: 44px;
-      border-radius: 12px;
-      border: 1px solid var(--stone-300);
-      text-align: center;
-      font-family: var(--font-mono);
-      font-size: 15px;
-      font-weight: 800;
-      letter-spacing: 0.3em;
-      text-transform: uppercase;
-    }
-    /* Right Specification Panel */
-    .spec-panel {
-      background: #1f1e1d;
-      border: 1px solid #33312f;
-      border-radius: 20px;
-      padding: 22px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .spec-h2 { font-size: 16px; font-weight: 800; color: #fff; }
-    .spec-list { display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #d6d3d1; line-height: 1.55; }
-    .spec-item {
-      background: #292524;
-      border: 1px solid #3f3c39;
-      border-radius: 12px;
-      padding: 12px 14px;
-    }
-    .spec-code { font-family: var(--font-mono); font-size: 11px; color: var(--gold); }
+    .spec-box strong { color: #ffffff; }
   </style>
 </head>
 <body>
-
   <div class="studio-bar">
     <div>
-      <div class="studio-title">Paving Joss ERP Mobile — Interactive UI Standard & Progressive Disclosure Simulator</div>
-      <div class="studio-sub">Acuan Visual & Kepadatan Data untuk iOS (SwiftUI) dan Android (Jetpack Compose)</div>
+      <div class="studio-title">Paving Joss ERP Mobile — UI/UX Interactive Blueprint</div>
+      <div class="studio-sub">Modular Minimalist Card · Official Web ERP Logo · Zero-Data Empty Build</div>
     </div>
-    <div class="control-group">
-      <button class="ctrl-btn active" id="btnCleanMode" onclick="setDensityMode('CLEAN')">✅ Standar ERP (Clean & Elegan)</button>
-      <button class="ctrl-btn bad" id="btnClutterMode" onclick="setDensityMode('CLUTTER')">❌ Contoh Salah (Overinformatif)</button>
+    <div class="controls">
+      <button class="ctrl-btn active" onclick="openRoute('login')" id="btn-login">0. Login</button>
+      <button class="ctrl-btn" onclick="openTab('dashboard')" id="btn-dashboard">1. Dashboard (Default)</button>
+      <button class="ctrl-btn" onclick="openTab('messages')" id="btn-messages">2. Messages</button>
+      <button class="ctrl-btn" onclick="openTab('shopfloor')" id="btn-shopfloor">3. Shop Floor</button>
+      <button class="ctrl-btn" onclick="openTab('profile')" id="btn-profile">4. Profile/Hub</button>
     </div>
   </div>
 
   <div class="workspace">
-    <!-- MOBILE VIEWPORT SIMULATOR -->
-    <div class="phone-viewport hris-mode" id="phoneViewport">
-      <!-- 1. TOP APP BAR (56px) -->
-      <header class="top-bar">
-        <div class="brand-left">
-          <div class="logo-box">PJ</div>
-          <div>
-            <div class="screen-title" id="topTitle">HR Portal · ESS</div>
-            <div class="role-sub" id="topSub">PRODUCTION · MANAGER</div>
-          </div>
-        </div>
-        <div class="top-actions">
-          <button class="key-btn" onclick="openPinSheet('SYSTEM_INFO')">🔑 System Info</button>
-        </div>
-      </header>
+    <div class="phone-viewport" id="phone"></div>
 
-      <!-- 2. SCROLLABLE VIEWPORT -->
-      <main class="content-scroll" id="screenContainer"></main>
-
-      <!-- 3. FIXED 4-TAB BOTTOM BAR (64px) -->
-      <nav class="bottom-nav">
-        <button class="nav-tab active" id="tab-hr" onclick="switchTab('hr')">
-          <span class="nav-pill">👤</span>
-          <span>HR Portal</span>
-        </button>
-        <button class="nav-tab" id="tab-msg" onclick="switchTab('msg')">
-          <span class="nav-pill">💬</span>
-          <span>Messages</span>
-        </button>
-        <button class="nav-tab" id="tab-sf" onclick="switchTab('sf')">
-          <span class="nav-pill">🏭</span>
-          <span>Shop Floor</span>
-        </button>
-        <button class="nav-tab" id="tab-hub" onclick="switchTab('hub')">
-          <span class="nav-pill">⚡</span>
-          <span>Exec Hub</span>
-        </button>
-      </nav>
-
-      <!-- 4. PROGRESSIVE DISCLOSURE BOTTOM SHEET -->
-      <div class="sheet-backdrop" id="sheetBackdrop" onclick="closeSheet(event)">
-        <div class="bottom-sheet" onclick="event.stopPropagation()">
-          <div class="drag-handle"></div>
-          <div class="meta-row">
-            <div>
-              <div class="mono-tag" id="sheetCode">PO/2026/018</div>
-              <div style="font-size:16px;font-weight:800;" id="sheetTitle">PT Sinar Beton Perkasa</div>
-            </div>
-            <span class="badge amber" id="sheetBadge">WAITING AUTH</span>
-          </div>
-          <div id="sheetBody" style="font-size:12px;color:#57534e;line-height:1.5;"></div>
-          <div class="pin-box">
-            <div class="meta-row">
-              <span style="font-size:11px;font-weight:800;">🔑 6-Digit Daily Authorization PIN</span>
-              <span style="font-family:var(--font-mono);font-size:11px;font-weight:800;color:#047857;cursor:pointer;" onclick="fillPin()">Gunakan PIN Hari Ini: K7M9P2</span>
-            </div>
-            <input class="pin-input" id="pinInput" maxlength="6" placeholder="MASUKKAN 6-DIGIT PIN" value="K7M9P2" />
-            <button class="primary-cta" onclick="confirmAuth()">Confirm & Authorize (PostgreSQL SSOT)</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SPECIFICATION EXPLANATION PANEL -->
-    <aside class="spec-panel">
-      <div class="spec-h2" id="specHeading">Aturan Layar Aktif: HR Portal & ESS (.hris-theme)</div>
-      <div class="spec-list" id="specContent"></div>
+    <aside class="notes-panel">
+      <h2>Spesifikasi Layar Aktif</h2>
+      <div class="spec-box" id="specNotes"></div>
     </aside>
   </div>
 
   <script>
-    let currentTab = 'hr';
-    let densityMode = 'CLEAN';
+    let currentRoute = 'login';
+    let currentTab = 'dashboard';
+    let showPw = false;
 
-    function setDensityMode(mode) {
-      densityMode = mode;
-      document.getElementById('btnCleanMode').classList.toggle('active', mode === 'CLEAN');
-      document.getElementById('btnClutterMode').classList.toggle('active', mode === 'CLUTTER');
-      renderScreen();
+    function logoMarkup(size) {
+      return `
+        <img src="../assets/logo.png" alt="Web ERP Logo"
+             style="width:${size}px;height:${size}px;object-fit:contain;display:block;"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
+        <svg viewBox="0 0 100 100" style="width:${size}px;height:${size}px;display:none;" aria-label="Web ERP Logo">
+          <path d="M12 28 L26 16 L66 16 C82 16 88 28 84 42 C80 54 68 62 56 64 L56 49 C64 47 70 42 70 34 C70 28 65 26 58 26 L12 28 Z" fill="#CC0000"/>
+          <path d="M52 38 L62 30 L62 72 L48 84 L34 84 L24 72 L24 58 L35 49 L35 68 L41 74 L48 74 L52 68 Z" fill="#F59E0B"/>
+        </svg>
+      `;
     }
 
-    function switchTab(tab) {
+    const SPECS = {
+      login: `<strong>Layar 0 · Halaman Login Minimalis</strong><br>• Kanvas latar hangat <code>#FAFAF9</code> dengan kartu putih terpusat (<code>radius 24px</code>, border <code>1px #E7E5E4</code>).<br>• Menggunakan <strong>logo grafis resmi PJ Web ERP</strong> (<code>../assets/logo.png</code>).<br>• Hanya 2 input bersih (<strong>Username</strong> & <strong>Password</strong>) + 1 tombol utama <strong>Masuk</strong>.<br>• Ketuk <strong>Masuk</strong> untuk langsung mendarat pada tab default <strong>Dashboard</strong>.`,
+      dashboard: `<strong>Tab 1 (Default Paling Kiri) · Dashboard</strong><br>• Pengganti nama <em>HR Portal</em>, menjadi halaman utama setelah Login.<br>• Seluruh kartu modular dibangun dalam kondisi <strong>kosong netral</strong> (simbol <code>—</code>, status <em>Belum tercatat / Belum ada data</em>).<br>• Nol data dummy: siap disambungkan ke API Web ERP pada Fase Terakhir.`,
+      messages: `<strong>Tab 2 · Messages</strong><br>• Kolom pencarian bersih di atas kartu empty-state tunggal.<br>• Tidak ada daftar chat palsu atau notifikasi fiktif saat aplikasi pertama kali terbuild.`,
+      shopfloor: `<strong>Tab 3 · Shop Floor</strong><br>• Kartu modular <strong>Workstation Aktif</strong>, grid 2 kolom <strong>Target / Hasil</strong>, dan <strong>Antrian Produksi</strong>.<br>• Seluruh slot nilai menampilkan <code>—</code> secara netral sebelum koneksi backend.`,
+      profile: `<strong>Tab 4 · Profile / Hub</strong><br>• Kartu identitas pengguna netral (avatar kosong + <code>—</code> + status <em>Belum terhubung ke akun ERP</em>).<br>• Daftar pengaturan dasar dan tombol <strong>Keluar</strong> untuk kembali ke halaman Login.`
+    };
+
+    function iconSvg(name, active) {
+      const stroke = active ? '#1C1917' : '#A8A29E';
+      const sw = active ? '2.2' : '1.8';
+      const map = {
+        dashboard: `<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>`,
+        messages: `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`,
+        shopfloor: `<path d="M2 20h20"/><path d="M4 20V8l5 3V8l5 3V4h6v16"/>`,
+        profile: `<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>`
+      };
+      return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${map[name]}</svg>`;
+    }
+
+    function openRoute(route) {
+      currentRoute = route;
+      if (route === 'shell') currentTab = 'dashboard';
+      render();
+    }
+
+    function openTab(tab) {
+      currentRoute = 'shell';
       currentTab = tab;
-      ['hr', 'msg', 'sf', 'hub'].forEach(t => {
-        document.getElementById('tab-' + t).classList.toggle('active', t === tab);
-      });
-      const vp = document.getElementById('phoneViewport');
-      vp.classList.toggle('hris-mode', tab === 'hr');
-      renderScreen();
+      render();
     }
 
-    function openPinSheet(context) {
-      const backdrop = document.getElementById('sheetBackdrop');
-      const codeEl = document.getElementById('sheetCode');
-      const titleEl = document.getElementById('sheetTitle');
-      const bodyEl = document.getElementById('sheetBody');
-      if (context === 'SYSTEM_INFO') {
-        codeEl.textContent = 'SYSTEM INFO · DAILY AUTH KEY';
-        titleEl.textContent = 'Identitas Sesi & Kunci Otorisasi';
-        bodyEl.innerHTML = 'Kunci otorisasi harian 6-karakter Anda dihitung secara deterministik dari <b>username + tanggal UTC + secretSeed</b> dan digunakan untuk menyetujui PR, PO, Quotation, Cuti, serta PRq.';
-      } else if (context === 'SLIP') {
-        codeEl.textContent = 'PAY-2026-10 · PUBLISHED';
-        titleEl.textContent = 'Rincian Slip Gaji Oktober 2026';
-        bodyEl.innerHTML = '• Gaji Pokok: <b>Rp 8.500.000</b><br>• Tunjangan & Lembur: <b>Rp 1.450.000</b><br>• Potongan BPJS & PPh21: <b>-Rp 425.000</b><br>• Take-Home Pay: <b style="font-family:monospace">Rp 9.525.000</b>';
-      } else {
-        codeEl.textContent = 'PO/2026/018 · PROYEK A1';
-        titleEl.textContent = 'PT Sinar Beton Perkasa';
-        bodyEl.innerHTML = '• Item 1: Semen Curah OPC (50 Ton) — Rp 35.000.000<br>• Item 2: Pasir Silika Halus (30 Ton) — Rp 8.693.693<br>• DPP: Rp 43.693.693 | PPN 11%: Rp 4.806.307<br>• <b>Grand Total: Rp 48.500.000</b>';
+    function togglePw() {
+      showPw = !showPw;
+      const input = document.getElementById('pwInput');
+      const btn = document.getElementById('pwToggleBtn');
+      if (input && btn) {
+        input.type = showPw ? 'text' : 'password';
+        btn.textContent = showPw ? 'Tutup' : 'Lihat';
       }
-      backdrop.classList.add('open');
     }
 
-    function closeSheet() {
-      document.getElementById('sheetBackdrop').classList.remove('open');
-    }
+    function render() {
+      const phone = document.getElementById('phone');
+      const key = currentRoute === 'login' ? 'login' : currentTab;
+      document.getElementById('specNotes').innerHTML = SPECS[key];
 
-    function fillPin() {
-      document.getElementById('pinInput').value = 'K7M9P2';
-    }
+      ['login', 'dashboard', 'messages', 'shopfloor', 'profile'].forEach((id) => {
+        const btn = document.getElementById('btn-' + id);
+        if (btn) btn.classList.toggle('active', id === key);
+      });
 
-    function confirmAuth() {
-      closeSheet();
-      switchTab(currentTab);
-    }
-
-    function renderScreen() {
-      const container = document.getElementById('screenContainer');
-      const topTitle = document.getElementById('topTitle');
-      const specHeading = document.getElementById('specHeading');
-      const specContent = document.getElementById('specContent');
-
-      if (densityMode === 'CLUTTER') {
-        container.innerHTML = `
-          <div class="cluttered-card">
-            <b>❌ CONTOH OVERINFORMATIF (JANGAN DITIRU DI SWIFT/KOTLIN):</b>
-            <span>[PO] [URGENT] [PROJECT-A1] [WAITING_APPROVAL] [TAX-PPN11] [IDR]</span>
-            <span>No: PO/2026/04/018 | Dibuat: 2026-11-15 08:14:22 oleh staf.purchasing@pavingjoss.co.id</span>
-            <span>Vendor: PT Sinar Beton Perkasa Indonesia (NPWP: 01.234.567.8-901.000)</span>
-            <span>Item 1: Semen Curah 50 Ton @ Rp 700.000 | Item 2: Pasir Silika 30 Ton @ Rp 289.789</span>
-            <span>DPP: Rp 43.693.693 | PPN: Rp 4.806.307 | PPh23: Rp 0 | Grand Total: Rp 48.500.000</span>
-            <div style="display:flex;gap:4px;margin-top:4px;">
-              <button style="font-size:9px;padding:3px 6px;">Approve</button>
-              <button style="font-size:9px;padding:3px 6px;">Revise</button>
-              <button style="font-size:9px;padding:3px 6px;">Reject</button>
-              <button style="font-size:9px;padding:3px 6px;">Export PDF</button>
-              <button style="font-size:9px;padding:3px 6px;">Share</button>
+      if (currentRoute === 'login') {
+        phone.innerHTML = `
+          <div class="login-wrap">
+            <div class="login-card">
+              <div class="login-brand">
+                ${logoMarkup(64)}
+                <div class="login-heading">Masuk ke Akun</div>
+                <div class="login-sub">Portal Operasional Mobile</div>
+              </div>
+              <div class="field-group">
+                <label class="field-label">Username</label>
+                <input class="input-box" type="text" placeholder="Masukkan username" />
+              </div>
+              <div class="field-group">
+                <label class="field-label">Password</label>
+                <div class="pw-wrap">
+                  <input id="pwInput" class="input-box" type="${showPw ? 'text' : 'password'}" placeholder="Masukkan password" style="padding-right:52px;" />
+                  <button id="pwToggleBtn" type="button" class="pw-toggle" onclick="togglePw()">${showPw ? 'Tutup' : 'Lihat'}</button>
+                </div>
+              </div>
+              <button type="button" class="primary-btn" onclick="openTab('dashboard')">Masuk</button>
             </div>
           </div>
-          <div class="cluttered-card">
-            <b>❌ TABEL HORIZONTAL SEMPIT DI LAYAR MOBILE:</b>
-            <div style="overflow-x:auto;white-space:nowrap;font-family:monospace;font-size:9px;background:#f5f5f4;padding:6px;">
-              | ID | TANGGAL | KARYAWAN | SHIFT | CLOCK IN | CLOCK OUT | JAM | OT | TARIF | HPP PROYEK | STATUS |
-              <br>| ATT-91 | 2026-11-15 | Budi Santoso | SHIFT_1 | 06:58:11 | 15:04:00 | 8.0 | 0.0 | Rp 45.000 | PRJ-01 | PRESENT |
-            </div>
-          </div>
-        `;
-        specHeading.textContent = '❌ Mengapa Tampilan Ini Buruk (Overinformatif)?';
-        specContent.innerHTML = `
-          <div class="spec-item">1. <b>Terlalu Banyak Data di Tingkat Daftar</b>: Menampilkan NPWP, rincian pajak, dan 5 tombol sekaligus di setiap kartu membuat layar penuh sesak.</div>
-          <div class="spec-item">2. <b>Rawan Salah Sentuh</b>: Tombol berukuran 24px yang berdempetan melanggar standar minimum target sentuh <span class="spec-code">44x44pt/dp</span>.</div>
-          <div class="spec-item">3. <b>Tabel Geser Horizontal</b>: Memaksa pengguna menggeser tabel 10 kolom di ponsel menghancurkan ergonomi satu tangan.</div>
         `;
         return;
       }
 
-      if (currentTab === 'hr') {
-        topTitle.textContent = 'HR Portal · ESS';
-        container.innerHTML = `
-          <div class="hero-hris">
-            <div class="meta-row">
-              <span class="mono-tag">EMP-2026-014 · SHIFT 1 PAGI (07:00–15:00)</span>
-              <span class="badge emerald">ON DUTY</span>
+      const titles = {
+        dashboard: 'Dashboard',
+        messages: 'Messages',
+        shopfloor: 'Shop Floor',
+        profile: 'Profile / Hub'
+      };
+
+      let bodyHtml = '';
+      if (currentTab === 'dashboard') {
+        bodyHtml = `
+          <div class="mod-card">
+            <div class="card-kicker">Presensi Hari Ini</div>
+            <div class="empty-center" style="padding:10px 0;">
+              <div class="neutral-dash">—</div>
+              <div class="neutral-caption">Belum tercatat</div>
             </div>
-            <div style="font-size:17px;font-weight:800;">Budi Santoso</div>
-            <div class="live-clock" id="jakartaClock">08:14:22 WIB</div>
-            <button class="primary-cta">Clock Out Sekarang</button>
+            <button type="button" class="primary-btn" style="margin-top:0;">Catat Kehadiran</button>
           </div>
-          <div class="grid-2x2">
-            <div class="metric-card">
-              <span class="metric-label">Kuota Cuti Tahunan</span>
-              <span class="metric-val">12 Hari</span>
+          <div class="grid-2">
+            <div class="mod-card">
+              <div class="card-kicker">Kuota Cuti</div>
+              <div class="neutral-dash" style="font-size:22px;">—</div>
+              <div class="neutral-caption">Belum ada data</div>
             </div>
-            <div class="metric-card">
-              <span class="metric-label">Sisa Kuota Aktif</span>
-              <span class="metric-val" style="color:#059669;">9 Hari</span>
-            </div>
-          </div>
-          <div class="clean-card" onclick="openPinSheet('SLIP')">
-            <div class="meta-row">
-              <span class="mono-tag">PAY-2026-10 · SLIP GAJI</span>
-              <span class="badge emerald">PUBLISHED</span>
-            </div>
-            <div>
-              <div class="card-title">Periode Oktober 2026</div>
-              <div class="card-sub">Gaji Pokok + Tunjangan · Pajak & BPJS Lunas</div>
-            </div>
-            <div class="meta-row">
-              <span class="card-val">Rp 9.525.000</span>
-              <span class="inspect-link">Rincian Slip ›</span>
+            <div class="mod-card">
+              <div class="card-kicker">Slip Gaji</div>
+              <div class="neutral-dash" style="font-size:22px;">—</div>
+              <div class="neutral-caption">Belum tersedia</div>
             </div>
           </div>
-          <div class="clean-card">
-            <div class="meta-row">
-              <span class="mono-tag">LV-2026-091 · CUTI TAHUNAN</span>
-              <span class="badge emerald">APPROVED</span>
-            </div>
-            <div>
-              <div class="card-title">12 Nov 2026 – 14 Nov 2026</div>
-              <div class="card-sub">Disetujui oleh Manager Produksi</div>
-            </div>
-            <div class="meta-row">
-              <span class="card-val">3 Hari Kerja</span>
-              <span class="inspect-link">Detail ›</span>
+          <div class="mod-card">
+            <div class="card-kicker">Aktivitas Terbaru</div>
+            <div class="empty-center">
+              <div class="neutral-caption">Belum ada riwayat aktivitas</div>
             </div>
           </div>
         `;
-        specHeading.textContent = '✅ Layar 1: HR Portal & ESS (.hris-theme Alabaster)';
-        specContent.innerHTML = `
-          <div class="spec-item"><span class="spec-code">Atmosfer Visual</span>: Latar Alabaster <span class="spec-code">#F7F7F9</span> dengan kartu putih bersih berbatas <span class="spec-code">1px #E2E3EA</span>.</div>
-          <div class="spec-item"><span class="spec-code">Fokus Utama</span>: Jam server Jakarta (<span class="spec-code">tabular-nums</span>) dan 1 tombol CTA tegas setinggi <span class="spec-code">48pt/dp</span>.</div>
-          <div class="spec-item"><span class="spec-code">Progressive Disclosure</span>: Rincian potongan BPJS Kesehatan, BPJS TK, dan PPh21 baru muncul di Bottom Sheet saat kartu Slip Gaji diketuk.</div>
-        `;
-      } else if (currentTab === 'msg') {
-        topTitle.textContent = 'Messages · Forum';
-        container.innerHTML = `
-          <div class="clean-card" style="background:#f5f5f4;">
-            <div class="meta-row">
-              <span class="mono-tag">📌 PINNED MESSAGE · PENGADAAN</span>
-              <span class="badge stone">GROUP</span>
-            </div>
-            <div class="card-sub" style="color:#1c1917;">Pastikan seluruh PO bahan baku beton K-400 diverifikasi sebelum jam 15:00 WIB.</div>
-          </div>
-          <div class="clean-card" onclick="openPinSheet('PO')">
-            <div class="meta-row">
-              <span class="mono-tag">ERP PURCHASE ORDER CARD</span>
-              <span class="badge amber">WAITING AUTH</span>
-            </div>
-            <div>
-              <div class="card-title">PO/2026/018 · PT Sinar Beton Perkasa</div>
-              <div class="card-sub">2 Item Material Proyek A1 · Dikirim oleh Andi (Purchasing)</div>
-            </div>
-            <div style="font-family:var(--font-mono);font-size:18px;font-weight:800;margin:4px 0;">Rp 48.500.000</div>
-            <div class="grid-2x2">
-              <button class="secondary-cta" onclick="event.stopPropagation();openPinSheet('PO')">Preview</button>
-              <button class="primary-cta" style="min-height:44px;" onclick="event.stopPropagation();openPinSheet('PO')">Authorize PO</button>
-            </div>
-          </div>
-          <div class="clean-card">
-            <div class="meta-row">
-              <span class="mono-tag">THR-SHOPFLOOR · LANTAI PRODUKSI</span>
-              <span class="badge emerald">2 UNREAD</span>
-            </div>
-            <div>
-              <div class="card-title">Shop Floor · Proyek Paving Surabaya</div>
-              <div class="card-sub">Budi (Operator): WOT-2026-041 selesai 840 Pcs tanpa kendala</div>
-            </div>
-            <div class="meta-row">
-              <span class="card-val">09:42 WIB</span>
-              <span class="inspect-link">Buka Chat ›</span>
+      } else if (currentTab === 'messages') {
+        bodyHtml = `
+          <input class="input-box" style="background:#fff;height:44px;" placeholder="Cari percakapan..." />
+          <div class="mod-card">
+            <div class="empty-center" style="padding:44px 12px;">
+              <div style="font-size:15px;font-weight:700;color:var(--ink);">Belum ada percakapan</div>
+              <div class="neutral-caption">Pesan tim akan tampil di sini setelah terhubung dengan sistem.</div>
             </div>
           </div>
         `;
-        specHeading.textContent = '✅ Layar 2: Messages & Kartu Otorisasi ERP (Warm Stone)';
-        specContent.innerHTML = `
-          <div class="spec-item"><span class="spec-code">Compact ERP Share Card</span>: Di dalam ruang chat, dokumen PO hanya menampilkan Nomor, Nama Mitra, Total Rupiah, dan 2 tombol (<span class="spec-code">Preview</span> & <span class="spec-code">Authorize</span>).</div>
-          <div class="spec-item"><span class="spec-code">In-Place PIN Sheet</span>: Menekan Authorize langsung mengangkat lembar input <b>6-Digit Daily Auth Key</b> tanpa meninggalkan ruang diskusi.</div>
-        `;
-      } else if (currentTab === 'sf') {
-        topTitle.textContent = 'Shop Floor 2-Way';
-        container.innerHTML = `
-          <div class="hero-dark">
-            <div class="meta-row">
-              <span class="mono-tag">WC-PRESS-01 · MC-001</span>
-              <span class="badge emerald">ACTIVE</span>
-            </div>
-            <div style="font-size:16px;font-weight:800;">Hydraulic Paving Press HPP-500</div>
-            <div style="font-size:12px;color:#d6d3d1;">Operator: Budi Santoso · Proyek Paving K-400</div>
+      } else if (currentTab === 'shopfloor') {
+        bodyHtml = `
+          <div class="mod-card">
+            <div class="card-kicker">Workstation Aktif</div>
+            <div class="neutral-caption" style="font-size:13px;color:#44403C;">— &nbsp;·&nbsp; Belum ada stasiun kerja dipilih</div>
           </div>
-          <div class="grid-2x2">
-            <div class="metric-card">
-              <span class="metric-label">Target Shift</span>
-              <span class="metric-val">1.200 Pcs</span>
+          <div class="grid-2">
+            <div class="mod-card">
+              <div class="card-kicker">Target</div>
+              <div class="neutral-dash" style="font-size:22px;">—</div>
             </div>
-            <div class="metric-card">
-              <span class="metric-label">Output Good</span>
-              <span class="metric-val" style="color:#059669;">840 Pcs</span>
+            <div class="mod-card">
+              <div class="card-kicker">Hasil</div>
+              <div class="neutral-dash" style="font-size:22px;">—</div>
             </div>
           </div>
-          <div class="clean-card">
-            <div class="meta-row">
-              <span class="mono-tag">WOT-2026-041 · TAHAP 2 PRESSING</span>
-              <span class="badge emerald">IN PROGRESS</span>
-            </div>
-            <div>
-              <div class="card-title">Paving Block Hexagonal 8cm K-400</div>
-              <div class="card-sub">Progres: 840 / 1.200 Pcs (70%) · Scrap: 4 Pcs</div>
-            </div>
-            <div class="grid-2x2" style="margin-top:4px;">
-              <button class="primary-cta" style="min-height:44px;">Update Output</button>
-              <button class="secondary-cta">Minta Material / NDP</button>
+          <div class="mod-card">
+            <div class="card-kicker">Antrian Produksi</div>
+            <div class="empty-center">
+              <div class="neutral-caption">Belum ada tugas produksi aktif</div>
             </div>
           </div>
-        `;
-        specHeading.textContent = '✅ Layar 3: Shop Floor 2-Way Workstation (Operator)';
-        specContent.innerHTML = `
-          <div class="spec-item"><span class="spec-code">Ergonomi Lapangan</span>: Kontras tinggi (<span class="spec-code">#1C1917</span> di atas <span class="spec-code">#FAFAF9</span>) dan tombol besar yang nyaman ditekan satu tangan oleh operator mesin.</div>
-          <div class="spec-item"><span class="spec-code">Sinkronisasi 2-Arah</span>: Setiap update output WOT atau laporan NDP memancarkan Socket.IO <span class="spec-code">production:updated</span> ke Web ERP.</div>
         `;
       } else {
-        topTitle.textContent = 'Exec Action Hub';
-        container.innerHTML = `
-          <div class="hero-dark">
-            <div class="meta-row">
-              <span class="mono-tag">PURCHASING · MANAGER</span>
-              <span class="badge stone" style="background:rgba(255,255,255,0.15);color:#fff;">POSTGRES SSOT</span>
-            </div>
-            <div style="font-size:16px;font-weight:800;">Hi, Hendra Wijaya</div>
-            <div style="font-size:12px;color:#d6d3d1;">7 dokumen pengadaan & cuti menunggu otorisasi Anda hari ini.</div>
-          </div>
-          <div class="grid-2x2">
-            <div class="metric-card">
-              <span class="metric-label">Menunggu Auth</span>
-              <span class="metric-val" style="color:#b45309;">7 Dokumen</span>
-            </div>
-            <div class="metric-card">
-              <span class="metric-label">Stok Kritis</span>
-              <span class="metric-val" style="color:#b91c1c;">3 Item</span>
+        bodyHtml = `
+          <div class="mod-card">
+            <div class="card-kicker">Identitas Pengguna</div>
+            <div style="display:flex;align-items:center;gap:14px;padding-top:4px;">
+              <div style="width:48px;height:48px;border-radius:999px;background:#e7e5e4;flex-shrink:0;"></div>
+              <div>
+                <div style="font-size:16px;font-weight:700;">—</div>
+                <div class="neutral-caption">Belum terhubung ke akun ERP</div>
+              </div>
             </div>
           </div>
-          <div class="clean-card" onclick="openPinSheet('PO')">
-            <div class="meta-row">
-              <span class="mono-tag">PO/2026/018 · PURCHASE ORDER</span>
-              <span class="badge amber">PENDING</span>
-            </div>
-            <div>
-              <div class="card-title">PT Sinar Beton Perkasa</div>
-              <div class="card-sub">Pengadaan Semen Curah & Pasir Silika · Proyek A1</div>
-            </div>
-            <div class="meta-row">
-              <span class="card-val">Rp 48.500.000</span>
-              <span class="inspect-link">Inspect & PIN ›</span>
-            </div>
+          <div class="menu-list">
+            <div style="padding:14px 16px 6px 16px;"><div class="card-kicker">Akses Modul</div></div>
+            <div class="menu-row"><span>Preferensi Tampilan</span><span style="color:#a8a29e;">›</span></div>
+            <div class="menu-row"><span>Informasi Aplikasi</span><span style="color:#a8a29e;">›</span></div>
+            <div class="menu-row"><span>Tentang Sistem</span><span style="color:#a8a29e;">›</span></div>
           </div>
-        `;
-        specHeading.textContent = '✅ Layar 4: Back-Office Exec Action Hub & Inspector';
-        specContent.innerHTML = `
-          <div class="spec-item"><span class="spec-code">3-Point Card Anatomy</span>: Hanya menampilkan Kode + Badge, Nama Mitra + Konteks, serta Nominal + Indikator Inspect.</div>
-          <div class="spec-item"><span class="spec-code">Ketuk Kartu</span>: Coba ketuk kartu PO di sebelah kiri untuk membuka <b>Bottom Inspector Sheet</b> dengan otorisasi PIN 6-digit.</div>
+          <button type="button" class="logout-btn" onclick="openRoute('login')">Keluar</button>
         `;
       }
+
+      const tabs = [
+        { id: 'dashboard', label: 'Dashboard' },
+        { id: 'messages', label: 'Messages' },
+        { id: 'shopfloor', label: 'Shop Floor' },
+        { id: 'profile', label: 'Profile/Hub' }
+      ];
+
+      phone.innerHTML = `
+        <header class="top-bar">
+          ${logoMarkup(28)}
+          <div class="top-title">${titles[currentTab]}</div>
+        </header>
+        <main class="content-scroll">${bodyHtml}</main>
+        <nav class="bottom-nav">
+          ${tabs.map(t => `
+            <button type="button" class="nav-btn ${currentTab === t.id ? 'active' : ''}" onclick="openTab('${t.id}')">
+              ${iconSvg(t.id, currentTab === t.id)}
+              <span>${t.label}</span>
+            </button>
+          `).join('')}
+        </nav>
+      `;
     }
 
-    renderScreen();
+    render();
   </script>
 </body>
 </html>

@@ -1,115 +1,268 @@
 //
 // PavingJossCleanUI.kt
-// Paving Joss ERP — Clean, Non-Overinformative Jetpack Compose Component Reference
-// Implements 15% Sticky Surface Cap, 2x2 Metric Grid, 3-Point Card Anatomy,
-// and Progressive Disclosure via Slide-Up Bottom Inspector Sheet.
+// Paving Joss ERP — Modular Minimalist & Empty-First Jetpack Compose Component Reference
+//
+// Screens Covered:
+// 0. LoginScreen (Centered minimalist white card, official Web ERP logo, Masuk)
+// 1. DashboardScreen (Default leftmost tab, structural cards in neutral empty state)
+// 2. MessagesScreen (Search field + neutral empty state card)
+// 3. ShopFloorScreen (Workstation & production queue in neutral empty state)
+// 4. ProfileHubScreen (Neutral identity card, basic menu rows, Keluar button)
+//
+// NOTE: Zero dummy data, zero API calls. Designed to build completely empty & clean.
 //
 
 package com.pavingjoss.erp.ui.clean
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pavingjoss.erp.core.MobileMainTab
+import com.pavingjoss.erp.core.NeutralEmptyText
 
 // ============================================================================
-// 1. COMPACT MOBILE TOP APP BAR (56dp Height, Sticky)
+// 1. OFFICIAL WEB ERP LOGO & MODULAR CARD CONTAINER
+// ============================================================================
+
+@Composable
+fun WebErpLogoImage(
+    logoResId: Int, // Pass R.drawable.ic_erp_logo (copy of public/logo.png)
+    size: Dp = 28.dp,
+    modifier: Modifier = Modifier
+) {
+    Image(
+        painter = painterResource(id = logoResId),
+        contentDescription = "Logo Web ERP",
+        modifier = modifier.size(size)
+    )
+}
+
+@Composable
+fun ModularCard(
+    modifier: Modifier = Modifier,
+    padding: Dp = 16.dp,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFFE7E5E4)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(padding),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+fun ModularSectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.6.sp,
+        color = Color(0xFF78716C)
+    )
+}
+
+// ============================================================================
+// 2. LOGIN SCREEN (MINIMALIST CENTERED WHITE CARD + WEB ERP LOGO)
+// ============================================================================
+
+@Composable
+fun LoginScreen(
+    logoResId: Int,
+    onSignInSuccess: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFFAFAF9))
+            .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, Color(0xFFE7E5E4)),
+            shadowElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                WebErpLogoImage(logoResId = logoResId, size = 64.dp)
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "Masuk ke Akun",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1C1917)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Portal Operasional Mobile",
+                        fontSize = 13.sp,
+                        color = Color(0xFF78716C)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ModularSectionLabel("Username")
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = { username = it },
+                            placeholder = { Text("Masukkan username", fontSize = 14.sp) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ModularSectionLabel("Password")
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = { password = it },
+                            placeholder = { Text("Masukkan password", fontSize = 14.sp) },
+                            singleLine = true,
+                            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                TextButton(onClick = { showPassword = !showPassword }) {
+                                    Text(if (showPassword) "Tutup" else "Lihat", fontSize = 11.sp, color = Color(0xFF78716C))
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Button(
+                        onClick = onSignInSuccess,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF1C1917),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                    ) {
+                        Text(
+                            text = "Masuk",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// 3. COMPACT TOP APP BAR (56dp) & 4-TAB BOTTOM NAVIGATION BAR (64dp)
 // ============================================================================
 
 @Composable
 fun PavingJossTopBar(
+    logoResId: Int,
     title: String,
-    roleSubtitle: String,
-    onTapSystemInfo: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp),
-        color = Color(0xFFFAFAF9),
+        color = Color.White,
         border = BorderStroke(1.dp, Color(0xFFE7E5E4))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFE7E5E4)),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "PJ",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = Color(0xFF1C1917)
-                        )
-                    }
-                }
+            WebErpLogoImage(logoResId = logoResId, size = 28.dp)
+            Text(
+                text = title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF1C1917),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
 
-                Column {
-                    Text(
-                        text = title,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1C1917),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = roleSubtitle,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF78716C),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFF5F5F4),
-                border = BorderStroke(1.dp, Color(0xFFE7E5E4)),
-                modifier = Modifier
-                    .height(36.dp)
-                    .clickable { onTapSystemInfo() }
-            ) {
+@Composable
+fun PavingJossBottomBar(
+    selectedTab: MobileMainTab,
+    onSelectTab: (MobileMainTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(64.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFFE7E5E4))
+    ) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            MobileMainTab.orderedTabs.forEach { tab ->
+                val isSelected = tab == selectedTab
                 Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.padding(horizontal = 10.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable { onSelectTab(tab) },
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "System Info",
+                        text = tab.tabLabel,
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF44403C)
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) Color(0xFF1C1917) else Color(0xFFA8A29E),
+                        maxLines = 1
                     )
                 }
             }
@@ -118,115 +271,92 @@ fun PavingJossTopBar(
 }
 
 // ============================================================================
-// 2. STRICT 3-POINT CARD ANATOMY (Anti-Overinformative List Card)
+// 4. TAB 0 (DEFAULT LEFTMOST): DASHBOARD SCREEN (EMPTY-FIRST)
 // ============================================================================
 
-enum class SemanticBadgeTone(val bg: Color, val fg: Color) {
-    EMERALD(Color(0xFFECFDF5), Color(0xFF047857)),
-    AMBER(Color(0xFFFFFBEB), Color(0xFFB45309)),
-    RED(Color(0xFFFEF2F2), Color(0xFFB91C1C)),
-    STONE(Color(0xFFF5F5F4), Color(0xFF44403C))
-}
-
 @Composable
-fun CleanThreePointCard(
-    docCode: String,
-    statusText: String,
-    statusTone: SemanticBadgeTone,
-    title: String,
-    subtitle: String,
-    primaryMetric: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, Color(0xFFE7E5E4)),
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable { onClick() }
+fun DashboardScreen(onTapAttendance: () -> Unit = {}) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFFAFAF9))
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Row 1: Monospace Document Code + Single Semantic Status Badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = docCode,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    color = Color(0xFF78716C),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(statusTone.bg)
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = statusText.uppercase(),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = statusTone.fg
-                    )
-                }
-            }
-
-            // Row 2: Primary Title (1 line) + Secondary Subtitle (1 line)
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1C1917),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFF78716C),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            // Row 3: Tabular Monospace Metric + Disclosure Indicator
-            Row(
+        ModularCard {
+            ModularSectionLabel("Presensi Hari Ini")
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 2.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = primaryMetric,
-                    style = TextStyle(
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace,
-                        fontFeatureSettings = "tnum",
-                        color = Color(0xFF1C1917)
-                    )
+                    text = NeutralEmptyText.PLACEHOLDER_DASH,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = Color(0xFF1C1917)
                 )
-
                 Text(
-                    text = "Inspect ›",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    text = NeutralEmptyText.ATTENDANCE_NOT_RECORDED,
+                    fontSize = 12.sp,
+                    color = Color(0xFF78716C)
+                )
+            }
+            Button(
+                onClick = onTapAttendance,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1C1917),
+                    contentColor = Color.White
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Text("Catat Kehadiran", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ModularCard(modifier = Modifier.weight(1f)) {
+                ModularSectionLabel("Kuota Cuti")
+                Text(
+                    text = NeutralEmptyText.PLACEHOLDER_DASH,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = Color(0xFF1C1917)
+                )
+                Text(NeutralEmptyText.NO_DATA_YET, fontSize = 12.sp, color = Color(0xFF78716C))
+            }
+
+            ModularCard(modifier = Modifier.weight(1f)) {
+                ModularSectionLabel("Slip Gaji")
+                Text(
+                    text = NeutralEmptyText.PLACEHOLDER_DASH,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = Color(0xFF1C1917)
+                )
+                Text(NeutralEmptyText.NOT_AVAILABLE_YET, fontSize = 12.sp, color = Color(0xFF78716C))
+            }
+        }
+
+        ModularCard {
+            ModularSectionLabel("Aktivitas Terbaru")
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = NeutralEmptyText.NO_ACTIVITY_HISTORY,
+                    fontSize = 13.sp,
                     color = Color(0xFF78716C)
                 )
             }
@@ -235,90 +365,49 @@ fun CleanThreePointCard(
 }
 
 // ============================================================================
-// 3. HR PORTAL / ESS ATTENDANCE HERO CARD (.hris-theme Alabaster)
+// 5. TAB 1: MESSAGES SCREEN (EMPTY-FIRST)
 // ============================================================================
 
 @Composable
-fun EssAttendanceHeroCard(
-    employeeNoAndShift: String,
-    employeeName: String,
-    jakartaTimeStr: String,
-    isClockedIn: Boolean,
-    onTapClockAction: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, Color(0xFFE2E3EA)),
-        modifier = modifier.fillMaxWidth()
+fun MessagesScreen() {
+    var searchQuery by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFFAFAF9))
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = employeeNoAndShift,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    color = Color(0xFF646876)
-                )
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Cari percakapan...", fontSize = 13.sp) },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isClockedIn) Color(0xFFD1FAE5) else Color(0xFFEFEFF3))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = if (isClockedIn) "ON DUTY" else "OFF DUTY",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (isClockedIn) Color(0xFF047857) else Color(0xFF646876)
-                    )
-                }
-            }
-
-            Text(
-                text = employeeName,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF121318)
-            )
-
-            Text(
-                text = jakartaTimeStr,
-                style = TextStyle(
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace,
-                    fontFeatureSettings = "tnum",
-                    color = Color(0xFF121318)
-                )
-            )
-
-            Button(
-                onClick = onTapClockAction,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF121318),
-                    contentColor = Color.White
-                ),
+        ModularCard(padding = 28.dp) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .padding(vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = if (isClockedIn) "Clock Out Sekarang" else "Clock In Shift Sekarang",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
+                    text = NeutralEmptyText.NO_CONVERSATIONS,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1C1917)
+                )
+                Text(
+                    text = NeutralEmptyText.MESSAGES_CONNECT_HINT,
+                    fontSize = 12.sp,
+                    color = Color(0xFF78716C),
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -326,116 +415,149 @@ fun EssAttendanceHeroCard(
 }
 
 // ============================================================================
-// 4. COMPACT ERP DOCUMENT CARD IN MESSAGES + PIN BOTTOM SHEET TRIGGER
+// 6. TAB 2: SHOP FLOOR SCREEN (EMPTY-FIRST)
 // ============================================================================
 
 @Composable
-fun ChatErpDocumentCard(
-    docTypeLabel: String,
-    docNumberAndPartner: String,
-    amountFormatted: String,
-    statusText: String,
-    canAuthorize: Boolean,
-    onTapPreview: () -> Unit,
-    onTapAuthorize: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, Color(0xFFE7E5E4)),
-        modifier = modifier.fillMaxWidth()
+fun ShopFloorScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFFAFAF9))
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        ModularCard {
+            ModularSectionLabel("Workstation Aktif")
+            Text(
+                text = "${NeutralEmptyText.PLACEHOLDER_DASH}  ·  ${NeutralEmptyText.NO_WORKSTATION_SELECTED}",
+                fontSize = 13.sp,
+                color = Color(0xFF57534E)
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ModularCard(modifier = Modifier.weight(1f)) {
+                ModularSectionLabel("Target")
+                Text(
+                    text = NeutralEmptyText.PLACEHOLDER_DASH,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = Color(0xFF1C1917)
+                )
+            }
+            ModularCard(modifier = Modifier.weight(1f)) {
+                ModularSectionLabel("Hasil")
+                Text(
+                    text = NeutralEmptyText.PLACEHOLDER_DASH,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = Color(0xFF1C1917)
+                )
+            }
+        }
+
+        ModularCard {
+            ModularSectionLabel("Antrian Produksi")
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 24.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = docTypeLabel,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1C1917)
+                    text = NeutralEmptyText.NO_PRODUCTION_QUEUE,
+                    fontSize = 13.sp,
+                    color = Color(0xFF78716C)
                 )
+            }
+        }
+    }
+}
+
+// ============================================================================
+// 7. TAB 3: PROFILE / HUB SCREEN (EMPTY-FIRST)
+// ============================================================================
+
+@Composable
+fun ProfileHubScreen(onTapLogout: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFFAFAF9))
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        ModularCard {
+            ModularSectionLabel("Identitas Pengguna")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFFFFBEB))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = statusText,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color(0xFFB45309)
-                    )
-                }
-            }
-
-            Text(
-                text = docNumberAndPartner,
-                fontSize = 12.sp,
-                color = Color(0xFF57534E),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Text(
-                text = amountFormatted,
-                style = TextStyle(
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace,
-                    fontFeatureSettings = "tnum",
-                    color = Color(0xFF1C1917)
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE7E5E4))
                 )
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onTapPreview,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE7E5E4)),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp)
-                ) {
+                Column {
                     Text(
-                        text = "Preview",
-                        fontSize = 12.sp,
+                        text = NeutralEmptyText.PLACEHOLDER_DASH,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF1C1917)
                     )
+                    Text(
+                        text = NeutralEmptyText.NOT_CONNECTED_TO_ERP,
+                        fontSize = 12.sp,
+                        color = Color(0xFF78716C)
+                    )
                 }
+            }
+        }
 
-                if (canAuthorize) {
-                    Button(
-                        onClick = onTapAuthorize,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF1C1917),
-                            contentColor = Color.White
-                        ),
+        ModularCard(padding = 0.dp) {
+            Column {
+                Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)) {
+                    ModularSectionLabel("Akses Modul")
+                }
+                listOf("Preferensi Tampilan", "Informasi Aplikasi", "Tentang Sistem").forEachIndexed { idx, label ->
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Authorize",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text(label, fontSize = 14.sp, color = Color(0xFF1C1917))
+                        Text("›", fontSize = 16.sp, color = Color(0xFFA8A29E))
+                    }
+                    if (idx < 2) {
+                        HorizontalDivider(color = Color(0xFFF5F5F4))
                     }
                 }
             }
+        }
+
+        OutlinedButton(
+            onClick = onTapLogout,
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, Color(0xFFE7E5E4)),
+            colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+        ) {
+            Text(
+                text = "Keluar",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFB02524)
+            )
         }
     }
 }
